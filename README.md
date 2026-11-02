@@ -6,7 +6,8 @@ v2.2.3 (upstream commit b38be6a), MIT licensed.
 Included under `.claude/`:
 - `agents/`: 71 specialist subagents (planner, code-reviewer, security-reviewer, ...)
 - `commands/`: 98 slash commands
-- `skills/`: 314 skills
+- `skills/`: 55 skills, trimmed for web apps (JS/TS, React/Next.js, frontend, testing, general workflow)
+  plus the `orch-*` feature/bugfix/refactor workflows. Re-add any others from upstream `skills/`.
 - `rules/ecc-common/`: general coding / git / testing / security rules
 
 Not included: ECC hooks (they run Node scripts on every tool call).
