@@ -1,16 +1,19 @@
 {
-  "extraKnownMarketplaces": {
-    "ponytail": {
-      "source": {
-        "source": "github",
-        "repo": "DietrichGebert/ponytail"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "ponytail@ponytail": true
-  },
   "env": {
     "PONYTAIL_DEFAULT_MODE": "lite"
-  }
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {},
+  "extraKnownMarketplaces": {}
 }
