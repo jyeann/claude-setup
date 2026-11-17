@@ -1,0 +1,239 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const { parseCommands, stripHeredocs } = require('./shell');
+
+const ok = Object.freeze({ block: false, reason: '' });
+const deny = (reason) => ({ block: true, reason });
+
+const PROTECTED_BRANCHES = new Set(['main', 'master']);
+const HARNESS_PATHS = ['.claude/', '.harness/'];
+const ALLOW_SECRET_MARKER = 'harness:allow-secret';
+
+const WRITE_VERBS = new Set(['rm', 'mv', 'cp', 'chmod', 'chown', 'tee', 'truncate', 'ln', 'dd', 'install', 'patch', 'rsync', 'touch']);
+const DESTINATION_ONLY = new Set(['cp', 'rsync', 'install', 'ln']);
+const GIT_WRITE_SUBS = new Set(['restore', 'rm', 'clean', 'apply', 'mv']);
+const INTERPRETERS = new Set(['node', 'python', 'python3', 'perl', 'ruby', 'deno', 'bun']);
+const EVAL_FLAGS = new Set(['-e', '-c', '-p', '--eval', '--print']);
+const SECRET_READERS = new Set([
+  'cat', 'less', 'more', 'head', 'tail', 'bat', 'nl', 'tac', 'od', 'xxd', 'hexdump', 'strings', 'grep', 'rg', 'ag',
+  'awk', 'sed', 'base64', 'cp', 'mv', 'scp', 'rsync', 'tar', 'zip', 'curl', 'wget', 'source', '.',
+  'node', 'python', 'python3', 'perl', 'ruby',
+]);
+const DANGEROUS_RM = new Set([
+  '/', '/*', '~', '~/*', '$HOME', '${HOME}', '$PWD', '${PWD}', '.', '..', '*', './*', '.git',
+  '/home', '/usr', '/etc', '/var', '/bin', '/lib', '/opt', '/root',
+]);
+const SECRET_VAR = /KEY|TOKEN|SECRET|PASS|CRED/i;
+// Short flags that take a value; letters after them belong to that value, not to flags.
+const VALUE_SHORT_FLAGS = new Set(['m', 'F', 'C', 'c', 't', 'S']);
+const TEMPLATE_ENV = /^\.env\.(example|sample|template)$/;
+
+const SECRET_PATTERNS = [
+  ['AWS access key', /AKIA[0-9A-Z]{16}/],
+  ['Anthropic API key', /sk-ant-[A-Za-z0-9_-]{20,}/],
+  ['private key block', /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/],
+  ['GitHub token', /gh[pousr]_[A-Za-z0-9]{36,}/],
+  ['Slack token', /xox[baprs]-[A-Za-z0-9-]{10,}/],
+];
+const CREDENTIAL = /(?:api[_-]?key|secret|token|passw(?:or)?d)\s*[:=]\s*['"]([A-Za-z0-9_\-/+=]{16,})['"]/gi;
+const PLACEHOLDER = /example|placeholder|changeme|your[-_]|xxxx|dummy|fake|sample|redacted/i;
+
+const stripDot = (p) => p.replace(/^\.\//, '');
+const trimSlash = (p) => (p.length > 1 ? p.replace(/\/+$/, '') : p);
+
+const SECRET_NAMES = ['.env', 'id_rsa', 'id_ed25519', '.npmrc', '.netrc'];
+
+// A glob such as `.env*` or `.e*` expands to a secret file; shells do not match leading dots with * or ?.
+function globMatchesSecret(base) {
+  if (!/[*?[]/.test(base) || /^[*?[]/.test(base)) return false;
+  const re = new RegExp(`^${base.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+  return SECRET_NAMES.some((name) => re.test(name));
+}
+
+function isSecretPath(arg) {
+  const value = arg.replace(/^--?[\w-]+=/, '').replace(/^@/, '');
+  const base = path.basename(value);
+  if (TEMPLATE_ENV.test(base)) return false;
+  return /^\.env(\.[\w.-]+)?$/.test(base)
+    || /^id_(rsa|ed25519|ecdsa|dsa)$/.test(base)
+    || /^\.(npmrc|netrc|pgpass|git-credentials)$/.test(base)
+    || /\.(pem|p12|pfx)$/.test(base)
+    || /(^|\/)\.aws\/credentials$/.test(value)
+    || /^\/proc\/[^/]+\/environ$/.test(value)
+    || globMatchesSecret(base);
+}
+
+function pushViolation(argv, currentBranch) {
+  const args = argv.slice(2);
+  if (args.some((a) => a === '--force' || a === '--mirror' || a === '--all' || a.startsWith('--force-with-lease')
+    || a === '--force-if-includes' || /^-[a-zA-Z]*f[a-zA-Z]*$/.test(a))) {
+    return 'Force, mirror and --all pushes are blocked: they rewrite or publish shared history.';
+  }
+  const positional = args.filter((a) => !a.startsWith('-'));
+  const refspecs = positional.slice(1);
+  if (refspecs.some((r) => r.startsWith('+'))) return 'Force refspecs (+ref) are blocked.';
+  const targets = refspecs.map((r) => (r.includes(':') ? r.split(':').pop() : r).replace(/^refs\/heads\//, ''));
+  const hit = targets.find((t) => PROTECTED_BRANCHES.has(t));
+  if (hit) return `Pushing to ${hit} is blocked: work on a feature branch and open a PR.`;
+  const implicit = refspecs.length === 0 || refspecs.every((r) => r === 'HEAD');
+  if (implicit && PROTECTED_BRANCHES.has(currentBranch)) {
+    return `You are on ${currentBranch}: a push here targets a protected branch. Switch to a feature branch.`;
+  }
+  return null;
+}
+
+function rmViolation(argv) {
+  const flags = argv.slice(1).filter((a) => a.startsWith('-'));
+  const recursive = flags.some((f) => /^-[a-zA-Z]*[rR]/.test(f) || f === '--recursive');
+  if (!recursive) return null;
+  const targets = argv.slice(1).filter((a) => !a.startsWith('-')).map(trimSlash);
+  return targets.some((t) => DANGEROUS_RM.has(t)) ? 'Recursive delete of a root, home or whole-project path is blocked.' : null;
+}
+
+// `-n` is --no-verify for commit, including bundled forms like -nm / -anm (but not -am or `-m "-n"`).
+function commitSkipsHooks(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const a = args[i];
+    if (a === '--no-verify') return true;
+    if (!/^-[a-zA-Z]+$/.test(a)) continue;
+    for (const letter of a.slice(1)) {
+      if (letter === 'n') return true;
+      if (VALUE_SHORT_FLAGS.has(letter)) { if (a.endsWith(letter)) i += 1; break; }
+    }
+  }
+  return false;
+}
+
+function commandViolation({ argv }, ctx) {
+  const [cmd, sub] = argv;
+  if (cmd === 'printenv' && (argv.length === 1 || argv.slice(1).some((a) => SECRET_VAR.test(a)))) return 'Dumping the environment can leak secrets.';
+  if (cmd === 'env' && argv.length === 1) return 'Dumping the environment can leak secrets.';
+  if (cmd === 'export' && (argv.length === 1 || argv.includes('-p'))) return 'Dumping the environment can leak secrets.';
+  if (cmd === 'rm') return rmViolation(argv);
+  if (cmd !== 'git') return null;
+  if (sub === 'push') return pushViolation(argv, ctx.currentBranch);
+  if (sub === 'commit' && commitSkipsHooks(argv.slice(2))) return '--no-verify / -n skips the safety gates and is blocked.';
+  if (sub === 'checkout' && argv.slice(2).includes('.') && !argv.includes('-b')) return 'git checkout . discards all uncommitted work and is blocked.';
+  if (sub === 'reset' && argv.includes('--hard')) return 'git reset --hard discards work and is blocked.';
+  return null;
+}
+
+function secretReadViolation({ argv, redirects }) {
+  const [cmd, sub] = argv;
+  const reads = SECRET_READERS.has(cmd) || (cmd === 'git' && sub === 'add');
+  return reads && [...argv.slice(1), ...redirects].some(isSecretPath)
+    ? 'Reading, copying or staging secret or credential files is blocked.'
+    : null;
+}
+
+function guardedMatcher(ctx) {
+  const guarded = [...HARNESS_PATHS, ...(ctx.protectedPaths ?? []).map(stripDot)];
+  const projectDir = ctx.projectDir ? trimSlash(ctx.projectDir) : null;
+  const isGuarded = (arg) => {
+    let a = stripDot(arg.replace(/^of=/, ''));
+    if (a.startsWith('/')) {
+      if (!projectDir || !a.startsWith(`${projectDir}/`)) return false;
+      a = a.slice(projectDir.length + 1);
+    }
+    const asDir = a.endsWith('/') ? a : `${a}/`;
+    return guarded.some((p) => a.startsWith(p) || asDir.startsWith(p));
+  };
+  const mentions = (text) => guarded.some((p) => text.includes(p));
+  return { isGuarded, mentions };
+}
+
+function activeViolation({ argv, redirects }, matcher) {
+  const [cmd, sub] = argv;
+  const tail = argv.slice(1);
+  const harnessIdx = argv.findIndex((a) => a.endsWith('harness.js'));
+  if (harnessIdx >= 0 && ['off', 'init'].includes(argv[harnessIdx + 1])) {
+    return 'The agent cannot stop or re-initialise the harness run; a human does that.';
+  }
+  const guardedMsg = 'Guardrail, state and acceptance files are read-only during a harness run.';
+  if (redirects.some(matcher.isGuarded)) return guardedMsg;
+  if ((cmd === 'cd' || cmd === 'pushd') && tail[0] && matcher.isGuarded(tail[0])) return guardedMsg;
+  if (WRITE_VERBS.has(cmd)) {
+    const positional = tail.filter((a) => !a.startsWith('-'));
+    const afterT = tail.findIndex((a) => a === '-t') >= 0 ? [tail[tail.findIndex((a) => a === '-t') + 1]] : [];
+    const written = DESTINATION_ONLY.has(cmd) ? [positional[positional.length - 1], ...afterT] : tail;
+    if (written.some((a) => a && matcher.isGuarded(a))) return guardedMsg;
+  }
+  if (cmd === 'sed' && tail.some((a) => /^-[a-zA-Z]*i/.test(a) || a === '--in-place') && tail.some(matcher.isGuarded)) return guardedMsg;
+  const switchesBranch = tail.some((a) => ['-b', '-B', '--orphan'].includes(a));
+  if (cmd === 'git' && tail.some(matcher.isGuarded) && (GIT_WRITE_SUBS.has(sub) || (sub === 'checkout' && !switchesBranch))) return guardedMsg;
+  if (INTERPRETERS.has(cmd) && tail.some((a) => EVAL_FLAGS.has(a)) && tail.some((a) => matcher.mentions(a))) return guardedMsg;
+  return null;
+}
+
+// Quoted text (commit messages, echo'd docs) is data, so these run on the command with quotes blanked.
+const PIPE_TO_SHELL = [
+  /\b(curl|wget)\b[^\n]*\|\s*(sudo\s+)?(\S*\/)?(ba|z|da|k)?sh\b/,
+  /\b(curl|wget)\b[^\n]*\|\s*(sudo\s+)?(\S*\/)?(python3?|node|perl|ruby)(\s+-)?\s*(?:$|[|;&)\n])/,
+  /(\b(ba|z)?sh|\bsource|(?:^|[\s;&|(])\.)\s+<\(\s*(curl|wget)\b/,
+];
+const RAW_PIPE_TO_SHELL = /\b((ba|z)?sh\s+-c|eval)\s+["']?\$\(\s*(curl|wget)\b/;
+const blankQuotes = (t) => t.replace(/"[^"]*"|'[^']*'/g, '""');
+
+function checkBash(command, ctx = {}) {
+  const text = stripHeredocs(command);
+  if (RAW_PIPE_TO_SHELL.test(text) || PIPE_TO_SHELL.some((re) => re.test(blankQuotes(text)))) return deny('Piping a download into a shell or interpreter is blocked.');
+
+  const commands = parseCommands(command);
+  for (const c of commands) {
+    const reason = commandViolation(c, ctx) || secretReadViolation(c);
+    if (reason) return deny(reason);
+  }
+  if (ctx.active) {
+    const matcher = guardedMatcher(ctx);
+    for (const c of commands) {
+      const reason = activeViolation(c, matcher);
+      if (reason) return deny(reason);
+    }
+  }
+  return ok;
+}
+
+function isGitCommit(command) {
+  return parseCommands(command).some(({ argv }) => argv[0] === 'git' && argv[1] === 'commit');
+}
+
+function scanSecrets(text) {
+  const found = new Set();
+  for (const line of text.split('\n')) {
+    if (line.includes(ALLOW_SECRET_MARKER)) continue;
+    for (const [name, re] of SECRET_PATTERNS) if (re.test(line)) found.add(name);
+    for (const m of line.matchAll(CREDENTIAL)) if (!PLACEHOLDER.test(m[1])) found.add('hardcoded credential');
+  }
+  return [...found];
+}
+
+function writtenText(input) {
+  const edits = Array.isArray(input.edits) ? input.edits.map((e) => e.new_string ?? '') : [];
+  return [input.content, input.new_string, input.new_source, ...edits].filter((s) => typeof s === 'string').join('\n');
+}
+
+function candidateRelPaths(file, projectDir) {
+  const resolved = path.resolve(projectDir, file);
+  const real = fs.existsSync(resolved) ? fs.realpathSync(resolved) : resolved;
+  const realRoot = fs.existsSync(projectDir) ? fs.realpathSync(projectDir) : projectDir;
+  return [
+    path.relative(projectDir, resolved),
+    path.relative(realRoot, real),
+  ].map((p) => p.split(path.sep).join('/'));
+}
+
+function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
+  const input = event.tool_input ?? {};
+  const file = input.file_path ?? input.notebook_path ?? '';
+  if (ctx.active && file) {
+    const guarded = [...HARNESS_PATHS, ...(ctx.protectedPaths ?? []).map(stripDot)];
+    const hit = candidateRelPaths(file, projectDir).some((rel) => guarded.some((p) => rel.startsWith(p)));
+    if (hit) return deny(`${file} is protected during a harness run (guardrails, state and acceptance tests are read-only).`);
+  }
+  if (TEMPLATE_ENV.test(path.basename(file))) return ok;
+  const found = scanSecrets(writtenText(input));
+  return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;
+}
+
+module.exports = { checkBash, checkWrite, isGitCommit, scanSecrets };

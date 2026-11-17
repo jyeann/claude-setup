@@ -1,0 +1,30 @@
+'use strict';
+const fs = require('node:fs');
+const { readState } = require('./state');
+
+function readEvent() {
+  const raw = fs.readFileSync(0, 'utf8');
+  return raw.trim() ? JSON.parse(raw) : {};
+}
+
+const projectDirOf = (event) => process.env.CLAUDE_PROJECT_DIR || event.cwd || process.cwd();
+
+// Guardrail context: whether a harness run is active and which extra paths are read-only.
+// Corrupt state is treated as an active run: a damaged state file must tighten guards, never disable them.
+function guardContext(projectDir) {
+  try {
+    const state = readState(projectDir);
+    return { state, active: Boolean(state?.active), protectedPaths: state?.protectedPaths ?? [], projectDir, corrupt: false };
+  } catch (err) {
+    process.stderr.write(`[harness] ${err.message}; guards stay on.\n`);
+    return { state: null, active: true, protectedPaths: [], projectDir, corrupt: true };
+  }
+}
+
+// Hooks fail open: a crashing guard must not brick the session. The error is logged for the human.
+function failOpen(name, err) {
+  process.stderr.write(`[harness:${name}] internal error, allowing: ${err.message}\n`);
+  process.exit(1);
+}
+
+module.exports = { readEvent, projectDirOf, guardContext, failOpen };
