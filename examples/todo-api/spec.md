@@ -6,6 +6,7 @@ A tiny JSON HTTP API for a todo list, with file persistence. Zero runtime depend
 ## Interface (exact)
 Start: `node src/server.js`. Env: `PORT` (default 3000), `DATA_FILE` (default `./data/todos.json`).
 On startup it prints a line containing `listening on <port>` to stdout once it accepts connections.
+On `SIGTERM` and `SIGINT` it closes the server and exits with code 0 (required so test coverage of the process can be collected).
 All bodies are JSON (`content-type: application/json`). Errors are `{"error": "<message>"}`.
 
 | Method + path | Request | Success | Failure |
@@ -28,9 +29,9 @@ Auth, pagination, databases, frameworks, a UI.
 
 ## Verify command (definition of done)
 ```
-node --test --experimental-test-coverage --test-coverage-lines=80 "acceptance/*.test.js" "tests/*.test.js"
+node .claude/harness/bin/verify.js
 ```
-(`tests/` holds the generator's own unit tests; coverage floor 80%.)
+It reads `verify.config.json`: tests pass with none skipped, at least 12 tests ran, source (`src/`) line coverage at least 80% (60% per file), the generator's tests in `tests/` reference `src/` and contain real assertions, and a mutation spot-check kills at least 60% of sampled mutants. `--fast` skips mutation for quick iteration only. Protect `verify.config.json` and `acceptance/` with `--protect`.
 
 ## Constraints
 - No dependencies; no network calls other than serving.

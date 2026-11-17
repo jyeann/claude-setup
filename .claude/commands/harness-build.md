@@ -4,7 +4,7 @@ description: Run an unattended build to completion against a spec, with an objec
 
 Parse from $ARGUMENTS:
 1. `spec` - path to the spec file (see `.claude/harness/templates/spec.md`)
-2. `--verify "<cmd>"` - command that exits 0 only when the work is done (required)
+2. `--verify "<cmd>"` - command that exits 0 only when the work is done (required). For Node projects prefer `node .claude/harness/bin/verify.js` with a `verify.config.json` (tests, source coverage, test quality, mutation spot-check); protect the config with `--protect`
 3. `--max N` - iteration cap (default 20)
 4. `--stall N` - identical-failure repeats before halting (default 3)
 5. `--protect a/,b/` - extra read-only paths, e.g. the acceptance tests

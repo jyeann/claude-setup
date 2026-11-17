@@ -41,7 +41,7 @@ async function startServer(dataFile) {
     const text = await res.text();
     return { status: res.status, body: text ? JSON.parse(text) : null, text };
   };
-  const stop = () => new Promise((resolve) => { child.once('exit', resolve); child.kill('SIGTERM'); });
+  const stop = () => new Promise((resolve) => { child.once('exit', (code, signal) => resolve({ code, signal })); child.kill('SIGTERM'); });
   return { call, stop };
 }
 
@@ -160,4 +160,11 @@ test('an empty or missing data file means an empty list', async () => {
   fs.writeFileSync(file, '');
   const s = await startServer(file);
   try { assert.deepEqual((await s.call('GET', '/todos')).body, []); } finally { await s.stop(); }
+});
+
+test('the server exits with code 0 on SIGTERM (so its coverage can be collected)', async () => {
+  const s = await startServer(tmpFile());
+  const { code, signal } = await s.stop();
+  assert.equal(signal, null, 'must handle SIGTERM instead of being killed by it');
+  assert.equal(code, 0);
 });

@@ -5,11 +5,17 @@ const DEFAULT_TIMEOUT_MS = 300_000;
 const MAX_OUTPUT_CHARS = 1_000_000;
 const KILL_GRACE_MS = 2_000;
 
+// NODE_TEST_CONTEXT would make a nested `node --test` think it is a child reporter and print no summary.
+function childEnv(extra = {}) {
+  const { NODE_TEST_CONTEXT, ...rest } = process.env;
+  return { ...rest, ...extra };
+}
+
 // Runs in its own process group so a timeout kills the whole tree (test runners, dev servers),
 // not just the shell. Resolves even if a grandchild keeps the output pipes open.
-function runVerify(command, { cwd, timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
+function runVerify(command, { cwd, timeoutMs = DEFAULT_TIMEOUT_MS, env } = {}) {
   return new Promise((resolve) => {
-    const child = spawn('bash', ['-c', command], { cwd, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn('bash', ['-c', command], { cwd, env: childEnv(env), detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     let timedOut = false;
     let settled = false;
