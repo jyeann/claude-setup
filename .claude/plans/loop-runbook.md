@@ -1,9 +1,9 @@
-# Loop Runbook (template)
+# Loop Runbook
 
 Pattern: sequential | Mode: safe
 
 ## Goal
-<ONE sentence: what the loop must achieve, e.g. "Make all tasks in TASKS.md pass their tests">
+Work through every task in `TASKS.md` until all are done and the test suite is green.
 
 ## Branch rules (agent does automatically)
 1. Create branch `loop/<goal-slug>-<YYYYMMDD>` from the default branch. Never work on the default branch.
@@ -12,7 +12,7 @@ Pattern: sequential | Mode: safe
 
 ## Before iteration 1
 - Run the test suite. If it fails, STOP and report (do not start).
-- Record baseline: failing tests = 0, coverage = <x>%.
+- Record baseline: failing tests = 0, coverage = record the current value.
 
 ## Each iteration
 1. Pick the next unfinished task.
@@ -29,10 +29,10 @@ Pattern: sequential | Mode: safe
 
 ## Stop conditions (stop at the FIRST that is true)
 - All tasks done and tests green.  -> SUCCESS
-- 20 total iterations reached.  -> STOP, report
+- 10 total iterations reached.  -> STOP, report
 - 3 consecutive BLOCKED tasks, or no progress across 2 checkpoints.  -> STOP, escalate
 - Same stack trace repeats 3 times.  -> STOP, escalate
-- Cost/time budget exceeded (budget: <set me>).  -> STOP, escalate
+- Time budget exceeded (budget: 1 hour wall-clock).  -> STOP, escalate
 - Merge conflict or a change touching secrets/auth/payments.  -> STOP, ask human
 
 ## Finish (agent does)
