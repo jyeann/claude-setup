@@ -31,12 +31,35 @@ function parseCost(output) {
   return found.length > 0 ? Number(found[found.length - 1][1]) : null;
 }
 
+// Last JSON result line from `claude -p --output-format json`.
+function parseUsage(output) {
+  for (const line of output.split('\n').reverse()) {
+    if (!line.startsWith('{') || !line.includes('"usage"')) continue;
+    try {
+      const j = JSON.parse(line);
+      const u = j.usage ?? {};
+      return { turns: j.num_turns ?? null, input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, cacheRead: u.cache_read_input_tokens ?? 0, cacheCreate: u.cache_creation_input_tokens ?? 0 };
+    } catch { /* not the result line */ }
+  }
+  return null;
+}
+
 const mean = (xs) => (xs.length === 0 ? null : xs.reduce((a, b) => a + b, 0) / xs.length);
 
 function summarise(candidate, trials) {
   const costs = trials.map((t) => t.costUsd).filter((c) => typeof c === 'number');
+  const usages = trials.map((t) => t.usage).filter(Boolean);
+  const avg = (key) => mean(usages.map((u) => u[key]).filter((v) => typeof v === 'number'));
+  const total = (key) => usages.reduce((n, u) => n + (u[key] ?? 0), 0);
+  const prompt = total('input') + total('cacheRead') + total('cacheCreate');
   return {
     ...candidate,
+    meanTurns: avg('turns'),
+    meanInputTokens: avg('input'),
+    meanOutputTokens: avg('output'),
+    meanCacheReadTokens: avg('cacheRead'),
+    meanCacheCreateTokens: avg('cacheCreate'),
+    cacheHitRatio: prompt > 0 ? total('cacheRead') / prompt : null,
     trials: trials.length,
     passRate: trials.filter((t) => t.pass).length / trials.length,
     meanCostUsd: mean(costs),
@@ -68,7 +91,7 @@ async function runTrial(projectDir, candidate, opts) {
     });
     const seconds = (Date.now() - started) / 1000;
     const verify = await runVerify(opts.verifyCommand, { cwd: worktree, timeoutMs: (opts.verifyTimeoutMin ?? 10) * MINUTE_MS });
-    return { pass: verify.pass, costUsd: parseCost(agent.output), seconds, agentTimedOut: agent.timedOut };
+    return { pass: verify.pass, costUsd: parseCost(agent.output), usage: parseUsage(agent.output), seconds, agentTimedOut: agent.timedOut };
   } finally {
     try { git(projectDir, ['worktree', 'remove', '--force', worktree]); } catch { fs.rmSync(worktree, { recursive: true, force: true }); }
     fs.rmSync(scratch, { recursive: true, force: true });
@@ -90,4 +113,4 @@ async function runTune(projectDir, opts) {
   return { results, best: pickBest(results, minPassRate), minPassRate };
 }
 
-module.exports = { parseCandidates, parseCost, summarise, pickBest, runTune, DEFAULT_CANDIDATES, DEFAULT_AGENT_CMD };
+module.exports = { parseCandidates, parseCost, parseUsage, summarise, pickBest, runTune, DEFAULT_CANDIDATES, DEFAULT_AGENT_CMD };

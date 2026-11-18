@@ -18,6 +18,8 @@ function parseArgs(argv) {
   return f;
 }
 
+const num = (v) => (v === null || v === undefined ? 'n/a' : Math.round(v).toLocaleString('en-US'));
+const pct = (v) => (v === null || v === undefined ? 'n/a' : `${Math.round(v * 100)}%`);
 const money = (v) => (v === null ? 'n/a' : `$${v.toFixed(2)}`);
 
 async function main(argv) {
@@ -42,6 +44,8 @@ async function main(argv) {
 
   console.log('model:effort                       pass   mean cost   mean time');
   for (const r of report.results) console.log(`${`${r.model}:${r.effort}`.padEnd(34)} ${`${Math.round(r.passRate * 100)}%`.padEnd(6)} ${money(r.meanCostUsd).padEnd(11)} ${r.meanSeconds.toFixed(0)}s`);
+  console.log('\ntokens per run (mean): turns | output | fresh input | cache read | cache write | cache hit');
+  for (const r of report.results) console.log(`${`${r.model}:${r.effort}`.padEnd(34)} ${num(r.meanTurns)} | ${num(r.meanOutputTokens)} | ${num(r.meanInputTokens)} | ${num(r.meanCacheReadTokens)} | ${num(r.meanCacheCreateTokens)} | ${pct(r.cacheHitRatio)}`);
   console.log(report.best
     ? `\nCheapest passing at >=${Math.round(minPassRate * 100)}%: ${report.best.model}:${report.best.effort}`
     : `\nNo candidate reached a ${Math.round(minPassRate * 100)}% pass rate. Fix the eval or the spec before tuning cost.`);

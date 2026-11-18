@@ -71,3 +71,28 @@ test('runTune refuses a non-git directory', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harness-tune-nogit-'));
   await assert.rejects(runTune(dir, { candidates: [{ model: 'm', effort: 'low' }], verifyCommand: 'true', taskText: 't', agentCmd: 'true', trials: 1, minPassRate: 1 }), /git/i);
 });
+
+const { parseUsage } = require('../lib/tune');
+
+test('parseUsage reads token counts and turns from claude --output-format json, else null', () => {
+  const out = 'x\n{"type":"result","num_turns":7,"total_cost_usd":1.5,"usage":{"input_tokens":100,"output_tokens":2000,"cache_read_input_tokens":50000,"cache_creation_input_tokens":3000}}\n';
+  assert.deepEqual(parseUsage(out), { turns: 7, input: 100, output: 2000, cacheRead: 50000, cacheCreate: 3000 });
+  assert.equal(parseUsage('nothing'), null);
+});
+
+test('summarise averages tokens and derives the cache hit ratio', () => {
+  const u = (input, output, cacheRead, cacheCreate, turns) => ({ input, output, cacheRead, cacheCreate, turns });
+  const s = summarise({ model: 'm', effort: 'low' }, [
+    { pass: true, costUsd: 1, seconds: 1, usage: u(100, 1000, 8000, 1900, 4) },
+    { pass: true, costUsd: 1, seconds: 1, usage: u(100, 3000, 8000, 1900, 6) },
+  ]);
+  assert.equal(s.meanOutputTokens, 2000);
+  assert.equal(s.meanTurns, 5);
+  assert.equal(Math.round(s.cacheHitRatio * 100), 80);
+});
+
+test('summarise leaves token fields null when usage was not reported', () => {
+  const s = summarise({ model: 'm', effort: 'low' }, [{ pass: true, costUsd: null, seconds: 1, usage: null }]);
+  assert.equal(s.meanOutputTokens, null);
+  assert.equal(s.cacheHitRatio, null);
+});
