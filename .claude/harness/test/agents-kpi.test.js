@@ -102,7 +102,7 @@ test('human prompts are counted by length only and every prompt after the first 
   trace.logHuman(dir, { session_id: 's1', prompt: 'again' }, 3);
   trace.logHuman(dir, { session_id: 's2', prompt: 'other session' }, 4);
   const { human } = buildKpi(dir, path.join(dir, 'none'));
-  assert.deepEqual(human, { sessions: 2, prompts: 4, interventions: 2 });
+  assert.deepEqual(human, { sessions: 2, prompts: 4, interventions: 2, recordedPrompts: 4, unclassified: 0 });
   const stored = JSON.stringify(trace.readSessions(dir));
   assert.ok(!stored.includes('build me a thing'));
   assert.ok(stored.includes('"chars":16'));
@@ -137,4 +137,25 @@ test('a completion notice with no matching launch is added as its own run', () =
   assert.equal(kpi.totals.runs, 1);
   assert.equal(kpi.byPhase[0].phase, 'plan');
   assert.equal(kpi.byEffort[0].effort, 'medium');
+});
+
+test('agent hand-backs, stop-hook feedback and notifications are not counted as human prompts', () => {
+  const dir = project();
+  trace.logHuman(dir, { session_id: 's1', prompt: 'please build it' }, 1);
+  trace.logHuman(dir, { session_id: 's1', prompt: '[Subagent hand-back] The text below is the final report' }, 2);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'Stop hook feedback: not done' }, 3);
+  trace.logHuman(dir, { session_id: 's1', prompt: '<task-notification><status>completed</status>' }, 4);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'Another Claude session sent a message while you were working' }, 5);
+  const { human } = buildKpi(dir, path.join(dir, 'none'));
+  assert.equal(human.prompts, 1);
+  assert.equal(human.interventions, 0);
+  assert.equal(human.recordedPrompts, 5);
+});
+
+test('events recorded before prompts were classified are reported as unclassified, not as human', () => {
+  const dir = project();
+  fs.mkdirSync(path.join(dir, '.harness', 'traces'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.harness', 'traces', 's1.jsonl'), '{"type":"human","ts":1,"chars":162}\n{"type":"human","ts":2,"chars":4000}\n');
+  const { human } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual([human.prompts, human.interventions, human.unclassified, human.recordedPrompts], [0, 0, 2, 2]);
 });

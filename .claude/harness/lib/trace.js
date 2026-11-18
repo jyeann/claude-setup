@@ -77,8 +77,12 @@ function logBlocked(projectDir, event, reason, now = Date.now()) {
 
 // One record per human prompt: only its length, never the text. After the first prompt of a session,
 // every further prompt is an intervention, which the KPI view counts as a defect of the run's autonomy.
+// Agent hand-backs, stop-hook feedback and notifications also arrive as prompts. Count only what is not one of those.
+const SYSTEM_PROMPT_MARKERS = ['SYSTEM NOTIFICATION - NOT USER INPUT', '[Subagent hand-back]', '<task-notification', 'Stop hook feedback', 'sent a message while you were working', 'This task fired at'];
+const promptKind = (prompt) => (SYSTEM_PROMPT_MARKERS.some((m) => String(prompt ?? '').includes(m)) ? 'system' : 'human');
+
 function logHuman(projectDir, event, now = Date.now()) {
-  append(projectDir, event.session_id, { type: 'human', ts: now, chars: String(event.prompt ?? '').length });
+  append(projectDir, event.session_id, { type: 'human', ts: now, chars: String(event.prompt ?? '').length, kind: promptKind(event.prompt) });
 }
 
 function logStop(projectDir, event, now = Date.now()) {
@@ -111,5 +115,5 @@ function readSessions(projectDir) {
 }
 
 module.exports = {
-  logToolEvent, logBlocked, logHuman, logStop, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
+  logToolEvent, logBlocked, logHuman, promptKind, logStop, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
 };

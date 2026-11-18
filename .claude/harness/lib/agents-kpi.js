@@ -64,8 +64,14 @@ function buildKpi(projectDir, agentsDir, { finals = [] } = {}) {
     phases.set(key, { ...g, runs: g.runs + 1, unreported: g.unreported + (reported ? 0 : 1), failed: g.failed + (r.ok ? 0 : 1), tokens: g.tokens + (r.tokens ?? 0), durationMs: g.durationMs + (r.durationMs ?? 0) });
   }
   const sessions = readSessions(projectDir);
-  const promptCounts = sessions.map((s) => s.events.filter((e) => e.type === 'human').length);
-  const human = { sessions: promptCounts.filter((n) => n > 0).length, prompts: sum(promptCounts), interventions: sum(promptCounts.map((n) => Math.max(0, n - 1))) };
+  // Events written before prompts were classified have no kind: they are reported as unclassified, never as human.
+  const humanOf = (s) => s.events.filter((e) => e.type === 'human' && e.kind === 'human').length;
+  const humanCounts = sessions.map(humanOf);
+  const recorded = sum(sessions.map((s) => s.events.filter((e) => e.type === 'human').length));
+  const human = {
+    sessions: humanCounts.filter((n) => n > 0).length, prompts: sum(humanCounts), interventions: sum(humanCounts.map((n) => Math.max(0, n - 1))),
+    recordedPrompts: recorded, unclassified: sum(sessions.map((s) => s.events.filter((e) => e.type === 'human' && e.kind === undefined).length)),
+  };
   const groups = new Map();
   for (const r of runs) {
     const key = `${r.model ?? 'default'}|${r.effort ?? 'not recorded'}`;

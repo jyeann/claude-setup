@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Usage: node .claude/harness/bin/agents-kpi.js [--out file.json] [--interventions list.json] [--tune tune-report.json] [--finals agent-runs.json]   Prints the per-agent KPI roll-up as JSON.
+// Usage: node .claude/harness/bin/agents-kpi.js [--out file.json] [--interventions list.json] [--tune tune-report.json] [--finals agent-runs.json] [--human-corrected file.json]   Prints the per-agent KPI roll-up as JSON.
 const fs = require('node:fs');
 const path = require('node:path');
 const { buildKpi } = require('../lib/agents-kpi');
@@ -14,6 +14,9 @@ const kpi = buildKpi(root, path.join(root, '.claude', 'agents'), { finals });
 const j = process.argv.indexOf('--interventions');
 // Interventions from before the human-prompt hook existed: a hand-kept JSON array, shown as such.
 if (j > -1 && process.argv[j + 1]) kpi.knownInterventions = JSON.parse(fs.readFileSync(process.argv[j + 1], 'utf8'));
+const h = process.argv.indexOf('--human-corrected');
+// {humanPrompts, interventions, note}: a hand-corrected human count for sessions recorded before prompts were classified.
+if (h > -1 && process.argv[h + 1]) { const c = JSON.parse(fs.readFileSync(process.argv[h + 1], 'utf8')); kpi.human = { ...kpi.human, prompts: c.humanPrompts, interventions: c.interventions, corrected: true, note: c.note }; }
 const t = process.argv.indexOf('--tune');
 // A tune-report.json from tune.js: model x effort pass rate, cost and time on a fixed task.
 if (t > -1 && process.argv[t + 1]) kpi.tune = JSON.parse(fs.readFileSync(process.argv[t + 1], 'utf8')).results;
