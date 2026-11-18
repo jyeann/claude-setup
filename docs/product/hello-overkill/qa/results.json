@@ -87,7 +87,7 @@
   "id": "UC5",
   "title": "certificate view (J4)",
   "ok": true,
-  "evidence": "id 145bfb33e3d30c87, date, 64-char signature, copy status \"Select the text and copy it yourself.\", print hides nav+buttons"
+  "evidence": "id 6337e3ce0d57bd3a, date, 64-char signature, copy status \"Select the text and copy it yourself.\", print hides nav+buttons"
  },
  {
   "id": "UC6",
@@ -123,7 +123,7 @@
   "id": "UC8.3",
   "title": "chaos=delay shows loading then greeting",
   "ok": true,
-  "evidence": "loading visible, button disabled \"Greeting...\", greeting after 2869 ms"
+  "evidence": "loading visible, button disabled \"Greeting...\", greeting after 2856 ms"
  },
  {
   "id": "UC8.3b",
@@ -168,10 +168,82 @@
   "evidence": "covered by UC9"
  },
  {
+  "id": "V2-weather",
+  "title": "forecast, determinism, bad place/date errors",
+  "ok": true,
+  "evidence": "forecast \"52% chance of warm regards in Lisbon, with fog lifting to re\"; repeat + fresh context identical; bad place -> \"Place can be at most 40 characters.\"; bad date -> \"date out of range\""
+ },
+ {
+  "id": "V2-wall",
+  "title": "anonymised rows, no name, announcements, EventSource closes on route change",
+  "ok": true,
+  "evidence": "2 anonymised rows (\"A en/formal hello (first-visit milestone)\"), no name in DOM or raw stream, status \"Live wall connected.\", EventSource readyState 2 after leaving, server streamsOpen=0"
+ },
+ {
+  "id": "V2-wall-reconnect",
+  "title": "disconnect announcement and re-entry opens a fresh stream",
+  "ok": true,
+  "evidence": "after server stop wall-status \"Reconnecting...\", live region \"Live wall reconnecting.\""
+ },
+ {
+  "id": "V2-sla",
+  "title": "numbers appear, update, polling stops after leaving",
+  "ok": true,
+  "evidence": "count 8 -> 15 without reload (2 /api/sla fetches while open); routes GET /healthz, GET /api/weather, GET /; 0 fetches in 11 s after leaving"
+ },
+ {
+  "id": "V2-time-machine",
+  "title": "min/max, era, streak status, pre-1900 error",
+  "ok": true,
+  "evidence": "min/max ok (max 2026-11-18); 1987-05-02 era \"disco and dial-up dawn\"; streak \"Day 1 of a 1-day streak for Ada.\"; unknown name \"No streak on record\"; 1850-01-01 -> \"date before 1900-01-01\""
+ },
+ {
+  "id": "V2-haiku",
+  "title": "three lines, 5-7-5 verified, 422 for unscannable name",
+  "ok": true,
+  "evidence": "lines [\"Well met, kind Ada\",\"a white sail leans on the wind\",\"waves fold on the sand\"] \"5-7-5 verified\", API [5,7,5]; 日本 -> 422 \"name cannot be scanned into a haiku. try the syllables field or a shorter name\""
+ },
+ {
+  "id": "V2-federation",
+  "title": "health, federated hello, plain-text hostile greeting, notice",
+  "ok": true,
+  "evidence": "health \"2 of 2 peers up\", 2 plain-text origins; real peer greeting \"Good day, Ada. It is a pleasure to make your acqua\"; stub greeting shown literally, 0 img, window.__x undefined"
+ },
+ {
+  "id": "V2-federation-down",
+  "title": "stopped peer is isolated, others still work",
+  "ok": true,
+  "evidence": "down row \"http://127.0.0.1:43479 Down: refused the connection\"; up row \"http://127.0.0.1:35593 Up (2 ms)\"; hello: \"This peer refused the connection.\" + 1 greeting; POST /hello still exact"
+ },
+ {
+  "id": "V2-keyboard",
+  "title": "Tab order (8 original first) then More views nav, Enter navigates",
+  "ok": true,
+  "evidence": "tab order nav-hello>nav-battle>nav-verify>name-input>language-select>tone-select>chaos-toggle>say-hello>nav-weather>nav-wall>nav-sla>nav-time-machine>nav-haiku>nav-federation; focus ring solid 2px; Enter on nav-wall -> #/wall, h1 focused, aria-current; keyboard-only haiku"
+ },
+ {
+  "id": "V2-390",
+  "title": "390px: no horizontal scroll on each new view",
+  "ok": true,
+  "evidence": "weather-empty:ok weather:ok wall:ok sla:ok time-machine:ok haiku:ok haiku-result:ok federation:ok hello-with-more-nav:ok; more-nav link heights 50,50,50,50,44,44"
+ },
+ {
+  "id": "V2-dark",
+  "title": "dark mode for wall and SLA (dark bg, readable, no overflow)",
+  "ok": true,
+  "evidence": "wall bg rgb(18,18,18) min contrast 7.7; sla bg rgb(18,18,18) min contrast 7.7"
+ },
+ {
+  "id": "V2-CONSOLE",
+  "title": "zero console/page errors during v2 (resource-load lines for forced 4xx excluded)",
+  "ok": true,
+  "evidence": "0 console/page errors in v2 section"
+ },
+ {
   "id": "CONSOLE",
   "title": "console errors = none (excluding browser resource-load lines for forced 4xx/5xx)",
   "ok": true,
-  "evidence": "0 console errors / page errors; 6 expected \"Failed to load resource\" lines from forced 418/429/500"
+  "evidence": "0 console errors / page errors; 9 expected \"Failed to load resource\" lines from forced 418/429/500"
  },
  {
   "id": "J10",

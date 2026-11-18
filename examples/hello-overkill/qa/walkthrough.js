@@ -3,6 +3,7 @@
 const { chromium } = require('playwright');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -258,7 +259,7 @@ const noOverflow = (page) => page.evaluate(() => document.documentElement.scroll
     await shot(p, 'UC11-keyboard-hello');
     eq(await tid(p, 'status').getAttribute('role'), 'status');
     eq(await tid(p, 'status').getAttribute('aria-live'), 'polite');
-    for (const l of ['Name', 'Language', 'Tone']) await p.getByLabel(l, { exact: true }).waitFor({ timeout: 1000 });
+    for (const l of ['Name', 'Language', 'Tone']) await p.getByLabel(l, { exact: true }).locator('visible=true').first().waitFor({ timeout: 1000 }); // v2 views add hidden Name inputs, so match only the visible one
     await tid(p, 'nav-verify').click();
     await p.getByLabel('Certificate text').waitFor({ timeout: 1000 });
     const nav = await p.locator('nav[aria-label="Primary"]').count();
@@ -612,7 +613,407 @@ const noOverflow = (page) => page.evaluate(() => document.documentElement.scroll
   await check('J8', 'rate limit journey', async () => 'covered by UC9');
   await stop(s);
 
-@@V2@@
+  // ======================= v2 (six new views) =======================
+  const v2ErrStart = consoleErrors.length;
+  const hostileGreeting = '<img src=x onerror=window.__x=1>';
+  const today = new Date().toISOString().slice(0, 10);
+  const BIGLIM = { HELLO_READ_LIMIT: '1000', HELLO_FED_LIMIT: '1000' };
+  const waitText = (p, testid, re, ms) => p.waitForFunction(([t, src]) => { const e = document.querySelector(`[data-testid=${t}]`); return !!e && new RegExp(src).test(e.textContent); }, [testid, re.source], { timeout: ms || 4000 }).catch(async () => { const e = p.locator(`[data-testid=${testid}]`).first(); throw new Error(`${testid} missing /${re.source}/, was: ` + ((await e.count()) ? (await e.textContent()).slice(0, 120) : '(absent)')); });
+  const tabTo = async (p, n) => { const o = []; for (let i = 0; i < n; i++) { await p.keyboard.press('Tab'); o.push(await p.evaluate(() => document.activeElement.getAttribute('data-testid'))); } return o; };
+
+  // stub peer: healthy, but answers /hello with a hostile greeting
+  const stub = await new Promise((resolve) => {
+    const srv = http.createServer((req, res) => {
+      if (req.url === '/healthz') { res.writeHead(200, { 'content-type': 'application/json' }); return res.end('{"ok":true}'); }
+      if (req.url === '/hello') {
+        req.resume();
+        return req.on('end', () => { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ greeting: hostileGreeting, visit: 1, streak: 1 })); });
+      }
+      res.writeHead(404); res.end();
+    });
+    srv.listen(0, '127.0.0.1', () => resolve({ srv, origin: `http://127.0.0.1:${srv.address().port}` }));
+  });
+  const peer = await startServer(tmpFile('peer'), 1000);
+  const m = await startServer(tmpFile('v2main'), 1000, { ...BIGLIM, HELLO_PEERS: `${peer.origin},${stub.origin}`, HELLO_PEERS_ALLOW_PRIVATE: '1' });
+  let peerStopped = false;
+
+  // ---- weather ----
+  await check('V2-weather', 'forecast, determinism, bad place/date errors', async () => {
+    const p = await newPage(browser);
+    await p.goto(m.url + '/#/weather');
+    assert((await tid(p, 'weather-forecast').innerText()).includes("Pick a place to see today's greeting forecast."), 'empty text');
+    eq((await tid(p, 'view-title').innerText()).trim(), 'Hello Weather');
+    await tid(p, 'weather-place-input').fill('Lisbon');
+    await tid(p, 'weather-name-input').fill('Ada');
+    await tid(p, 'weather-go').click();
+    await waitText(p, 'weather-chance', /Chance of warm regards: \d+%/);
+    const f1 = (await tid(p, 'weather-forecast').innerText()).trim();
+    const g1 = (await tid(p, 'weather-greeting').innerText()).trim();
+    assert(/Lisbon/.test(f1) && /Ada/.test(g1), 'content: ' + f1 + ' | ' + g1);
+    await shot(p, 'v2-weather-light');
+    // same place again, and in a fresh context
+    await tid(p, 'weather-go').click();
+    await p.waitForTimeout(400);
+    await waitText(p, 'weather-forecast', /Lisbon/);
+    eq((await tid(p, 'weather-forecast').innerText()).trim(), f1, 'repeat differs');
+    const q = await newPage(browser);
+    await q.goto(m.url + '/#/weather');
+    await tid(q, 'weather-place-input').fill('  lisbon ');
+    await tid(q, 'weather-name-input').fill('Ada');
+    await tid(q, 'weather-go').click();
+    await waitText(q, 'weather-greeting', /Ada/);
+    // case differs in echo only; compare the numeric chance (seed ignores case)
+    eq((await tid(q, 'weather-chance').innerText()).trim(), (await tid(p, 'weather-chance').innerText()).trim(), 'chance differs for same place');
+    await q.context().close();
+    // bad place (41 chars, maxlength removed)
+    await p.evaluate(() => document.querySelector('[data-testid=weather-place-input]').removeAttribute('maxlength'));
+    await tid(p, 'weather-place-input').fill('x'.repeat(41));
+    await tid(p, 'weather-go').click();
+    await waitText(p, 'weather-error', /place must be 1-40 characters|40/);
+    const e1 = (await tid(p, 'weather-error').innerText()).trim();
+    // bad date
+    await tid(p, 'weather-place-input').fill('Lisbon');
+    await tid(p, 'weather-date-input').fill('2020-01-01');
+    await tid(p, 'weather-go').click();
+    await waitText(p, 'weather-error', /date out of range/);
+    await shot(p, 'v2-weather-error');
+    await p.context().close();
+    return `forecast "${f1.slice(0, 60)}"; repeat + fresh context identical; bad place -> "${e1}"; bad date -> "date out of range"`;
+  });
+
+  // ---- wall (dedicated server so the ring is empty) ----
+  const w = await startServer(tmpFile('wall'), 1000, BIGLIM);
+  let wallPageA;
+  await check('V2-wall', 'anonymised rows, no name, announcements, EventSource closes on route change', async () => {
+    const A = await newPage(browser);
+    wallPageA = A;
+    await A.addInitScript(() => { window.__es = []; const O = window.EventSource; window.EventSource = class extends O { constructor(...a) { super(...a); window.__es.push(this); } }; });
+    await A.goto(w.url + '/#/wall');
+    await waitText(A, 'wall-status', /^Connected$/);
+    await waitText(A, 'status', /Live wall connected\./);
+    assert(await tid(A, 'wall-empty').isVisible(), 'empty state');
+    const B = await newPage(browser);
+    await B.goto(w.url + '/');
+    await greet(B, 'Zelda-Secret', 'es', 'pirate');
+    await tid(B, 'greeting-text').waitFor();
+    await greet(B, 'Quentin-Hidden', 'en', 'formal');
+    await A.waitForFunction(() => document.querySelectorAll('[data-testid=wall-item]').length >= 2, null, { timeout: 4000 });
+    const items = await tid(A, 'wall-item').allInnerTexts();
+    assert(items.every((t) => /^A [a-z]{2}\/\w+ hello/.test(t.trim())), 'row format: ' + items.join(' | '));
+    assert(items.some((t) => t.includes('es/pirate')), 'es/pirate row: ' + items.join(' | '));
+    const body = await A.evaluate(() => document.body.innerText + document.documentElement.innerHTML);
+    assert(!/Zelda|Quentin/i.test(body), 'name leaked into wall page');
+    eq((await tid(A, 'wall-count').innerText()).trim(), '2 hellos shown');
+    assert(!(await tid(A, 'wall-empty').isVisible()), 'empty hidden');
+    // raw stream also has no name
+    const raw = await new Promise((resolve) => {
+      let buf = ''; const rq = http.get(w.url + '/api/stream', (r) => { r.setEncoding('utf8'); r.on('data', (d) => { buf += d; }); setTimeout(() => { rq.destroy(); resolve(buf); }, 700); });
+      rq.on('error', () => resolve(buf));
+    });
+    assert(/event: hello/.test(raw) && !/Zelda|Quentin/i.test(raw), 'raw stream: ' + raw.slice(0, 120));
+    await shot(A, 'v2-wall-light');
+    // route change closes the EventSource
+    const open1 = await A.evaluate(() => window.__es.filter((e) => e.readyState !== 2).length);
+    assert(open1 >= 1, 'no open EventSource on wall: ' + open1);
+    await tid(A, 'nav-battle').click();
+    await tid(A, 'battle-option-a').waitFor();
+    const states = await A.evaluate(() => window.__es.map((e) => e.readyState));
+    assert(states.every((x) => x === 2), 'EventSource not closed: ' + states);
+    const sla = await (await A.request.get(w.url + '/api/sla')).json();
+    await B.context().close();
+    return `2 anonymised rows ("${items[0].trim()}"), no name in DOM or raw stream, status "Live wall connected.", EventSource readyState ${states} after leaving, server streamsOpen=${sla.streamsOpen}`;
+  });
+  await check('V2-wall-reconnect', 'disconnect announcement and re-entry opens a fresh stream', async () => {
+    const A = wallPageA;
+    await A.goto(w.url + '/#/wall');
+    await waitText(A, 'wall-status', /^Connected$/);
+    await stop(w);
+    await waitText(A, 'wall-status', /Reconnecting|Disconnected/, 8000);
+    const st = (await tid(A, 'wall-status').innerText()).trim();
+    await waitText(A, 'status', /Live wall (reconnecting|disconnected)\./, 4000);
+    await shot(A, 'v2-wall-reconnecting');
+    return `after server stop wall-status "${st}", live region "${(await tid(A, 'status').innerText()).trim()}"`;
+  });
+  await wallPageA.context().close();
+
+  // ---- SLA ----
+  await check('V2-sla', 'numbers appear, update, polling stops after leaving', async () => {
+    const p = await newPage(browser);
+    const slaReqs = [];
+    p.on('request', (r) => { if (r.url().includes('/api/sla')) slaReqs.push(Date.now()); });
+    await p.request.get(m.url + '/healthz');
+    await p.goto(m.url + '/#/sla');
+    await waitText(p, 'sla-total-count', /^\d+$/);
+    assert(/ms$/.test((await tid(p, 'sla-p50').innerText()).trim()), 'p50 text: ' + await tid(p, 'sla-p50').innerText());
+    assert(/ms$/.test((await tid(p, 'sla-p95').innerText()).trim()) && /ms$/.test((await tid(p, 'sla-p99').innerText()).trim()), 'p95/p99');
+    assert((await tid(p, 'sla-uptime').innerText()).trim() !== '-', 'uptime');
+    assert(/%/.test(await tid(p, 'sla-error-rate').innerText()), 'error rate');
+    assert(/per minute/.test(await tid(p, 'sla-hello-rate').innerText()), 'hello rate');
+    await tid(p, 'sla-row').first().waitFor();
+    const c0 = Number((await tid(p, 'sla-total-count').innerText()).trim());
+    for (let i = 0; i < 6; i++) await p.request.get(m.url + '/healthz');
+    await p.waitForFunction((n) => Number(document.querySelector('[data-testid=sla-total-count]').textContent) > n, c0, { timeout: 8000 });
+    const c1 = Number((await tid(p, 'sla-total-count').innerText()).trim());
+    const rows = await tid(p, 'sla-route').allInnerTexts();
+    await shot(p, 'v2-sla-light');
+    const during = slaReqs.length;
+    await tid(p, 'nav-hello').click();
+    await tid(p, 'name-input').waitFor();
+    await p.waitForTimeout(200);
+    const atLeave = slaReqs.length;
+    await p.waitForTimeout(11000);
+    eq(slaReqs.length, atLeave, 'polling continued after leaving');
+    await p.context().close();
+    return `count ${c0} -> ${c1} without reload (${during} /api/sla fetches while open); routes ${rows.slice(0, 3).join(', ')}; 0 fetches in 11 s after leaving`;
+  });
+
+  // ---- time machine ----
+  await check('V2-time-machine', 'min/max, era, streak status, pre-1900 error', async () => {
+    const h = await newPage(browser);
+    await h.goto(m.url + '/');
+    await greet(h, 'Ada', 'en', 'formal');
+    await tid(h, 'greeting-text').waitFor();
+    await h.context().close();
+    const p = await newPage(browser);
+    await p.goto(m.url + '/#/time-machine');
+    eq(await tid(p, 'tm-date-input').getAttribute('min'), '1900-01-01', 'min');
+    eq(await tid(p, 'tm-date-input').getAttribute('max'), today, 'max');
+    await tid(p, 'tm-date-input').fill('1987-05-02');
+    await tid(p, 'tm-go').click();
+    await waitText(p, 'tm-era', /disco and dial-up dawn/);
+    assert((await tid(p, 'tm-greeting').innerText()).trim().length > 5, 'greeting');
+    eq(await tid(p, 'tm-streak').count(), 0, 'streak shown without name');
+    await tid(p, 'tm-date-input').fill(today);
+    await tid(p, 'tm-name-input').fill('Ada');
+    await tid(p, 'tm-go').click();
+    await waitText(p, 'tm-streak', /Day 1 of a 1-day streak for Ada\./);
+    const s1 = (await tid(p, 'tm-streak').innerText()).trim();
+    await tid(p, 'tm-name-input').fill('Nobody Atall');
+    await tid(p, 'tm-go').click();
+    await waitText(p, 'tm-streak', /No streak on record for Nobody Atall\./);
+    await shot(p, 'v2-time-machine-light');
+    await tid(p, 'tm-name-input').fill('');
+    await tid(p, 'tm-date-input').fill('1850-01-01');
+    await tid(p, 'tm-go').click();
+    await waitText(p, 'tm-error', /before 1900-01-01/);
+    const e = (await tid(p, 'tm-error').innerText()).trim();
+    await shot(p, 'v2-time-machine-error');
+    await p.context().close();
+    return `min/max ok (max ${today}); 1987-05-02 era "disco and dial-up dawn"; streak "${s1}"; unknown name "No streak on record"; 1850-01-01 -> "${e}"`;
+  });
+
+  // ---- haiku ----
+  await check('V2-haiku', 'three lines, 5-7-5 verified, 422 for unscannable name', async () => {
+    const p = await newPage(browser);
+    await p.goto(m.url + '/#/haiku');
+    await tid(p, 'haiku-name-input').fill('Ada');
+    await tid(p, 'haiku-theme-select').selectOption('ocean');
+    await tid(p, 'haiku-go').click();
+    await tid(p, 'haiku-line').first().waitFor();
+    eq(await tid(p, 'haiku-line').count(), 3, 'line count');
+    const lines = (await tid(p, 'haiku-line').allInnerTexts()).map((x) => x.trim());
+    assert(lines.every((l) => l.length > 0), 'empty line');
+    assert(lines.join(' ').includes('Ada'), 'name placed');
+    eq((await tid(p, 'haiku-counts').innerText()).trim(), '5-7-5 verified');
+    await waitText(p, 'status', /Haiku ready/);
+    const api = await (await p.request.post(m.url + '/api/haiku', { data: { name: 'Ada', theme: 'ocean' } })).json();
+    eq(JSON.stringify(api.syllables), '[5,7,5]', 'api syllables');
+    eq(JSON.stringify(api.haiku), JSON.stringify(lines), 'ui lines match api');
+    await shot(p, 'v2-haiku-light');
+    await tid(p, 'haiku-name-input').fill('日本');
+    await tid(p, 'haiku-go').click();
+    await waitText(p, 'haiku-error', /cannot be scanned/);
+    const e = (await tid(p, 'haiku-error').innerText()).trim();
+    const r = await p.request.post(m.url + '/api/haiku', { data: { name: '日本' } });
+    eq(r.status(), 422, 'api status');
+    await shot(p, 'v2-haiku-422');
+    await p.context().close();
+    return `lines ${JSON.stringify(lines)} "5-7-5 verified", API [5,7,5]; 日本 -> 422 "${e}"`;
+  });
+
+  // ---- federation ----
+  let fedPage;
+  await check('V2-federation', 'health, federated hello, plain-text hostile greeting, notice', async () => {
+    const p = await newPage(browser);
+    fedPage = p;
+    await p.goto(m.url + '/#/federation');
+    assert(await tid(p, 'fed-notice').isVisible(), 'notice visible');
+    assert(/Your name is sent to the listed peers/.test(await tid(p, 'fed-notice').innerText()), 'notice text');
+    await waitText(p, 'fed-summary', /2 of 2 peers up\./);
+    const origins = await tid(p, 'fed-peer-origin').allInnerTexts();
+    assert(origins.includes(peer.origin) && origins.includes(stub.origin), 'origins ' + origins);
+    const sts = await tid(p, 'fed-peer-status').allInnerTexts();
+    assert(sts.every((t) => /^Up \(\d+ ms\)$/.test(t.trim())), 'statuses ' + sts);
+    eq(await p.locator('[data-testid=fed-peer-origin] a, [data-testid=fed-result] a').count(), 0, 'anchors');
+    assert(!(await tid(p, 'fed-empty').isVisible()), 'empty hidden');
+    await tid(p, 'fed-name-input').fill('Ada');
+    await tid(p, 'fed-hello-btn').click();
+    await p.waitForFunction(() => document.querySelectorAll('[data-testid=fed-result]').length === 2, null, { timeout: 5000 });
+    const gs = await tid(p, 'fed-result-greeting').allInnerTexts();
+    assert(gs.some((g) => g.includes('Ada') && !g.includes('<')), 'peer greeting: ' + gs.join(' | '));
+    assert(gs.some((g) => g.includes(hostileGreeting)), 'hostile literal text missing: ' + gs.join(' | '));
+    eq(await p.locator('main img').count(), 0, 'img injected');
+    eq(await p.evaluate(() => window.__x), undefined, 'xss ran');
+    await waitText(p, 'status', /2 of 2 peers answered\./);
+    await shot(p, 'v2-federation-light');
+    return `health "2 of 2 peers up", ${origins.length} plain-text origins; real peer greeting "${gs.find((g) => g.includes('Ada') && !g.includes('<')).slice(0, 50)}"; stub greeting shown literally, 0 img, window.__x undefined`;
+  });
+  await check('V2-federation-down', 'stopped peer is isolated, others still work', async () => {
+    const p = fedPage;
+    await stop(peer); peerStopped = true;
+    await p.waitForTimeout(5300); // health cache ttl is 5 s
+    await tid(p, 'fed-health-btn').click();
+    await waitText(p, 'fed-summary', /1 of 2 peers up\./, 6000);
+    const rows = await tid(p, 'fed-peer-row').allInnerTexts();
+    const down = rows.find((r) => r.includes(peer.origin)); const up = rows.find((r) => r.includes(stub.origin));
+    assert(/Down: /.test(down) && !/stack|ECONN|at /.test(down), 'down row: ' + down);
+    assert(/Up \(/.test(up), 'up row: ' + up);
+    await tid(p, 'fed-name-input').fill('Ada');
+    await tid(p, 'fed-hello-btn').click();
+    await waitText(p, 'status', /1 of 2 peers answered\./, 6000);
+    const errs = await tid(p, 'fed-result-error').allInnerTexts();
+    const oks = await tid(p, 'fed-result-greeting').allInnerTexts();
+    eq(errs.length, 1, 'error count'); eq(oks.length, 1, 'ok count');
+    assert(/^This peer /.test(errs[0].trim()) && !/ECONN|127\.0\.0\.1|stack/.test(errs[0]), 'error text: ' + errs[0]);
+    await shot(p, 'v2-federation-peer-down');
+    // the main server itself is unaffected
+    const hr = await p.request.post(m.url + '/hello');
+    eq(await hr.text(), '{"message":"Hello World! Welcome to the API."}');
+    await p.context().close();
+    return `down row "${down.replace(/\s+/g, ' ')}"; up row "${up.replace(/\s+/g, ' ')}"; hello: "${errs[0].trim()}" + 1 greeting; POST /hello still exact`;
+  });
+
+  // ---- keyboard ----
+  await check('V2-keyboard', 'Tab order (8 original first) then More views nav, Enter navigates', async () => {
+    const p = await newPage(browser);
+    await p.goto(m.url + '/');
+    await p.evaluate(() => { document.activeElement && document.activeElement.blur(); });
+    const order = await tabTo(p, 14);
+    const want = ['nav-hello', 'nav-battle', 'nav-verify', 'name-input', 'language-select', 'tone-select', 'chaos-toggle', 'say-hello', 'nav-weather', 'nav-wall', 'nav-sla', 'nav-time-machine', 'nav-haiku', 'nav-federation'];
+    eq(order.join(','), want.join(','), 'tab order');
+    // the More views nav is a labelled landmark
+    eq(await p.locator('nav[aria-labelledby="more-label"]').count(), 1, 'more nav landmark');
+    const outline = await p.evaluate(() => { const cs = getComputedStyle(document.activeElement); return cs.outlineStyle + ' ' + cs.outlineWidth; });
+    assert(!/^none/.test(outline) && !/ 0px/.test(outline), 'focus ring: ' + outline);
+    // Shift+Tab back to nav-sla then Enter
+    await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab'); await p.keyboard.press('Shift+Tab');
+    eq(await p.evaluate(() => document.activeElement.getAttribute('data-testid')), 'nav-wall', 'shift-tab target');
+    await p.keyboard.press('Enter');
+    await p.waitForFunction(() => location.hash === '#/wall');
+    await p.waitForFunction(() => document.activeElement && document.activeElement.getAttribute('data-testid') === 'view-title', null, { timeout: 2000 }).catch(() => {});
+    eq(await p.evaluate(() => document.activeElement.getAttribute('data-testid')), 'view-title', 'h1 focused');
+    eq(await tid(p, 'nav-wall').getAttribute('aria-current'), 'page');
+    eq((await tid(p, 'view-title').innerText()).trim(), 'Live Hello Wall');
+    // keyboard-only haiku
+    await p.goto(m.url + '/#/haiku');
+    await tid(p, 'haiku-name-input').focus();
+    await p.keyboard.type('Kay');
+    await p.keyboard.press('Tab'); await p.keyboard.press('ArrowDown');
+    await p.keyboard.press('Tab'); await p.keyboard.press('Tab');
+    eq(await p.evaluate(() => document.activeElement.getAttribute('data-testid')), 'haiku-go');
+    await p.keyboard.press('Enter');
+    await tid(p, 'haiku-line').first().waitFor();
+    await p.context().close();
+    return `tab order ${order.join('>')}; focus ring ${outline}; Enter on nav-wall -> #/wall, h1 focused, aria-current; keyboard-only haiku`;
+  });
+
+  // ---- 390px + dark ----
+  await check('V2-390', '390px: no horizontal scroll on each new view', async () => {
+    const p = await newPage(browser, { viewport: { width: 390, height: 844 } });
+    const res = [];
+    const ov = async (n) => { const ok = await noOverflow(p); res.push(`${n}:${ok ? 'ok' : 'OVERFLOW'}`); return ok; };
+    const bad = [];
+    await p.goto(m.url + '/#/weather');
+    if (!await ov('weather-empty')) bad.push('weather-empty');
+    await tid(p, 'weather-place-input').fill('W'.repeat(40));
+    await tid(p, 'weather-name-input').fill('W'.repeat(40));
+    await tid(p, 'weather-go').click();
+    await waitText(p, 'weather-chance', /Chance/);
+    if (!await ov('weather')) bad.push('weather');
+    await shot(p, 'v2-weather-390');
+    await p.goto(m.url + '/#/wall');
+    await waitText(p, 'wall-status', /Connected|Wall is full/);
+    if (!await ov('wall')) bad.push('wall');
+    await shot(p, 'v2-wall-390');
+    await p.goto(m.url + '/#/sla');
+    await waitText(p, 'sla-total-count', /^\d+$/);
+    if (!await ov('sla')) bad.push('sla');
+    await shot(p, 'v2-sla-390');
+    await p.goto(m.url + '/#/time-machine');
+    await tid(p, 'tm-date-input').fill('1987-05-02');
+    await tid(p, 'tm-name-input').fill('W'.repeat(40));
+    await tid(p, 'tm-go').click();
+    await waitText(p, 'tm-streak', /./);
+    if (!await ov('time-machine')) bad.push('time-machine');
+    await shot(p, 'v2-time-machine-390');
+    await p.goto(m.url + '/#/haiku');
+    await tid(p, 'haiku-name-input').fill('W'.repeat(40));
+    await tid(p, 'haiku-go').click();
+    await p.waitForFunction(() => document.querySelector('[data-testid=haiku-line]') || document.querySelector('[data-testid=haiku-error]').textContent);
+    if (!await ov('haiku')) bad.push('haiku');
+    await tid(p, 'haiku-name-input').fill('Ada');
+    await tid(p, 'haiku-go').click();
+    await tid(p, 'haiku-line').first().waitFor();
+    if (!await ov('haiku-result')) bad.push('haiku-result');
+    await shot(p, 'v2-haiku-390');
+    await p.goto(m.url + '/#/federation');
+    await waitText(p, 'fed-summary', /peers up/, 6000);
+    await tid(p, 'fed-name-input').fill('Ada');
+    await tid(p, 'fed-hello-btn').click();
+    await p.waitForFunction(() => document.querySelectorAll('[data-testid=fed-result]').length === 2, null, { timeout: 6000 });
+    if (!await ov('federation')) bad.push('federation');
+    await shot(p, 'v2-federation-390');
+    await p.goto(m.url + '/');
+    if (!await ov('hello-with-more-nav')) bad.push('hello');
+    await shot(p, 'v2-more-nav-390');
+    const hts = await p.evaluate(() => ['nav-weather', 'nav-wall', 'nav-sla', 'nav-time-machine', 'nav-haiku', 'nav-federation'].map((i) => Math.round(document.querySelector(`[data-testid=${i}]`).getBoundingClientRect().height)));
+    await p.context().close();
+    assert(bad.length === 0, 'overflow on: ' + bad.join(','));
+    return `${res.join(' ')}; more-nav link heights ${hts}`;
+  });
+  await check('V2-dark', 'dark mode for wall and SLA (dark bg, readable, no overflow)', async () => {
+    const out = [];
+    for (const [view, ready] of [['wall', /Connected/], ['sla', /^\d+$/]]) {
+      const p = await newPage(browser, { colorScheme: 'dark', viewport: { width: 390, height: 844 } });
+      await p.goto(m.url + '/#/' + view);
+      await waitText(p, view === 'wall' ? 'wall-status' : 'sla-total-count', ready);
+      const info = await p.evaluate(() => {
+        const rgb = (s) => s.match(/[\d.]+/g).map(Number);
+        const lum = ([r, g, b]) => { const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+        const bg = rgb(getComputedStyle(document.body).backgroundColor);
+        let worst = 21; const bad = [];
+        for (const e of document.querySelectorAll('main :is(p,dd,dt,td,th,li,caption,h1)')) {
+          if (!e.offsetParent || !e.textContent.trim()) continue;
+          let b = e; let bgc = null;
+          while (b && !bgc) { const c = getComputedStyle(b).backgroundColor; const a = rgb(c); if (a.length < 4 || a[3] > 0.5) bgc = a; b = b.parentElement; }
+          const fg = rgb(getComputedStyle(e).color);
+          const l1 = lum(fg), l2 = lum(bgc || bg);
+          const cr = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+          if (cr < worst) worst = cr;
+          if (cr < 4.5) bad.push(e.textContent.trim().slice(0, 20) + ':' + cr.toFixed(1));
+        }
+        return { bg, worst: Math.round(worst * 10) / 10, bad, overflow: document.documentElement.scrollWidth > window.innerWidth };
+      });
+      assert((info.bg[0] + info.bg[1] + info.bg[2]) / 3 < 100, view + ' bg not dark: ' + info.bg);
+      assert(!info.overflow, view + ' dark overflow');
+      assert(info.bad.length === 0, view + ' low contrast: ' + info.bad.join(','));
+      await shot(p, `v2-${view}-dark-390`);
+      await p.setViewportSize({ width: 1280, height: 800 });
+      await shot(p, `v2-${view}-dark`);
+      out.push(`${view} bg rgb(${info.bg.slice(0, 3)}) min contrast ${info.worst}`);
+      await p.context().close();
+    }
+    return out.join('; ');
+  });
+  await stop(m);
+  if (!peerStopped) await stop(peer);
+  stub.srv.close(); stub.srv.closeAllConnections && stub.srv.closeAllConnections();
+  await check('V2-CONSOLE', 'zero console/page errors during v2 (resource-load lines for forced 4xx excluded)', async () => {
+    const v2Errs = consoleErrors.slice(v2ErrStart);
+    assert(v2Errs.length === 0, `${v2Errs.length} errors: ${v2Errs.slice(0, 3).join(' | ')}`);
+    return `0 console/page errors in v2 section`;
+  });
+
   // ---------- Console errors ----------
   await check('CONSOLE', 'console errors = none (excluding browser resource-load lines for forced 4xx/5xx)', async () => {
     assert(consoleErrors.length === 0, `${consoleErrors.length} errors: ${consoleErrors.slice(0, 3).join(' | ')}`);

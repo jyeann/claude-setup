@@ -49,3 +49,34 @@ Totals: 30 checks, 29 PASS, 1 FAIL. Rows named "covered by" are aliases of a det
 - After pressing Enter in the name field, focus remains on the name input (not the button). Spec says focus stays where the user was; no focus move to the result. OK.
 - Copy certificate reported "Select the text and copy it yourself." because the headless context has no clipboard permission. That is the spec's documented fallback, so it passes.
 - Chromium logs "Failed to load resource" for forced 418, 429 and 500 responses (7 lines). These are browser network notices for intentionally forced statuses and are excluded from the console-errors check. There were 0 other console errors or page errors.
+
+## v2 (six new views)
+
+Run: `node qa/walkthrough.js` (same command; the v2 section runs before the CONSOLE check). Totals now: 42 checks, 42 PASS, 0 FAIL (30 v1 + 12 v2), run twice with the same result. v2 servers: HELLO_READ_LIMIT=1000 and HELLO_FED_LIMIT=1000 (so QA is not throttled), main server with `HELLO_PEERS=<real peer>,<stub peer>` and `HELLO_PEERS_ALLOW_PRIVATE=1`; the real peer is a second `src/server.js`, the stub peer is a tiny `http` server that answers `{"greeting":"<img src=x onerror=window.__x=1>"}`. Wall tests use their own server so the replay ring starts empty. Screenshots: `docs/product/hello-overkill/qa/v2-*.png` (22 files, deviceScaleFactor 1).
+
+| Journey | What | Result | Evidence |
+|---|---|---|---|
+| V2-weather | forecast, determinism, bad place/date errors | PASS | forecast "52% chance of warm regards in Lisbon, with fog lifting to re"; repeat + fresh context identical; bad place -> "Place can be at most 40 characters."; bad date -> "date out of range" |
+| V2-wall | anonymised rows, no name, announcements, EventSource closes on route change | PASS | 2 anonymised rows ("A en/formal hello (first-visit milestone)"), no name in DOM or raw stream, status "Live wall connected.", EventSource readyState 2 after leaving, server streamsOpen=0 |
+| V2-wall-reconnect | disconnect announcement and re-entry opens a fresh stream | PASS | after server stop wall-status "Reconnecting...", live region "Live wall reconnecting." |
+| V2-sla | numbers appear, update, polling stops after leaving | PASS | count 8 -> 15 without reload (2 /api/sla fetches while open); routes GET /healthz, GET /api/weather, GET /; 0 fetches in 11 s after leaving |
+| V2-time-machine | min/max, era, streak status, pre-1900 error | PASS | min/max ok (max 2026-11-18); 1987-05-02 era "disco and dial-up dawn"; streak "Day 1 of a 1-day streak for Ada."; unknown name "No streak on record"; 1850-01-01 -> "date before 1900-01-01" |
+| V2-haiku | three lines, 5-7-5 verified, 422 for unscannable name | PASS | lines ["Well met, kind Ada","a white sail leans on the wind","waves fold on the sand"] "5-7-5 verified", API [5,7,5]; 日本 -> 422 "name cannot be scanned into a haiku. try the syllables field or a shorter name" |
+| V2-federation | health, federated hello, plain-text hostile greeting, notice | PASS | health "2 of 2 peers up", 2 plain-text origins; real peer greeting "Good day, Ada. It is a pleasure to make your acqua"; stub greeting shown literally, 0 img, window.__x undefined |
+| V2-federation-down | stopped peer is isolated, others still work | PASS | down row "http://127.0.0.1:43479 Down: refused the connection"; up row "http://127.0.0.1:35593 Up (2 ms)"; hello: "This peer refused the connection." + 1 greeting; POST /hello still exact |
+| V2-keyboard | Tab order (8 original first) then More views nav, Enter navigates | PASS | tab order nav-hello>nav-battle>nav-verify>name-input>language-select>tone-select>chaos-toggle>say-hello>nav-weather>nav-wall>nav-sla>nav-time-machine>nav-haiku>nav-federation; focus ring solid 2px; Enter on nav-wall -> #/wall, h1 focused, aria-current; keyboard-only haiku |
+| V2-390 | 390px: no horizontal scroll on each new view | PASS | weather-empty:ok weather:ok wall:ok sla:ok time-machine:ok haiku:ok haiku-result:ok federation:ok hello-with-more-nav:ok; more-nav link heights 50,50,50,50,44,44 |
+| V2-dark | dark mode for wall and SLA (dark bg, readable, no overflow) | PASS | wall bg rgb(18,18,18) min contrast 7.7; sla bg rgb(18,18,18) min contrast 7.7 |
+| V2-CONSOLE | zero console/page errors during v2 (resource-load lines for forced 4xx excluded) | PASS | 0 console/page errors in v2 section |
+
+### v2 defects
+
+None found. All six views behaved per `v2/spec.md` in every check above.
+
+### v2 notes (not failures)
+- Existing check UC11 had to be adjusted in the walkthrough (not in src): `getByLabel('Name', {exact:true})` now matches 5 elements because the hidden weather, time-machine, haiku and federation views each have a Name input, so Playwright strict mode threw. The check now narrows to the visible one (`.locator('visible=true').first()`). Behaviour is unchanged; hidden sections are correctly excluded from the accessibility tree.
+- The weather "bad place" error shown in the browser is the client-side text "Place can be at most 40 characters." (the input has maxlength 40, which the check removes to reach the 41-char case). The server's 400 `place must be 1-40 characters` is covered by unit tests, not the browser.
+- Disconnect copy: after the server stops, the wall shows "Reconnecting..." and announces "Live wall reconnecting." The 503 "Wall is full, try later" state and the 50-row cap were not exercised in the browser.
+- Federation health is cached for 5 s on the server, so the stopped-peer check waits 5.3 s before refreshing. SLA polling: 0 `/api/sla` requests in the 11 s after leaving the view.
+- Chromium logs "Failed to load resource" lines for forced 400/422 responses (time machine, haiku, weather); these are excluded from the console check as in v1. 0 other console or page errors.
+- "More views" nav links are 44 to 50 px tall at 390 px; Tab order is the 8 original stops first, then the six new links.
