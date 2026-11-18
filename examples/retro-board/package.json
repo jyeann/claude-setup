@@ -1,0 +1,11 @@
+{
+  "name": "retro-board",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Team retro board: three columns, anonymous cards, 3 votes each. No dependencies.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"acceptance/*.test.js\" \"tests/*.test.js\""
+  },
+  "engines": { "node": ">=22" }
+}

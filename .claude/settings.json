@@ -141,6 +141,17 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/user-prompt.js\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   },
   "statusLine": {

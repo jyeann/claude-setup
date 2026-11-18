@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Retro board</title>
+<link rel="stylesheet" href="/assets/app.css">
+<script type="module" src="/assets/js/board.js"></script>
+</head>
+<body class="page-board" data-state="open">
+<a id="skip-link" class="skip-link" href="#main">Skip to main content</a>
+<header id="board-header" class="board-header">
+<h1 id="board-title" data-testid="board-title" tabindex="-1">Retro board</h1>
+</header>
+<main id="main">
+<div id="status-region" data-testid="status-region"></div>
+<div id="loading" data-testid="loading" role="status">
+<p>Loading the board...</p>
+<div class="skeleton-columns" aria-hidden="true"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+</div>
+<div id="board-root"></div>
+</main>
+<div id="toast" role="status" hidden></div>
+<div id="live-polite" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+<div id="live-assertive" class="sr-only" role="alert"></div>
+</body>
+</html>
