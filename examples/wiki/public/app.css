@@ -181,12 +181,10 @@ input[aria-invalid="true"] { border: 2px solid var(--danger); }
   .side-actions { grid-column: 2; grid-row: 1; justify-content: flex-end; flex-wrap: nowrap; }
   .list-region { grid-column: 1 / -1; grid-row: 3; }
   .main { padding: 12px 32px 24px; }
-  .search-input { padding-top: 8px; padding-bottom: 8px; }
-  .note-view { margin-top: 52px; } /* the list starts below brand and search; keeps the note top within 40 px of it (QA check 26) */
+  .note-view { margin-top: 56px; } /* the list starts below brand and search; keeps the note top within 40 px of it (QA check 26) */
   .btn { min-height: 32px; }
   .back-link, .tabs { display: none; }
   .app[data-route="home"] .sidebar-heading { display: none; }
-.brand { display: none; }
   .note-head { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
   .note-head h1 { flex: 1 1 12rem; margin: 0; }
   .note-item { min-height: 24px; }
