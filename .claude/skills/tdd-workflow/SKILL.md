@@ -70,6 +70,7 @@ ALWAYS write tests first, then implement code to make tests pass.
 - UI interactions
 
 ### 4. Git Checkpoints
+- **Not during a harness run** (`.harness/state.json` has `"active": true`): the commit gate refuses commits until verify is green, and WIP is checkpointed automatically to `refs/harness/wip/<branch>`. Skip this section and commit once when verify passes.
 - If the repository is under Git, create a checkpoint commit after each TDD stage
 - Do not squash or rewrite these checkpoint commits until the workflow is complete
 - Each checkpoint commit message must describe the stage and the exact evidence captured

@@ -92,6 +92,8 @@ This family is **gated, not autonomous**:
 
 Everything between the gates flows without stopping.
 
+**Unattended runs.** When a harness run is active (`.harness/state.json` has `"active": true`) there is no human to answer a gate, and every Stop attempt costs an iteration. Do not stop at the gates: take the spec as approved, skip Align, work through the task list, and leave the single commit to the commit gate once verify is green. Use these gates only in interactive sessions.
+
 ## Agent / command map
 
 | Phase | Primary | Fallback / escalation |
