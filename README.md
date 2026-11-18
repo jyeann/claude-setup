@@ -35,7 +35,7 @@ rsync -a /tmp/ecc/{agents,commands,skills} .claude/   # then re-run the prune, o
 Commands, skills and agents that need upstream ECC scripts, MCP servers or skills this repo does not ship were removed, because
 an agent that picks them fails and wastes tool calls (the `efficiency` scorer would flag it). Removed: the instinct/learning stack
 (`/evolve`, `/instinct-*`, `/projects`, `/promote`, `/prune`, `/skill-health`; replaced by `/harness-improve`), `/epic-*`,
-`/multi-*`, `/astra-review`, `/santa-loop`, `/plan-canvas`, `/sessions`, `/quality-gate`, `/harness-audit`, `/harness-optimizer`,
-`/auto-update`, `/project-init`, `/setup-pm`, `/skill-host-compat`, `/issue-review`, `/jira`, `/token-card`, the `ecc-guide`,
+`/multi-*`, `/astra-review`, `/santa-loop`, `/plan-canvas`, `/sessions`, `/quality-gate`, `/harness-audit` (the `harness-optimizer` agent stays; it runs the harness tests and `tune.js` instead),
+`/auto-update`, `/project-init`, `/setup-pm`, `/skill-host-compat`, `/issue-review`, `/jira`, `/token-card`, `/cost-report` (its metrics log is never written here), the `ecc-guide`,
 `plan-canvas` and `documentation-lookup` skills, and the `docs-lookup` agent (needs a Context7 MCP server). Re-add from upstream
 only together with the scripts they call. Rule: after any upstream sync, run the reference check in `.claude/harness/README.md`.
