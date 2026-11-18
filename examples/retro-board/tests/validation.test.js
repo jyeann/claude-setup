@@ -39,3 +39,12 @@ test('checkColumn accepts the three keys and rejects everything else', () => {
   for (const c of v.COLUMNS) assert.equal(v.checkColumn(c), c);
   for (const bad of ['', 'Went well', undefined, 3, null]) assert.equal(code(() => v.checkColumn(bad)), 'bad_column:400');
 });
+
+test('DomainError uses the message when given and falls back to the code', () => {
+  const withMessage = new v.DomainError('title_empty', 400, 'Write a title.');
+  const withoutMessage = new v.DomainError('title_empty', 400);
+  assert.equal(withMessage.message, 'Write a title.');
+  assert.equal(withoutMessage.message, 'title_empty');
+  assert.equal(withoutMessage.status, 400);
+  assert.equal(withoutMessage.name, 'DomainError');
+});

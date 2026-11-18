@@ -67,10 +67,10 @@ Set these as environment variables when you start the app, for example `PORT=808
 
 ## Tests
 
-`npm test` is not defined in `package.json`. Run the tests with:
+Run the full test suite (acceptance and unit tests, no dependencies to install):
 
 ```sh
-node --test "acceptance/*.test.js" "tests/*.test.js"
+npm test
 ```
 
 ## Project layout

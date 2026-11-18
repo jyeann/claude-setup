@@ -183,3 +183,19 @@ test('an existing DATA_DIR with loose permissions is tightened to 0700', () => {
   assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
   s.close();
 });
+
+test('a failed write logs the system error code, or the message when there is no code', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'store-log-'));
+  const logs = [];
+  const withErr = (err) => createStore({ dir, fs: { ...fs, renameSync: () => { throw err; } }, log: (m) => logs.push(m) });
+  const a = withErr(Object.assign(new Error('boom'), { code: 'ENOSPC' }));
+  a.open();
+  assert.throws(() => a.create(H, createBoard('T', 'f')), { code: 'storage_error' });
+  a.close();
+  const b = withErr(new Error('no code here'));
+  b.open();
+  assert.throws(() => b.create(H, createBoard('T', 'f')), { code: 'storage_error' });
+  b.close();
+  assert.ok(logs.some((l) => l.includes('ENOSPC') && !l.includes('boom')));
+  assert.ok(logs.some((l) => l.includes('no code here')));
+});
