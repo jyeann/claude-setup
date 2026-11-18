@@ -29,10 +29,10 @@ function mulberry32(seed) {
 function normalizePlace(v) {
   if (v === undefined) return { place: 'anywhere', key: 'anywhere' };
   if (typeof v !== 'string') return null;
-  const trimmed = v.normalize('NFC').trim();
-  const len = [...trimmed].length;
-  if (len < 1 || len > 40 || /[\p{Cc}\p{Cf}]/u.test(trimmed)) return null;
-  const place = trimmed.replace(/\s+/g, ' ');
+  // Collapse whitespace runs (incl. tab/newline) first, then reject any remaining control/format characters.
+  const place = v.normalize('NFC').replace(/\s+/g, ' ').trim();
+  const len = [...place].length;
+  if (len < 1 || len > 40 || /[\p{Cc}\p{Cf}]/u.test(place)) return null;
   return { place, key: place.toLowerCase() };
 }
 

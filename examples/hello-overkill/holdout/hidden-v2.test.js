@@ -361,7 +361,7 @@ test('time machine rejects 1899-12-31, future dates, 2023-02-30 and malformed da
   assert.equal(first.json.era, 'Edwardian telegram');
   const leap = await s.call('GET', '/api/time-machine?date=2024-02-29');
   assert.equal(leap.status, 200);
-  assert.equal(leap.json.era, 'social era');
+  assert.equal(leap.json.era, 'now');
   assert.equal(leap.json.streak, null);
   const leap2000 = await s.call('GET', '/api/time-machine?date=2000-02-29');
   assert.equal(leap2000.status, 200);
@@ -456,7 +456,7 @@ test('weather validates place and date range: today-1..today+1 only, 1-40 code p
   }
   assert.deepEqual((await s.call('GET', '/api/weather?date=' + addDays(5))).json, { error: 'date out of range' });
   for (const place of ['', '   ', 'x'.repeat(41), 'a%00b']) {
-    const r = await s.call('GET', '/api/weather?place=' + place);
+    const r = await s.call('GET', '/api/weather?place=' + place.replace(/ /g, '%20'));
     if (place === '') { assert.ok(r.status === 200 || r.status === 400); continue; }
     assert.equal(r.status, 400, place);
     assert.deepEqual(r.json, { error: 'place must be 1-40 characters' }, place);

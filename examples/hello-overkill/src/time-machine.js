@@ -21,7 +21,9 @@ function parseDate(str, todayStr) {
   if (str === undefined || str === null || str === '') return fail('date is required');
   if (typeof str !== 'string' || !DAY_RE.test(str)) return fail('date must be YYYY-MM-DD');
   const [y, m, d] = str.split('-').map(Number);
-  const t = new Date(Date.UTC(y, m - 1, d));
+  // setUTCFullYear avoids Date.UTC mapping years 0-99 to 1900-1999.
+  const t = new Date(Date.UTC(2000, m - 1, d));
+  t.setUTCFullYear(y);
   if (m < 1 || m > 12 || t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) return fail('date is not a real date');
   if (str < MIN_DATE) return fail('date before 1900-01-01');
   if (str > todayStr) return fail('date is in the future');

@@ -30,3 +30,10 @@
 - Why: every choice keeps zero dependencies and the v1 contracts, makes the logic pure with injected now/random/fetch for tests, and puts the security risk (SSRF, name leakage, unbounded memory, untrusted peer text) behind explicit limits. v1 decided federation was out because it breaks one-process; v2 reopens it only as outbound calls to a trusted allowlist, so the process stays single.
 - Also decided: three retro FIX items (EPIPE, flaky chaos test, surviving mutants) ship in the same round.
 - Decided by: orchestrator.
+
+## Decision: v2 gate fixes (holdout vs spec)
+- Findings from the first v2 gate run (3 of 40 holdout failures), resolved against `v2/spec.md`:
+  1. `parseDate('0001-01-01')` said "not a real date": a `Date.UTC` two-digit-year quirk. IMPL bug, fixed (`setUTCFullYear`), unit test added.
+  2. `normalizePlace('\tnew\n york ')` was rejected as control characters although the spec says collapse whitespace. IMPL bug, fixed (collapse first, then reject non-whitespace control/format characters). The builder's earlier unit test that rejected `a\nb` was corrected.
+  3. Holdout test sent unescaped spaces in a request path (`ERR_UNESCAPED_CHARACTERS`) and expected era "social era" for 2024-02-29 (spec: 2020-today is "now"). TEST_WRONG, both corrected.
+- Decided by: orchestrator.

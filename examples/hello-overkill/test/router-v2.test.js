@@ -159,10 +159,6 @@ test('haiku answers 422 for unscannable names and 413 for oversized bodies', () 
 }));
 
 test('read-limited routes answer 429 with retry-after; /hello is not read-limited', () => withApp(async ({ req }) => {
-  for (const p of ['/api/weather', '/api/time-machine?date=2000-01-01', '/api/sla', '/api/federation']) {
-    // each route needs its own limiter state, so reuse by exhausting the shared one once
-    void p;
-  }
   assert.equal((await req('GET', '/api/weather')).status, 200);
   assert.equal((await req('GET', '/api/weather')).status, 200);
   const r = await req('GET', '/api/sla');

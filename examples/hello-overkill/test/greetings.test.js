@@ -42,3 +42,24 @@ test('isLanguage and isTone are strict', () => {
   assert.equal(isTone('pirate'), true);
   assert.equal(isTone('toString'), false);
 });
+
+test('render returns null for unknown language or tone, including prototype keys', () => {
+  assert.equal(render('xx', 'formal', 'Ada'), null);
+  assert.equal(render('en', 'nope', 'Ada'), null);
+  assert.equal(render('__proto__', 'formal', 'Ada'), null);
+  assert.equal(render('en', '__proto__', 'Ada'), null);
+  assert.equal(render('constructor', 'toString', 'Ada'), null);
+  assert.equal(render(undefined, undefined, 'Ada'), null);
+  assert.equal(render('en.formal', 'x', 'Ada'), null);
+});
+
+test('render inserts the name literally and exactly once', () => {
+  for (const name of ['{name}', '$&', "$'", '$`', '{name}{name}']) {
+    const out = render('en', 'formal', name);
+    const plain = render('en', 'formal', 'Q');
+    assert.equal(out, plain.replace('Q', () => name), name);
+    assert.equal(out.split(name).length - 1 >= 1, true);
+  }
+  const out = render('en', 'formal', '{name}');
+  assert.equal(out.split('{name}').length - 1, 1);
+});

@@ -87,7 +87,7 @@ test('normalizePlace: default, trimming, collapsing, and bounds', () => {
   assert.equal(normalizePlace('é').place, 'é');
   assert.notEqual(normalizePlace('x'.repeat(40)), null);
   assert.notEqual(normalizePlace('😀'.repeat(40)), null);
-  for (const bad of ['', '   ', 'x'.repeat(41), 'a\nb', 'a​b', null, 5, {}, []]) assert.equal(normalizePlace(bad), null, JSON.stringify(bad));
+  for (const bad of ['', '   ', 'x'.repeat(41), 'a​b', null, 5, {}, []]) assert.equal(normalizePlace(bad), null, JSON.stringify(bad));
 });
 
 test('utcDate formats the UTC day, not the local day', () => {
@@ -102,4 +102,13 @@ test('weatherGreeting appends exactly one "Today:" sentence to the v1 greeting',
   const g = weatherGreeting({ forecast: f, greeting: base });
   assert.equal(g, `${base} Today: ${f.forecast}`);
   assert.equal(g.split('Today:').length, 2);
+});
+
+test('normalizePlace collapses tabs, newlines and runs of spaces but still rejects other control characters', () => {
+  const { normalizePlace } = require('../src/weather.js');
+  assert.deepEqual(normalizePlace('\tnew\n york '), { place: 'new york', key: 'new york' });
+  assert.deepEqual(normalizePlace('New    York'), { place: 'New York', key: 'new york' });
+  assert.equal(normalizePlace('a\u0000b'), null);
+  assert.equal(normalizePlace('a​b'), null);
+  assert.equal(normalizePlace(' \t\n '), null);
 });

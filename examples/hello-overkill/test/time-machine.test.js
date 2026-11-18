@@ -107,3 +107,10 @@ test('streakOn: streak window crosses month and year boundaries and a single-day
 test('streakOn output carries only the status vocabulary, never dates or counts', () => {
   assert.deepEqual(Object.keys(streakOn({ visitor: V, date: '2026-11-18' })).sort(), ['dayOfStreak', 'status', 'streakLength']);
 });
+
+test('years 0001-0099 are real dates that are before 1900, not "not a real date"', () => {
+  assert.deepEqual(parseDate('0001-01-01', '2026-11-18'), { date: null, error: 'date before 1900-01-01' });
+  assert.deepEqual(parseDate('0099-12-31', '2026-11-18'), { date: null, error: 'date before 1900-01-01' });
+  assert.equal(parseDate('0000-01-01', '2026-11-18').error, 'date before 1900-01-01');
+  assert.equal(parseDate('1900-02-29', '2026-11-18').error, 'date is not a real date');
+});

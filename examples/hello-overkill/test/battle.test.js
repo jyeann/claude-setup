@@ -39,3 +39,24 @@ test('leaderboard is empty for no votes and capped at 10', () => {
   m.set('en.pirate', 1);
   assert.equal(leaderboard(m).length, 10);
 });
+
+test('pickPair falls back to a distinct pair when random keeps returning the same index', () => {
+  const p = pickPair(() => 0);
+  assert.notEqual(p.a.id, p.b.id);
+  assert.notEqual(p.a.greeting, p.b.greeting);
+  assert.ok(p.b.id && p.b.greeting);
+});
+
+test('pickPair loop retries until a different entry is drawn, then stops', () => {
+  const draws = [0, 0, 0, 0.5];
+  let i = 0;
+  const p = pickPair(() => draws[Math.min(i++, draws.length - 1)]);
+  assert.notEqual(p.a.id, p.b.id);
+  assert.equal(i, 4);
+});
+
+test('pickPair fallback also works for the last index and never returns equal greetings', () => {
+  const p = pickPair(() => 0.999999);
+  assert.notEqual(p.a.id, p.b.id);
+  assert.notEqual(p.a.greeting, p.b.greeting);
+});
