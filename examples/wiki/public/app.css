@@ -1,0 +1,5 @@
+/* Placeholder styles from builder S; builder P replaces this file. */
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0 auto; max-width: 60rem; padding: 1rem; line-height: 1.5; }
+[hidden] { display: none; }
+textarea { width: 100%; min-height: 20rem; font: inherit; }

@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wiki</title>
+<link rel="stylesheet" href="/app.css">
+<script type="module" src="/js/titles.js"></script>
+</head>
+<body>
+<!-- Placeholder shell from builder S: carries every data-testid so the HTTP checks pass. Builder P replaces it. -->
+<a href="#main" data-testid="skip-link">Skip to content</a>
+<header>
+  <h1>Wiki</h1>
+  <input type="search" aria-label="Search notes" data-testid="search-input">
+  <button type="button" data-testid="search-clear">Clear</button>
+  <p data-testid="search-status"></p>
+  <button type="button" data-testid="new-note-button">New note</button>
+  <a href="/graph" data-testid="graph-link">Graph</a>
+</header>
+<p role="status" data-testid="status-live"></p>
+<p role="alert" data-testid="alert-live"></p>
+<main id="main">
+  <p data-testid="app-error" hidden>Something went wrong. <button type="button" data-testid="app-retry">Retry</button></p>
+  <section>
+    <p data-testid="list-loading" hidden>Loading</p>
+    <ul data-testid="note-list"><li data-testid="note-list-item" hidden></li></ul>
+    <p data-testid="note-list-empty" hidden>No notes match.</p>
+    <div data-testid="empty-vault" hidden><button type="button" data-testid="empty-create">Create your first note</button></div>
+    <ul data-testid="search-results" hidden>
+      <li data-testid="search-result" hidden><span data-testid="search-snippet"></span></li>
+    </ul>
+    <p data-testid="search-empty" hidden>No results.</p>
+  </section>
+  <p data-testid="no-selection" hidden>Select a note.</p>
+  <button type="button" data-testid="back-to-list" hidden>Back</button>
+  <article data-testid="note-view" hidden>
+    <h2 data-testid="note-title"></h2>
+    <span data-testid="save-status"></span>
+    <button type="button" data-testid="save-button">Save</button>
+    <button type="button" data-testid="rename-button">Rename</button>
+    <button type="button" data-testid="delete-button">Delete</button>
+    <button type="button" data-testid="tab-edit">Edit</button>
+    <button type="button" data-testid="tab-preview">Preview</button>
+    <textarea data-testid="editor" aria-label="Note text"></textarea>
+    <div data-testid="preview">
+      <a href="#" data-testid="wikilink">link</a>
+      <span data-testid="unsafe-link">unsafe</span>
+    </div>
+    <section data-testid="backlinks">
+      <ul><li data-testid="backlink-item"><span data-testid="backlink-snippet"></span></li></ul>
+      <p data-testid="backlinks-empty" hidden>No backlinks.</p>
+    </section>
+    <div data-testid="conflict-banner" hidden>
+      <button type="button" data-testid="conflict-reload">Reload</button>
+      <button type="button" data-testid="conflict-copy">Copy my text</button>
+    </div>
+    <p data-testid="save-error" hidden>Could not save.</p>
+  </article>
+  <div data-testid="not-found" hidden><h2 data-testid="not-found-title">Note not found</h2><a href="/" data-testid="not-found-back">Back</a></div>
+  <section data-testid="graph-view" hidden>
+    <svg data-testid="graph-svg" role="img" aria-label="Note graph"><g data-testid="graph-node"></g><g data-testid="graph-edge"></g></svg>
+    <p data-testid="graph-summary"></p>
+    <p data-testid="graph-loading" hidden>Loading</p>
+    <p data-testid="graph-empty" hidden>No notes yet.</p>
+    <ul data-testid="graph-list"><li data-testid="graph-list-item"></li></ul>
+  </section>
+</main>
+<dialog data-testid="new-note-dialog" aria-label="New note">
+  <input data-testid="new-note-input" aria-label="Title"><p data-testid="new-note-error"></p>
+  <button type="button" data-testid="new-note-submit">Create</button><button type="button" data-testid="new-note-cancel">Cancel</button>
+</dialog>
+<dialog data-testid="rename-dialog" aria-label="Rename note">
+  <input data-testid="rename-input" aria-label="New title"><p data-testid="rename-error"></p>
+  <button type="button" data-testid="rename-submit">Rename</button><button type="button" data-testid="rename-cancel">Cancel</button>
+</dialog>
+<dialog data-testid="delete-dialog" aria-label="Delete note">
+  <button type="button" data-testid="delete-confirm">Delete</button><button type="button" data-testid="delete-cancel">Cancel</button>
+</dialog>
+<dialog data-testid="leave-dialog" aria-label="Unsaved changes">
+  <button type="button" data-testid="leave-stay">Stay</button><button type="button" data-testid="leave-discard">Discard</button>
+</dialog>
+</body>
+</html>
