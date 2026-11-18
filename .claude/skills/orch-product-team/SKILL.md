@@ -39,9 +39,18 @@ Phases 1-4 run before the harness run starts; 5 runs inside it; 6-9 run after ve
 
 Small fixes and single-file changes do not need phases 1-4: use `orch-fix-defect` or `orch-change-feature`. Run this skill for a new product or a feature with a user-facing surface. A change that touches a screen always runs 2 and 7.
 
-## Effort (provisional defaults, re-tune from the KPI view)
+## Effort (measured defaults, sonnet, one product)
 
-Set `effort` on every delegated agent. Starting point from the first measured run: build at `medium` (cheapest passing in the tune: $0.25 vs $0.43 at `high`, same pass rate); review at `high` for auth, input, files and money, `low` otherwise (one paired run found an extra real bug at `high`); scoping and system design on the strongest model at `high`. These are n=1 to n=2 numbers: treat them as defaults to overturn with `node .claude/harness/bin/tune.js`, not as findings.
+From the per-phase comparison on the retro board (`docs/product/retro-board/effort-by-phase.md`, 24 cells of 1 to 2 trials, objective graders):
+
+| Phase | Default | Why |
+|---|---|---|
+| discover, ux, design, release | `low` | All levels passed; `high` cost 1.4x to 2.0x for no measured gain |
+| review, qa | `low` | All levels passed the seeded-defect graders; `high` cost 1.5x. Use `high` for auth, input, files and money on judgment: the data does not show it helps |
+| tests (test owner) | `medium` | `low` passed 1 of 2; `high` cost 2x `medium` with the same pass |
+| build | `low` or `medium`, with the full gate including the hidden holdout | `high` failed the gate 2 of 2: in the one run diagnosed, it missed a rule from the design that no visible test covered (control characters in card text) |
+
+Read this carefully: most graders check coverage by keyword, so "all passed" means the checklist was met, not that the work was equal. Trials are few. Re-run `examples/retro-board/tune/run.js` on a second product before treating any row as settled, and keep a hidden holdout in the build gate: it was the only check that told the effort levels apart on quality.
 
 ## Limits and resuming
 
