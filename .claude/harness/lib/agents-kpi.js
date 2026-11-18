@@ -38,10 +38,17 @@ function buildKpi(projectDir, agentsDir) {
     };
   });
   const active = rows.filter((x) => x.runs > 0);
+  const groups = new Map();
+  for (const r of runs) {
+    const key = `${r.model ?? 'default'}|${r.effort ?? 'not recorded'}`;
+    const g = groups.get(key) ?? { model: r.model ?? 'default', effort: r.effort ?? 'not recorded', runs: 0, failed: 0, tokens: 0, durationMs: 0 };
+    groups.set(key, { ...g, runs: g.runs + 1, failed: g.failed + (r.ok ? 0 : 1), tokens: g.tokens + (r.tokens ?? 0), durationMs: g.durationMs + (r.durationMs ?? 0) });
+  }
   return {
     generatedAt: Date.now(),
     totals: { agents: rows.length, active: active.length, idle: rows.length - active.length, runs: sum(rows.map((x) => x.runs)), failed: sum(rows.map((x) => x.failed)), tokens: sum(rows.map((x) => x.tokens)), durationMs: sum(rows.map((x) => x.durationMs)) },
     rows,
+    byEffort: [...groups.values()].sort((a, b) => b.runs - a.runs),
     recent: runs.sort((a, b) => b.ts - a.ts).slice(0, 25).map(({ ts, agent, task, ok, model, effort, tokens, durationMs }) => ({ ts, agent, task, ok, model, effort, tokens, durationMs })),
   };
 }

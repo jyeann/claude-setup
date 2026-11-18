@@ -55,6 +55,15 @@ test('KPI roll-up counts runs and failures per agent and lists idle roster agent
   assert.equal(kpi.totals.active, 1);
 });
 
+test('runs are grouped by model and effort, with unrecorded effort kept as its own group', () => {
+  const dir = project();
+  trace.logToolEvent(dir, agentCall('a'), 1);
+  trace.logToolEvent(dir, agentCall('b'), 2);
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'c', model: 'opus' }, tool_response: { totalTokens: 10 } }, 3);
+  const { byEffort } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual(byEffort.map((g) => [g.model, g.effort, g.runs, g.tokens]), [['sonnet', 'high', 2, 2400], ['opus', 'not recorded', 1, 10]]);
+});
+
 test('roster reader returns an empty list when the agents directory is missing', () => {
   assert.deepEqual(readRoster(path.join(os.tmpdir(), 'no-such-agents-dir-xyz')), []);
 });
