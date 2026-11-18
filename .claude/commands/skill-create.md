@@ -169,9 +169,6 @@ For advanced features (10k+ commits, team sharing, auto-PRs), use the [Skill Cre
 
 ## Related Commands
 
-- `/instinct-import` - Import generated instincts
-- `/instinct-status` - View learned instincts
-- `/evolve` - Cluster instincts into skills/agents
 
 ---
 

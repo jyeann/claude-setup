@@ -3,7 +3,8 @@
 Pattern: sequential | Mode: safe
 
 ## Goal
-Work through every task in `TASKS.md` until all are done and the test suite is green.
+Work through every AFK task in `TASKS.md` until all are done and the test suite is green.
+`TASKS.md` format: `.claude/harness/templates/tasks.md` (build it with the `plan-to-tasks` skill).
 
 ## Branch rules (agent does automatically)
 1. Create branch `loop/<goal-slug>-<YYYYMMDD>` from the default branch. Never work on the default branch.
@@ -15,9 +16,10 @@ Work through every task in `TASKS.md` until all are done and the test suite is g
 - Record baseline: failing tests = 0, coverage = record the current value.
 
 ## Each iteration
-1. Pick the next unfinished task.
+1. Run `node .claude/harness/bin/next-task.js TASKS.md`. Exit 0 lists the ready tasks (AFK, unblocked): take the first and
+   set it `doing`. Exit 3 means stop: `ALL_DONE` = success, `NEEDS_HUMAN` or `STUCK` = escalate, `IN_PROGRESS` = a task was left `doing` by an interrupted iteration: resume it. Exit 2 = fix the file format.
 2. Write/adjust a failing test, implement, run tests.
-3. If tests pass and no new lint/type errors: commit, log a checkpoint line in `.claude/plans/loop-log.md`.
+3. If tests pass and no new lint/type errors: set the task `done` and commit both together, log a checkpoint line in `.claude/plans/loop-log.md`.
 4. If tests fail: go to "On failure".
 
 ## On failure (check and repeat until cause is clear)
@@ -28,7 +30,8 @@ Work through every task in `TASKS.md` until all are done and the test suite is g
 5. After 3 attempts with the cause still unclear: mark the task BLOCKED, write what was learned, move to next task.
 
 ## Stop conditions (stop at the FIRST that is true)
-- All tasks done and tests green.  -> SUCCESS
+- All tasks done and tests green (`next-task.js` prints ALL_DONE).  -> SUCCESS
+- Only HITL tasks remain, or nothing is unblocked (`NEEDS_HUMAN` / `STUCK`).  -> STOP, escalate
 - 10 total iterations reached.  -> STOP, report
 - 3 consecutive BLOCKED tasks, or no progress across 2 checkpoints.  -> STOP, escalate
 - Same stack trace repeats 3 times.  -> STOP, escalate
