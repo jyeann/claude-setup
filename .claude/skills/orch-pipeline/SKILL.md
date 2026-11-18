@@ -46,8 +46,8 @@ can override:
 |------|---------------|---------------------------|------------------|-----------------|
 | trivial | 1, a few lines | none | none — the change is obvious | 4 → 5 → 6 |
 | small | 1 file / 1 function | none | clear once you read the code | (1 light) → 4 → 5 → 6 |
-| standard | 2–5 files | maybe a new internal module | one real choice to make | 1 → 2 → 4 → 5 → 6 |
-| large | many / cross-cutting | new external dep, public API, or a spec doc | multiple open questions | 1 → 2 → (3) → 4 → 5 → 6 |
+| standard | 2–5 files | maybe a new internal module | one real choice to make | 1 → 1.5 → 2 → 4 → 5 → 6 |
+| large | many / cross-cutting | new external dep, public API, or a spec doc | multiple open questions | 1 → 1.5 → 2 → (3) → 4 → 5 → 6 |
 
 Phase 0 (Intake) always runs and is omitted from the mask column above. The
 tie-breaker: anything touching a security trigger (below) or a public API /
@@ -59,12 +59,18 @@ Each phase delegates — it does not do the work inline.
 
 - **0. Intake** — restate the request. For `orch-build-mvp`, read the spec/design
   doc and extract scope, locked decisions, and a feature list.
-- **1. Research & Reuse** — per `rules/ecc-common/development-workflow.md`: `gh search repos` /
+- **1. Research & Reuse** — per `skills/engineering-reference/references/development-workflow.md`: `gh search repos` /
   `gh search code`, then Context7 / vendor docs, then package registries, then
   Exa. Prefer adopting a proven implementation over net-new code.
+- **1.5 Align** — standard and large only. Run the `grill-me` skill: interview the
+  user one question at a time, with a recommended answer each time, until the
+  decision tree is resolved, then record the design summary. Do not start Plan
+  while open decisions remain. Skip for trivial and small.
 - **2. Plan** — delegate to the `planner` agent (or `architect` /
-  `code-architect` for structural decisions). Output a `task_list` ordered as
-  thin vertical slices. → **GATE 1.**
+  `code-architect` for structural decisions), seeded with the design summary.
+  Output a `task_list` of thin vertical slices. For standard and large, turn it
+  into a `TASKS.md` backlog with the `plan-to-tasks` skill (blocked-by links,
+  AFK/HITL labels). → **GATE 1.**
 - **3. Scaffold** — `orch-build-mvp` only: stand up the first end-to-end slice.
 - **4. Implement (TDD)** — drive each task through the `tdd-guide` agent (or the `tdd-workflow` skill):
   red → green → refactor. Honor the operation's first-move rule.
@@ -78,7 +84,9 @@ Each phase delegates — it does not do the work inline.
 This family is **gated, not autonomous**:
 
 1. **GATE 1 — after Plan.** Present the `task_list`; do not write implementation
-   code until the user approves.
+   code until the user approves. When Align ran, alignment already happened in the
+   interview, so this is a light check of slice size, dependencies and AFK/HITL
+   labels, not a line-by-line read of the plan.
 2. **GATE 2 — before Commit.** Present the diff summary and proposed messages;
    do not commit until the user confirms.
 
@@ -109,7 +117,7 @@ The pipeline carries no hidden state — the planning docs *are* the handoff:
 
 - `task_list` (from Plan) drives the Implement loop.
 - Larger work may also emit PRD / architecture / system_design under the repo's
-  `docs/` per `rules/ecc-common/development-workflow.md`.
+  `docs/` per `skills/engineering-reference/references/development-workflow.md`.
 - Review findings (CRITICAL / HIGH) must be resolved before Gate 2.
 
 ## Verification

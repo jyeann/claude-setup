@@ -3,7 +3,8 @@
 Pattern: sequential | Mode: safe
 
 ## Goal
-Work through every task in `TASKS.md` until all are done and the test suite is green.
+Work through every AFK task in `TASKS.md` until all are done and the test suite is green.
+`TASKS.md` format: `.claude/harness/templates/tasks.md` (build it with the `plan-to-tasks` skill).
 
 ## Run it under the harness (enforced limits)
 Prose limits depend on the agent obeying them. Start the run with the harness so they are enforced:
@@ -34,9 +35,10 @@ Every halt gets one bounded diagnosis turn (`HARNESS-DIAGNOSIS.md`) before the r
 - Record the baseline in `.claude/plans/loop-log.md`: failing tests, coverage.
 
 ## Each iteration
-1. Pick the next unfinished task.
+1. Run `node .claude/harness/bin/next-task.js TASKS.md`. Exit 0 lists the ready tasks (AFK, unblocked): take the first and
+   set it `doing`. Exit 3 means stop: `ALL_DONE` = success, `NEEDS_HUMAN` or `STUCK` = escalate, `IN_PROGRESS` = a task was left `doing` by an interrupted iteration: resume it. Exit 2 = fix the file format.
 2. Write/adjust a failing test, implement, run tests.
-3. If tests pass and no new lint/type errors: log a checkpoint line in `.claude/plans/loop-log.md` (and commit, if the commit gate is off).
+3. If tests pass and no new lint/type errors: set the task `done`, log a checkpoint line in `.claude/plans/loop-log.md` (and commit both together, if the commit gate is off).
 4. If tests fail: go to "On failure".
 
 ## On failure (check and repeat until cause is clear)

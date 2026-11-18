@@ -118,7 +118,7 @@ Use these agents for code review:
 
 This rule works with:
 
-- [testing.md](testing.md) - Test coverage requirements
-- [security.md](security.md) - Security checklist
-- [git-workflow.md](git-workflow.md) - Commit standards
+- [testing.md](../../../rules/ecc-common/testing.md) - Test coverage requirements
+- [security.md](../../../rules/ecc-common/security.md) - Security checklist
+- [git-workflow.md](../../../rules/ecc-common/git-workflow.md) - Commit standards
 - [agents.md](agents.md) - Agent delegation
