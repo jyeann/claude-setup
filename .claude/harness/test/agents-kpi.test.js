@@ -64,6 +64,25 @@ test('runs are grouped by model and effort, with unrecorded effort kept as its o
   assert.deepEqual(byEffort.map((g) => [g.model, g.effort, g.runs, g.tokens]), [['sonnet', 'high', 2, 2400], ['opus', 'not recorded', 1, 10]]);
 });
 
+test('a background launch with no tokens or duration counts as unreported, not as a success', () => {
+  const dir = project();
+  trace.logToolEvent(dir, agentCall('tdd-guide'), 1);
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'tdd-guide' }, tool_response: {} }, 2);
+  const { rows, totals, recent } = buildKpi(dir, path.join(dir, 'none'));
+  const row = rows.find((r) => r.agent === 'tdd-guide');
+  assert.equal(row.runs, 2);
+  assert.equal(row.unreported, 1);
+  assert.equal(row.successRate, 1);
+  assert.equal(totals.unreported, 1);
+  assert.deepEqual(recent.map((r) => r.outcomeReported), [false, true]);
+});
+
+test('an agent whose runs are all unreported has no success rate', () => {
+  const dir = project();
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'x' }, tool_response: {} }, 1);
+  assert.equal(buildKpi(dir, path.join(dir, 'none')).rows[0].successRate, null);
+});
+
 test('roster reader returns an empty list when the agents directory is missing', () => {
   assert.deepEqual(readRoster(path.join(os.tmpdir(), 'no-such-agents-dir-xyz')), []);
 });

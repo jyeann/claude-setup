@@ -26,10 +26,14 @@ function buildKpi(projectDir, agentsDir) {
     const mine = runs.filter((r) => r.agent === name);
     const known = (k) => mine.map((r) => r[k]).filter((v) => v !== null);
     const r = roster.find((x) => x.name === name);
+    // A run with neither tokens nor duration is a background launch: the host reported no outcome, so it
+    // counts as "unreported", never as a success.
+    const reported = mine.filter((x) => x.tokens !== null || x.durationMs !== null);
+    const unreported = mine.length - reported.length;
     return {
       agent: name, role: r?.role ?? '', configuredModel: r?.model ?? null, configuredEffort: r?.effort ?? null,
-      runs: mine.length, failed: mine.filter((x) => !x.ok).length,
-      successRate: mine.length ? (mine.length - mine.filter((x) => !x.ok).length) / mine.length : null,
+      runs: mine.length, failed: mine.filter((x) => !x.ok).length, unreported,
+      successRate: reported.length ? (reported.length - reported.filter((x) => !x.ok).length) / reported.length : null,
       tokens: known('tokens').length ? sum(known('tokens')) : null,
       durationMs: known('durationMs').length ? sum(known('durationMs')) : null,
       toolUses: known('toolUses').length ? sum(known('toolUses')) : null,
@@ -46,10 +50,10 @@ function buildKpi(projectDir, agentsDir) {
   }
   return {
     generatedAt: Date.now(),
-    totals: { agents: rows.length, active: active.length, idle: rows.length - active.length, runs: sum(rows.map((x) => x.runs)), failed: sum(rows.map((x) => x.failed)), tokens: sum(rows.map((x) => x.tokens)), durationMs: sum(rows.map((x) => x.durationMs)) },
+    totals: { agents: rows.length, active: active.length, idle: rows.length - active.length, runs: sum(rows.map((x) => x.runs)), failed: sum(rows.map((x) => x.failed)), unreported: sum(rows.map((x) => x.unreported)), tokens: sum(rows.map((x) => x.tokens)), durationMs: sum(rows.map((x) => x.durationMs)) },
     rows,
     byEffort: [...groups.values()].sort((a, b) => b.runs - a.runs),
-    recent: runs.sort((a, b) => b.ts - a.ts).slice(0, 25).map(({ ts, agent, task, ok, model, effort, tokens, durationMs }) => ({ ts, agent, task, ok, model, effort, tokens, durationMs })),
+    recent: runs.sort((a, b) => b.ts - a.ts).slice(0, 25).map(({ ts, agent, task, ok, model, effort, tokens, durationMs }) => ({ ts, agent, task, ok, model, effort, tokens, durationMs, outcomeReported: tokens !== null || durationMs !== null })),
   };
 }
 
