@@ -101,7 +101,7 @@ test('isGitCommit detects commits inside compound commands only', () => {
 test('scanSecrets finds high-confidence secrets', () => {
   assert.ok(scanSecrets(`key = ${FAKE_AWS}`).length > 0);
   assert.ok(scanSecrets(FAKE_PEM).length > 0);
-  assert.ok(scanSecrets('api_key = "abcdef0123456789abcdef"').length > 0);
+  assert.ok(scanSecrets('api_key = "abcdef0123456789abcdef"').length > 0);  // harness:allow-secret (deliberate fixture)
 });
 
 test('scanSecrets ignores ordinary code', () => {
@@ -121,7 +121,7 @@ test('checkWrite blocks secrets in content, edits and MultiEdit', () => {
 });
 
 test('checkWrite allows secret-shaped text in .env.example', () => {
-  const input = { file_path: '.env.example', content: 'API_KEY="abcdef0123456789abcdef"' };
+  const input = { file_path: '.env.example', content: 'API_KEY="abcdef0123456789abcdef"' };  // harness:allow-secret (deliberate fixture)
   assert.equal(checkWrite({ tool_name: 'Write', tool_input: input }, idle, '/p').block, false);
 });
 
