@@ -91,19 +91,44 @@ function rmViolation(argv) {
   return targets.some((t) => DANGEROUS_RM.has(t)) ? 'Recursive delete of a root, home or whole-project path is blocked.' : null;
 }
 
-// `-n` is --no-verify for commit, including bundled forms like -nm / -anm (but not -am or `-m "-n"`).
-function commitSkipsHooks(args) {
+// True when a short flag letter is present, including bundled forms (-anm) but not inside a flag's value (-m "-n").
+function hasBundledFlag(args, wanted) {
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
-    if (a === '--no-verify') return true;
     if (!/^-[a-zA-Z]+$/.test(a)) continue;
     for (const letter of a.slice(1)) {
-      if (letter === 'n') return true;
+      if (letter === wanted) return true;
       if (VALUE_SHORT_FLAGS.has(letter)) { if (a.endsWith(letter)) i += 1; break; }
     }
   }
   return false;
 }
+
+// `-n` is --no-verify for commit, including bundled forms like -nm / -anm (but not -am or `-m "-n"`).
+const commitSkipsHooks = (args) => args.includes('--no-verify') || hasBundledFlag(args, 'n');
+
+// Commands that stage files nobody named, so a secret in the working tree could ride along.
+function stagesImplicitly({ argv }) {
+  if (argv[0] !== 'git') return false;
+  const args = argv.slice(2);
+  if (argv[1] === 'add') return args.some((a) => ['-A', '--all', '.', '*', '-u', '--update'].includes(a)) || hasBundledFlag(args, 'A') || hasBundledFlag(args, 'u');
+  if (argv[1] === 'commit') return args.includes('--all') || hasBundledFlag(args, 'a');
+  return false;
+}
+
+const impliesBulkStaging = (command) => parseCommands(command).some(stagesImplicitly);
+
+// Names of staged/untracked/modified files (git status --porcelain=v1 -z output) that look like secrets.
+function secretPathsInStatus(porcelainZ) {
+  return porcelainZ.split('\0').filter((e) => e.length > 3).map((e) => e.slice(3)).filter(isSecretPath);
+}
+
+// `kill $(pgrep node)` and `pgrep x | xargs kill` hide the target name from the argv check.
+const KILL_BY_LOOKUP = /\bkill\b[^\n]*(\$\(|`)\s*pgrep\b|\bpgrep\b[^\n]*\|\s*xargs\s+(\S+\s+)*kill\b/;
+const KILLERS = new Set(['pkill', 'killall', 'kill']);
+const BRANCH_DESTRUCTIVE = new Set(['-d', '-D', '-m', '-M', '-f', '-c', '-C', '--delete', '--force', '--move']);
+// Hook bypass by config or environment: neither shows up as a git subcommand.
+const HOOK_BYPASS = /core\.hooksPath|\bHUSKY(_SKIP_HOOKS)?\s*=\s*(0|true)\b|\bGIT_CONFIG_(COUNT|PARAMETERS|GLOBAL)\b/i;
 
 function commandViolation({ argv }, ctx) {
   const [cmd, sub] = argv;
@@ -111,10 +136,14 @@ function commandViolation({ argv }, ctx) {
   if (cmd === 'env' && argv.length === 1) return 'Dumping the environment can leak secrets.';
   if (cmd === 'export' && (argv.length === 1 || argv.includes('-p'))) return 'Dumping the environment can leak secrets.';
   if (cmd === 'rm') return rmViolation(argv);
+  if (KILLERS.has(cmd) && argv.slice(1).some((a) => /verify|harness|node|claude/i.test(a))) return 'Killing node, the verifier or the harness is blocked.';
   if (cmd !== 'git') return null;
   if (sub === 'push') return pushViolation(argv, ctx.currentBranch);
   if (sub === 'commit' && commitSkipsHooks(argv.slice(2))) return '--no-verify / -n skips the safety gates and is blocked.';
   if (sub === 'checkout' && argv.slice(2).includes('.') && !argv.includes('-b')) return 'git checkout . discards all uncommitted work and is blocked.';
+  if (sub === 'clean' && argv.slice(2).some((a) => /^-[a-zA-Z]*[fxX]/.test(a) || a === '--force')) return 'git clean deletes untracked and ignored files (including .env) and is blocked.';
+  if (sub === 'branch' && argv.slice(2).some((a) => BRANCH_DESTRUCTIVE.has(a) || /^-[a-zA-Z]*[dDmMf]/.test(a))
+    && argv.slice(2).some((a) => PROTECTED_BRANCHES.has(a))) return 'Deleting, renaming or force-moving a protected branch is blocked.';
   if (sub === 'reset' && argv.includes('--hard')) return 'git reset --hard discards work and is blocked.';
   return null;
 }
@@ -178,6 +207,9 @@ const blankQuotes = (t) => t.replace(/"[^"]*"|'[^']*'/g, '""');
 function checkBash(command, ctx = {}) {
   const text = stripHeredocs(command);
   if (RAW_PIPE_TO_SHELL.test(text) || PIPE_TO_SHELL.some((re) => re.test(blankQuotes(text)))) return deny('Piping a download into a shell or interpreter is blocked.');
+
+  if (KILL_BY_LOOKUP.test(blankQuotes(text))) return deny('Killing processes found by name lookup is blocked.');
+  if (HOOK_BYPASS.test(blankQuotes(text))) return deny('Changing the hooks path or disabling hooks by environment is blocked.');
 
   const commands = parseCommands(command);
   for (const c of commands) {
@@ -260,4 +292,4 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;
 }
 
-module.exports = { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets };
+module.exports = { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets, isSecretPath, impliesBulkStaging, secretPathsInStatus };

@@ -21,7 +21,25 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | Secret scan | `hooks/pre-write.js` | Blocks writes containing high-confidence secrets. |
 | Self-protection | `lib/guards.js` | While a run is active, settings, harness files, `.harness/` and `--protect` paths are read-only, and the agent cannot run `harness off/init`. |
 
-Everything except the secret scan and dangerous-command blocklist is inert unless `.harness/state.json` says a run is active.
+| Session trace | `hooks/post-tool.js` + `lib/trace.js` | Records every tool call (ok or failed), guard block and stop to `.harness/traces/<session>.jsonl`. Redacted, truncated summaries only; never blocks. |
+| Scorers | `lib/score.js` | `efficiency` (failed or repeated tool calls), `verified-before-done` (a passing check after the last code edit), `guardrail-attempts`. |
+| Report + markers | `bin/report.js` + `lib/report.js` | Pass rates, last-10 vs previous-10 trend, most common failures, and before/after rates around changes you `--mark`. |
+| Improver | `agents/harness-improver.md`, `/harness-improve` | Read-only agent proposes ONE change from the evidence; a human merges it. |
+
+| Reference check | `bin/check-refs.js` + `lib/refs.js` | Fails on commands, agents, skills or rules that point at a script, skill, rules dir, agent or removed command that does not exist. Runs in CI via the test suite, so an upstream sync that re-adds a broken item is caught. |
+
+Everything except the secret scan, the dangerous-command blocklist and tracing is inert unless `.harness/state.json` says a run is active.
+
+## Learning loop (record, score, propose, measure)
+```bash
+node .claude/harness/bin/report.js            # what keeps going wrong
+/harness-improve                              # read-only agent proposes one fix, you review and merge
+node .claude/harness/bin/report.js --mark "merged port-discovery skill"   # later reports show before/after
+```
+Traces live in `.harness/` (gitignored, local to the machine). In an ephemeral cloud container they vanish with it:
+copy `.harness/traces/` somewhere durable (artifact store, bucket) before the container is reclaimed, or run the report in the same session.
+The scorers are deterministic and cheap. Subjective rubrics (verbosity, redundant tests) need an LLM judge reading the same traces; not built yet.
+The improver is untrusted-input aware: traces are data, and it may not propose widening permissions or touching hooks, deny rules, harness code or CI.
 
 ## Use
 ```bash
@@ -67,13 +85,14 @@ node --test .claude/harness/test/*.test.js
 ## Known limits (be honest about these)
 - **Verify is only as strong as your tests.** With a plain `npm test` verify, an agent can pad with a placeholder test (seen live: `tests/smoke.test.js` asserting `true` passed an 80% coverage floor measured over test files). The strong verify closes that gap for Node projects; for other stacks write an equivalent gate. Acceptance tests written from the spec and protected with `--protect` remain the most important defence.
 - **Shell guards are heuristic.** `lib/shell.js` is a best-effort parser, not a shell: variable indirection (`X=main; git push origin $X`), decoded payloads, and scripts written then executed get through. Pair with isolation (container/worktree, no prod credentials, network allowlist) and server-side branch protection + required CI.
-- **Known gaps found by review and left open** (documented, not fixed): implicit staging of `.env` via `git add -A`/`commit -a`; `git apply`/`patch`/`tar -C`/`unzip -d`/`find -exec` writes into protected paths; `>|` redirects; `git clean -fdx`, `git branch -D main`; hook-bypass equivalents (`core.hooksPath`, `HUSKY=0`); killing the verifier with `pkill`. A read-only `node -e` that merely mentions a protected path is blocked (false positive, by design). `--force-with-lease` is blocked even on feature branches.
+- **Known gaps found by review and left open** (documented, not fixed): `git apply`/`patch`/`tar -C`/`unzip -d`/`find -exec` writes into protected paths; a read-only `node -e` that merely mentions a protected path is blocked (false positive, by design); `--force-with-lease` is blocked even on feature branches. Closed since: bulk staging of `.env` (`git add -A`, `commit -a`), `git clean`, deleting or moving `main`, `core.hooksPath` and `HUSKY=0`, `pkill`/`killall`, `>|` redirects. Bulk-staging detection runs `git status`, so a secret that is gitignored is correctly not flagged.
+- **Allow list no longer has `Bash(node:*)`.** It let any `node -e` script bypass the shell guards. Only `node --test` and the harness `report.js` / `verify.js` are pre-approved; anything else asks.
 - **Hiding is heuristic.** The agent can still find a hidden path by guessing at it from the shell in ways the parser cannot see (see the shell-guard limit above). Isolation is the real answer; hiding raises the cost of overfitting, it does not make it impossible.
 - **Replicates add test-suite time** (default 2 runs per Stop attempt). Set `replicates: 1` for very slow suites.
 - **Diagnosis relies on `node:test` output** for grouping (spec or TAP reporter); other output falls back to the raw tail.
-- **Hooks fail open** on internal crashes (exit 1) so a bug cannot brick a session, but a *corrupt state file* keeps guards on and refuses commits.
 - **Checkpoints are local unless `--checkpoint-push`.** A local ref survives a crashed agent or lost context, not a lost container. `restore` copies files back but does not delete files created after the checkpoint. Gitignored files are not captured.
 - **The Stop feedback sends the full spec once** (first block); later blocks carry only a pointer plus the verify-output tail, so context does not grow by one spec copy per iteration.
+- **Hooks fail open** on internal crashes (exit 1) so a bug cannot brick a session (each crash is now written to `.harness/hook-errors.jsonl` and shown in the report), but a *corrupt state file* keeps guards on and refuses commits.
 - **Every Stop attempt costs an iteration**, including when the agent stops to ask a human a question; with no human that is wasted budget, so tell the agent not to ask.
 - **No cost cap yet.** Time and iterations are capped (`--max`, `--max-minutes`); dollars are not. Bound spend with account/session limits, and use `tune.js` to find a cheaper model/effort.
 - **The time budget is checked at Stop attempts**, so one long agent turn can overrun it; it is not a watchdog.

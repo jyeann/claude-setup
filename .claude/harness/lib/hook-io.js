@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const { readState } = require('./state');
+const { recordHookError } = require('./trace');
 
 function readEvent() {
   const raw = fs.readFileSync(0, 'utf8');
@@ -23,6 +24,7 @@ function guardContext(projectDir) {
 
 // Hooks fail open: a crashing guard must not brick the session. The error is logged for the human.
 function failOpen(name, err) {
+  recordHookError(name, err);
   process.stderr.write(`[harness:${name}] internal error, allowing: ${err.message}\n`);
   process.exit(1);
 }

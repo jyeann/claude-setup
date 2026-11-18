@@ -59,7 +59,7 @@ Each phase delegates — it does not do the work inline.
 
 - **0. Intake** — restate the request. For `orch-build-mvp`, read the spec/design
   doc and extract scope, locked decisions, and a feature list.
-- **1. Research & Reuse** — per `rules/common/development-workflow.md`: `gh search repos` /
+- **1. Research & Reuse** — per `rules/ecc-common/development-workflow.md`: `gh search repos` /
   `gh search code`, then Context7 / vendor docs, then package registries, then
   Exa. Prefer adopting a proven implementation over net-new code.
 - **2. Plan** — delegate to the `planner` agent (or `architect` /
@@ -101,7 +101,7 @@ Match the language reviewer to the repo (see the repo's own `CLAUDE.md`).
 
 Pull in `security-reviewer` when the diff touches any of: authentication or
 authorization, user-input handling, database queries, file-system paths,
-external API calls, cryptography, or secrets / credentials. (Per `rules/common/security.md`.)
+external API calls, cryptography, or secrets / credentials. (Per `rules/ecc-common/security.md`.)
 
 ## Handoff artifacts
 
@@ -109,7 +109,7 @@ The pipeline carries no hidden state — the planning docs *are* the handoff:
 
 - `task_list` (from Plan) drives the Implement loop.
 - Larger work may also emit PRD / architecture / system_design under the repo's
-  `docs/` per `rules/common/development-workflow.md`.
+  `docs/` per `rules/ecc-common/development-workflow.md`.
 - Review findings (CRITICAL / HIGH) must be resolved before Gate 2.
 
 ## Verification
@@ -118,4 +118,4 @@ The pipeline carries no hidden state — the planning docs *are* the handoff:
 - Gate 1 (plan) and Gate 2 (commit) were both honored
 - `security-reviewer` ran iff a security trigger was touched
 - commits are conventional and scoped to one logical change
-- new / changed behavior has tests; coverage ≥ 80% per `rules/common/testing.md`
+- new / changed behavior has tests; coverage ≥ 80% per `rules/ecc-common/testing.md`

@@ -8,6 +8,7 @@ const { runVerify } = require('../lib/verify');
 const { decideStop } = require('../lib/stop-loop');
 const { writeCheckpoint } = require('../lib/checkpoint');
 const { REPORT_FILE } = require('../lib/failure-cluster');
+const { logStop } = require('../lib/trace');
 
 // Best effort: a checkpoint problem must never change the loop's decision.
 function checkpoint(projectDir, state, nextState) {
@@ -18,7 +19,9 @@ function checkpoint(projectDir, state, nextState) {
 }
 
 async function main() {
-  const projectDir = projectDirOf(readEvent());
+  const event = readEvent();
+  const projectDir = projectDirOf(event);
+  logStop(projectDir, event);
   const state = readState(projectDir);
   if (!state?.active) return;
 
