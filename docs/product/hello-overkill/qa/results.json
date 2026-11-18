@@ -1,0 +1,182 @@
+[
+ {
+  "id": "UC1",
+  "title": "page and controls",
+  "ok": true,
+  "evidence": "10 languages, 4 tones, empty card shown"
+ },
+ {
+  "id": "J1",
+  "title": "first visit and first greeting",
+  "ok": true,
+  "evidence": "\"¡Ahoy, Ada! ¡Bienvenido a bordo, grumete!\"; focus=name-input"
+ },
+ {
+  "id": "UC2",
+  "title": "Ada Spanish Pirate",
+  "ok": true,
+  "evidence": "greeting contains Ada, lang=es, status ok, cert-link enabled; light+dark screenshots"
+ },
+ {
+  "id": "J2",
+  "title": "all 10 languages x 4 tones",
+  "ok": true,
+  "evidence": "40 combos (en,es,fr,de,it,pt,nl,sv,ja,sw x formal,pirate,shakespearean,corporate) all non-empty with Ada and matching lang"
+ },
+ {
+  "id": "UC3",
+  "title": "every combination (browser, raised limit)",
+  "ok": true,
+  "evidence": "covered by J2 loop (40 combos, HELLO_RATE_LIMIT=1000)"
+ },
+ {
+  "id": "UC10",
+  "title": "core API, 404, hostile input, blank name",
+  "ok": true,
+  "evidence": "POST /hello exact body, 404 JSON, hostile name literal and no __x, blank-name error + focus + aria-invalid + status"
+ },
+ {
+  "id": "J9",
+  "title": "core API in browser",
+  "ok": true,
+  "evidence": "GET / 200 html; /nope 404 JSON (see UC10)"
+ },
+ {
+  "id": "UC10b",
+  "title": "name longer than 40 chars",
+  "ok": true,
+  "evidence": "maxlength=40 on input; API with 41 chars -> 400"
+ },
+ {
+  "id": "UC10c",
+  "title": "390px viewport: no horizontal scroll (hello, battle, verify)",
+  "ok": true,
+  "evidence": "no overflow; touch heights 44,44,44,44; battle options stacked"
+ },
+ {
+  "id": "UC11",
+  "title": "keyboard, labels, dark/light 390",
+  "ok": true,
+  "evidence": "tab order nav-hello>nav-battle>nav-verify>name-input>language-select>tone-select>chaos-toggle>say-hello; focus ring solid 2px; Enter submits; keyboard-only greeting incl. selects; labels found; dark+light 390 no overflow"
+ },
+ {
+  "id": "UC-A11Y-route",
+  "title": "route change focuses h1, aria-current, unknown hash falls back",
+  "ok": true,
+  "evidence": "h1 focused after route change, aria-current=page, #/bogus -> #/hello"
+ },
+ {
+  "id": "J1-dark",
+  "title": "hello result in dark mode (colour scheme honoured)",
+  "ok": true,
+  "evidence": "dark body rgb(18, 18, 18); light body rgb(250, 250, 250)"
+ },
+ {
+  "id": "UC4",
+  "title": "visit 2 and restart (J3)",
+  "ok": true,
+  "evidence": "Visit 1 -> Visit 2 (\"Streak 1 day\") -> restart -> Visit 3"
+ },
+ {
+  "id": "J3",
+  "title": "return visit and streak",
+  "ok": true,
+  "evidence": "covered by UC4 (case-insensitive ada, restart continues count)"
+ },
+ {
+  "id": "UC5",
+  "title": "certificate view (J4)",
+  "ok": true,
+  "evidence": "id 0bf146128715e4f4, date, 64-char signature, copy status \"Select the text and copy it yourself.\", print hides nav+buttons"
+ },
+ {
+  "id": "UC6",
+  "title": "verify Authentic then Forged (J5)",
+  "ok": true,
+  "evidence": "Authentic (glyph) -> one-char greeting edit Forged (glyph) -> signature edit Forged -> unreadable -> empty error -> >10000 chars message"
+ },
+ {
+  "id": "J4b",
+  "title": "permalink view in a fresh context + not found",
+  "ok": true,
+  "evidence": "permalink opens in a new context; unknown id shows not-found copy"
+ },
+ {
+  "id": "J5b",
+  "title": "certificate verifies after restart with same secret",
+  "ok": true,
+  "evidence": "Authentic after restart"
+ },
+ {
+  "id": "UC7",
+  "title": "battle vote + leaderboard (J6)",
+  "ok": true,
+  "evidence": "options A/B distinct; empty msg; vote -> status, row votes 1, buttons removed, Next focused; second vote sums to 2"
+ },
+ {
+  "id": "UC8.2",
+  "title": "chaos=418 friendly error + focus + no raw output",
+  "ok": true,
+  "evidence": "418 message, retry focused, no stack/JSON in page"
+ },
+ {
+  "id": "UC8.3",
+  "title": "chaos=delay shows loading then greeting",
+  "ok": true,
+  "evidence": "loading visible, button disabled \"Greeting...\", greeting after 3876 ms"
+ },
+ {
+  "id": "UC8.3b",
+  "title": "loading card carries aria-busy=true (ux.md Loading state)",
+  "ok": true,
+  "evidence": "aria-busy present"
+ },
+ {
+  "id": "UC8.4",
+  "title": "mixed chaos=1 never blank / no page errors",
+  "ok": true,
+  "evidence": "greeting after 1 attempt(s), error state seen=false, no page errors"
+ },
+ {
+  "id": "UC8.5",
+  "title": "Try again repeats request and replaces error",
+  "ok": true,
+  "evidence": "first request 418, retry produced greeting for Ada, error removed"
+ },
+ {
+  "id": "UC8.6",
+  "title": "network down / 500 shows generic error",
+  "ok": true,
+  "evidence": "500 and aborted request both show generic copy, body not leaked"
+ },
+ {
+  "id": "J7",
+  "title": "chaos journey",
+  "ok": true,
+  "evidence": "covered by UC8.2 to UC8.6 (forced ?chaos=418 and ?chaos=delay, mixed chaos=1)"
+ },
+ {
+  "id": "UC9",
+  "title": "rate limit 429 with countdown (J8)",
+  "ok": true,
+  "evidence": "10x 200 then 429, Retry-After 60, message \"You've been greeted enough. Please wait 60 seconds and try again.\", button \"Wait 60s\" then re-enabled, status announced"
+ },
+ {
+  "id": "J8",
+  "title": "rate limit journey",
+  "ok": true,
+  "evidence": "covered by UC9"
+ },
+ {
+  "id": "CONSOLE",
+  "title": "console errors = none (excluding browser resource-load lines for forced 4xx/5xx)",
+  "ok": true,
+  "evidence": "0 console errors / page errors; 6 expected \"Failed to load resource\" lines from forced 418/429/500"
+ },
+ {
+  "id": "J10",
+  "title": "tests journey (criterion 11)",
+  "ok": true,
+  "evidence": "no UI; this walkthrough covers criteria 1,3,5,6,7,8 (UC1,UC2,UC4,UC5,UC6,UC7) plus 9,10; npm test is run separately"
+ }
+]

@@ -204,7 +204,9 @@ function sendHello(req) {
   setBusy(true);
   clear(result);
   if (inResult) sayBtn.focus();
-  result.appendChild(el('div', 'result-loading', 'Warming up the greeting...'));
+  const loading = el('div', 'result-loading', 'Warming up the greeting...');
+  loading.setAttribute('aria-busy', 'true');
+  result.appendChild(loading);
   var f = forcedChaos();
   var c = f || (req.chaos ? '1' : null);
   var path = '/hello' + (c ? '?chaos=' + encodeURIComponent(c) : '');

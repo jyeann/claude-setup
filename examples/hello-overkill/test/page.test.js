@@ -74,10 +74,17 @@ test('shared error helpers, repeated-status re-announce and vote error associati
   assert.match(html, /function retrySeconds\(res/);
   assert.match(html, /statusEl\.textContent = ''/);
   assert.match(html, /aria-describedby', 'vote-error'/);
-  assert.ok(!/aria-busy/.test(html));
+  assert.ok(!/result\.setAttribute\('aria-busy'/.test(html));
   assert.match(html, /vIn\.setAttribute\('aria-invalid', 'true'\)/);
 });
 
 test('route handler ignores query-only hash changes', () => {
   assert.match(html, /sig === lastSig/);
+});
+
+test('hello loading card is marked aria-busy while the greeting is requested', () => {
+  const { html } = require('../src/page.js');
+  assert.ok(html.includes("loading.setAttribute('aria-busy', 'true')"));
+  assert.ok(html.includes("'result-loading'"));
+  assert.ok(!html.includes('result.setAttribute(\'aria-busy\''));
 });
