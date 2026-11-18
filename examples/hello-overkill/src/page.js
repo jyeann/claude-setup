@@ -13,8 +13,8 @@ const LANGUAGES = [['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de'
 const TONES = [['formal', 'Formal'], ['pirate', 'Pirate'], ['shakespearean', 'Shakespearean'], ['corporate', 'Corporate']];
 
 const STYLE = String.raw`
-:root{--bg:#fafafa;--fg:#1a1a1a;--muted:#555;--card:#fff;--line:#c9c9c9;--accent:#0b57d0;--accent-fg:#fff;--ok:#0a6b2d;--bad:#b3261e;--focus:#0b57d0}
-@media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#ececec;--muted:#b0b0b0;--card:#1e1e1e;--line:#444;--accent:#8ab4f8;--accent-fg:#101010;--ok:#6fdc8c;--bad:#ff8a80;--focus:#8ab4f8}}
+:root{color-scheme:light dark;--bg:#fafafa;--fg:#1a1a1a;--muted:#555;--card:#fff;--line:#c9c9c9;--ctl-line:#767676;--accent:#0b57d0;--accent-fg:#fff;--ok:#0a6b2d;--bad:#b3261e;--focus:#0b57d0}
+@media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#ececec;--muted:#b0b0b0;--card:#1e1e1e;--line:#444;--ctl-line:#8a8a8a;--accent:#8ab4f8;--accent-fg:#101010;--ok:#6fdc8c;--bad:#ff8a80;--focus:#8ab4f8}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
 [hidden]{display:none!important}
@@ -25,14 +25,15 @@ nav a{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;bord
 nav a[aria-current=page]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
 h1{font-size:1.5rem;margin:16px 0}
 label{display:block;font-weight:600;margin:12px 0 4px}
-input[type=text],select,textarea{width:100%;min-height:44px;padding:8px 10px;font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:8px}
+input[type=text],select,textarea{width:100%;min-height:44px;padding:8px 10px;font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--ctl-line);border-radius:8px}
 textarea{min-height:8rem;overflow-wrap:anywhere}
-input[aria-invalid=true]{border-color:var(--bad)}
+input[aria-invalid=true],textarea[aria-invalid=true]{border-color:var(--bad)}
 .check{display:flex;align-items:center;gap:10px;min-height:44px;margin-top:8px}
-.check input{width:24px;height:24px}
+.check input{width:24px;height:24px;appearance:none;-webkit-appearance:none;margin:0;background:var(--card);border:2px solid var(--ctl-line);border-radius:4px}
+.check input:checked{background:var(--accent);box-shadow:inset 0 0 0 4px var(--card)}
 .check label{margin:0;font-weight:400}
 button,.btn{min-height:44px;padding:0 18px;font:inherit;font-weight:600;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer;display:inline-flex;align-items:center;text-decoration:none;margin-top:12px}
-button[disabled]{opacity:.6;cursor:not-allowed}
+button[disabled],button[aria-disabled=true]{opacity:.6;cursor:not-allowed}
 .secondary{background:transparent;color:var(--accent)}
 button.opt{width:100%;text-align:left;justify-content:flex-start;height:auto;padding:10px 14px;overflow-wrap:anywhere}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:16px;overflow-wrap:anywhere}
@@ -63,7 +64,26 @@ var GENERIC = 'The greeter is having a moment. Check that the server is running,
 var NAMES = { hello: 'Hello', battle: 'Battle', verify: 'Verify', cert: 'Certificate of Hello' };
 var countdown = null;
 
-function say(t) { statusEl.textContent = t; }
+var sayTimer = null;
+function say(t) {
+  if (sayTimer) clearTimeout(sayTimer);
+  statusEl.textContent = '';
+  sayTimer = setTimeout(function () { sayTimer = null; statusEl.textContent = t; }, 60);
+}
+var TEA1 = 'The greeter spilled its tea (418).', TEA2 = 'Nothing is broken. Try again in a moment.';
+function retrySeconds(res) {
+  var n = parseInt(res.retry, 10);
+  if (n >= 1) return n;
+  if (res.json && res.json.retryAfter >= 1) return Math.floor(res.json.retryAfter);
+  return 5;
+}
+function errorText(res, generic) {
+  if (res.status === 429) return "You've been greeted enough. Please wait " + retrySeconds(res) + ' seconds and try again.';
+  if (res.status === 418) return TEA1 + ' ' + TEA2;
+  return generic || GENERIC;
+}
+function setBusyBtn(btn, b) { if (b) btn.setAttribute('aria-disabled', 'true'); else btn.removeAttribute('aria-disabled'); }
+function isBusyBtn(btn) { return btn.getAttribute('aria-disabled') === 'true'; }
 function el(tag, tid, text, cls) {
   var e = document.createElement(tag);
   if (tid) e.setAttribute('data-testid', tid);
@@ -93,11 +113,14 @@ function parseHash() {
   var parts = path.replace(/^#\/?/, '').split('/');
   return { name: parts[0], id: parts[1] || '', query: q < 0 ? '' : h.slice(q + 1) };
 }
-var first = true;
+var first = true, lastSig = null;
 function route() {
   var r = parseHash();
   var key = r.name === 'battle' ? 'battle' : r.name === 'verify' ? 'verify' : (r.name === 'certificate' && r.id) ? 'cert' : 'hello';
   if (r.name !== 'hello' && r.name !== 'battle' && r.name !== 'verify' && !(r.name === 'certificate' && r.id)) { location.replace('#/hello'); return; }
+  var sig = key + '/' + r.id;
+  if (sig === lastSig) return;
+  lastSig = sig;
   Object.keys(views).forEach(function (k) { views[k].hidden = k !== key; });
   title.textContent = NAMES[key];
   ['hello', 'battle', 'verify'].forEach(function (k) {
@@ -105,7 +128,7 @@ function route() {
     if (k === key) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
   });
   document.title = NAMES[key] + ' - Hello Overkill';
-  if (key === 'battle') loadBattle();
+  if (key === 'battle') loadBattle(false);
   if (key === 'cert') loadCert(r.id);
   if (!first) title.focus();
   first = false;
@@ -124,8 +147,8 @@ function forcedChaos() {
 var lastReq = null;
 var sayBtn = $('say-hello'), nameIn = $('name'), nameErr = $('name-error'), result = $('result');
 
-function setBusy(b) { sayBtn.disabled = b; sayBtn.textContent = b ? 'Greeting...' : 'Say hello'; }
-function showResult(nodes) { clear(result); result.removeAttribute('aria-busy'); nodes.forEach(function (n) { result.appendChild(n); }); }
+function setBusy(b) { setBusyBtn(sayBtn, b); sayBtn.textContent = b ? 'Greeting...' : 'Say hello'; }
+function showResult(nodes) { clear(result); nodes.forEach(function (n) { result.appendChild(n); }); }
 function retryButton(fn) {
   var b = el('button', 'retry-btn', 'Try again', 'secondary');
   b.type = 'button';
@@ -136,24 +159,23 @@ function failure(res, retryFn) {
   if (res.status === 429) { rateLimited(res); return; }
   var box = el('div', 'error-message');
   if (res.status === 418) {
-    box.appendChild(el('p', null, 'The greeter spilled its tea (418).'));
-    box.appendChild(el('p', null, 'Nothing is broken. Try again in a moment.'));
+    box.appendChild(el('p', null, TEA1));
+    box.appendChild(el('p', null, TEA2));
   } else {
     box.appendChild(el('p', null, GENERIC));
   }
   var b = retryButton(retryFn);
   showResult([box, b]);
-  say(res.status === 418 ? 'The greeter spilled its tea (418).' : GENERIC);
+  say(errorText(res));
   b.focus();
 }
 function rateLimited(res) {
-  var n = parseInt(res.retry, 10);
-  if (!(n >= 1)) n = (res.json && res.json.retryAfter >= 1) ? Math.floor(res.json.retryAfter) : 5;
-  var msg = "You've been greeted enough. Please wait " + n + ' seconds and try again.';
+  var n = retrySeconds(res);
+  var msg = errorText(res);
   showResult([el('div', 'rate-limit-message', msg)]);
   say(msg);
   if (countdown) clearInterval(countdown);
-  sayBtn.disabled = true;
+  setBusyBtn(sayBtn, true);
   var left = n;
   sayBtn.textContent = 'Wait ' + left + 's';
   countdown = setInterval(function () {
@@ -178,9 +200,10 @@ function success(j) {
 }
 function sendHello(req) {
   lastReq = req;
+  var inResult = result.contains(document.activeElement);
   setBusy(true);
   clear(result);
-  result.setAttribute('aria-busy', 'true');
+  if (inResult) sayBtn.focus();
   result.appendChild(el('div', 'result-loading', 'Warming up the greeting...'));
   var f = forcedChaos();
   var c = f || (req.chaos ? '1' : null);
@@ -196,7 +219,7 @@ function sendHello(req) {
 }
 function submitHello(ev) {
   ev.preventDefault();
-  if (sayBtn.disabled) return;
+  if (isBusyBtn(sayBtn)) return;
   var name = nameIn.value.normalize('NFC').trim();
   var err = '';
   if (!name) err = 'Enter a name so we know who to greet.';
@@ -208,17 +231,19 @@ function submitHello(ev) {
 $('hello-form').addEventListener('submit', submitHello);
 
 /* ---------- certificate ---------- */
-function loadCert(id) {
+function loadCert(id, refocus) {
   var box = $('cert-body');
   clear(box);
+  var done = function () { if (refocus) { var c = box.querySelector('button,a,textarea'); (c || title).focus(); } };
   box.appendChild(el('p', null, 'Loading certificate...'));
-  if (!/^[a-f0-9]{16}$/.test(id)) { certMissing(box); return; }
+  if (!/^[a-f0-9]{16}$/.test(id)) { certMissing(box); say('We could not find that certificate.'); done(); return; }
   api('GET', '/api/certificates/' + id).then(function (res) {
     if (parseHash().id !== id) return;
     clear(box);
-    if (res.status === 200 && res.json) renderCert(box, res.json);
-    else if (res.status === 404) certMissing(box);
-    else { box.appendChild(el('div', 'error-message', GENERIC)); box.appendChild(retryButton(function () { loadCert(id); })); }
+    if (res.status === 200 && res.json) { renderCert(box, res.json); say('Certificate loaded.'); }
+    else if (res.status === 404) { certMissing(box); say('We could not find that certificate.'); }
+    else { var msg = errorText(res); box.appendChild(el('div', 'error-message', msg)); box.appendChild(retryButton(function () { loadCert(id, true); })); say(msg); }
+    done();
   });
 }
 function certMissing(box) {
@@ -249,14 +274,18 @@ function renderCert(box, c) {
 var vIn = $('cert-input'), vBtn = $('verify-btn'), vErr = $('verify-error'), vOut = $('verify-out');
 $('verify-form').addEventListener('submit', function (ev) {
   ev.preventDefault();
+  if (isBusyBtn(vBtn)) return;
   var text = vIn.value;
   clear(vOut);
   vErr.textContent = '';
-  if (!text.trim()) { vErr.textContent = 'Paste a certificate first.'; say('Paste a certificate first.'); vIn.focus(); return; }
-  if (text.length > 10000) { vErr.textContent = 'That is too long to be a certificate (10,000 characters max).'; say(vErr.textContent); return; }
-  vBtn.disabled = true; vBtn.textContent = 'Checking...';
+  vIn.removeAttribute('aria-invalid');
+  var verr = '';
+  if (!text.trim()) verr = 'Paste a certificate first.';
+  else if (text.length > 10000) verr = 'That is too long to be a certificate (10,000 characters max).';
+  if (verr) { vErr.textContent = verr; vIn.setAttribute('aria-invalid', 'true'); say(verr); vIn.focus(); return; }
+  setBusyBtn(vBtn, true); vBtn.textContent = 'Checking...';
   api('POST', '/api/verify', { text: text }).then(function (res) {
-    vBtn.disabled = false; vBtn.textContent = 'Verify';
+    setBusyBtn(vBtn, false); vBtn.textContent = 'Verify';
     if (res.status === 200 && res.json && (res.json.verdict === 'Authentic' || res.json.verdict === 'Forged')) {
       var ok = res.json.verdict === 'Authentic';
       var box = el('div', 'verify-result', null, 'card verdict ' + (ok ? 'ok' : 'bad'));
@@ -269,13 +298,9 @@ $('verify-form').addEventListener('submit', function (ev) {
       var d = el('p', null, why);
       vOut.appendChild(box); vOut.appendChild(d);
       say(res.json.verdict + '. ' + why);
-    } else if (res.status === 429) {
-      var n = parseInt(res.retry, 10) || 5;
-      var m = "You've been greeted enough. Please wait " + n + ' seconds and try again.';
-      vOut.appendChild(el('div', 'rate-limit-message', m)); say(m);
     } else {
-      vOut.appendChild(el('div', 'error-message', res.status === 418 ? 'The greeter spilled its tea (418). Nothing is broken. Try again in a moment.' : GENERIC));
-      say(GENERIC);
+      var m = errorText(res);
+      vOut.appendChild(el('div', res.status === 429 ? 'rate-limit-message' : 'error-message', m)); say(m);
     }
   });
 });
@@ -305,45 +330,50 @@ function loadLb() {
   clear(lbBox); lbBox.appendChild(el('p', null, 'Loading leaderboard...'));
   return api('GET', '/api/leaderboard').then(function (res) {
     if (res.status === 200 && res.json) renderLb(res.json.leaderboard);
-    else { clear(lbBox); lbBox.appendChild(el('p', null, GENERIC)); }
+    else { clear(lbBox); lbBox.appendChild(el('p', null, GENERIC)); say(GENERIC); }
   });
 }
-function loadBattle() {
+function loadBattle(refocus) {
   clear(bBox); bBox.appendChild(el('p', null, 'Finding two greetings...'));
   loadLb();
   api('GET', '/api/battle').then(function (res) {
     clear(bBox);
     if (res.status !== 200 || !res.json || !res.json.a || !res.json.b) {
-      bBox.appendChild(el('p', null, 'Could not load the battle. Try again.'));
-      bBox.appendChild(retryButton(loadBattle));
+      var lm = 'Could not load the battle. Try again.';
+      bBox.appendChild(el('p', null, lm));
+      var rb = retryButton(function () { loadBattle(true); });
+      bBox.appendChild(rb);
+      say(lm);
+      if (refocus) rb.focus();
       return;
     }
-    var note = el('p', null, null, 'err');
+    var note = el('p', null, null, 'err'); note.id = 'vote-error';
     [['a', 'A', 'battle-option-a'], ['b', 'B', 'battle-option-b']].forEach(function (p) {
       var o = res.json[p[0]];
       var b = el('button', p[2], 'Vote for ' + p[1] + ': ' + o.greeting, 'opt');
       b.type = 'button';
+      b.setAttribute('aria-describedby', 'vote-error');
       b.addEventListener('click', function () { vote(o, note); });
       bBox.appendChild(b);
     });
     bBox.appendChild(note);
+    say('Battle ready. Choose a greeting.');
+    if (refocus) $('battle-body').querySelector('button').focus();
   });
 }
 function vote(o, note) {
+  note.textContent = '';
   api('POST', '/api/battle/vote', { choice: o.id }).then(function (res) {
     if (res.status === 200 && res.json) {
       clear(bBox);
       bBox.appendChild(el('p', null, 'Thanks, vote counted.'));
       var nx = el('button', 'battle-next', 'Next battle'); nx.type = 'button';
-      nx.addEventListener('click', loadBattle);
+      nx.addEventListener('click', function () { loadBattle(true); });
       bBox.appendChild(nx);
       renderLb(res.json.leaderboard);
       say('Vote counted for ' + o.greeting + '.');
       nx.focus();
-    } else if (res.status === 429) {
-      var n = parseInt(res.retry, 10) || 5;
-      note.textContent = "You've been greeted enough. Please wait " + n + ' seconds and try again.'; say(note.textContent);
-    } else { note.textContent = 'Your vote was not saved. Try again.'; say(note.textContent); }
+    } else { note.textContent = errorText(res, 'Your vote was not saved. Try again.'); say(note.textContent); }
   });
 }
 

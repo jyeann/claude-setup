@@ -1,6 +1,7 @@
 'use strict';
 const crypto = require('node:crypto');
 const { render } = require('./greetings');
+const { PersistError } = require('./store');
 const { validateHelloBody, normalizeName, isPersonalised } = require('./validation');
 
 const CORE_BODY = '{"message":"Hello World! Welcome to the API."}';
@@ -23,7 +24,8 @@ function createHello({ store, signer, now = Date.now, randomBytes = crypto.rando
       let counts;
       try {
         counts = store.recordHello(name, { id, name, greeting, language, date, signature });
-      } catch {
+      } catch (e) {
+        if (!(e instanceof PersistError)) throw e;
         return { status: 500, text: '{"error":"could not save"}' };
       }
       const text = signer.toText({ id, name, greeting, date, signature });

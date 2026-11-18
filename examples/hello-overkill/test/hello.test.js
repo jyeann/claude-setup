@@ -74,3 +74,10 @@ test('persist failure returns 500 could not save', () => {
   assert.deepEqual(h.handle({ name: 'Ada' }), { status: 500, text: '{"error":"could not save"}' });
   assert.equal(store.stats().visitors, 0);
 });
+
+test('non-persist store errors are not reported as could not save', () => {
+  const { createHello } = require('../src/hello');
+  const { createSigner } = require('../src/certificates');
+  const h = createHello({ store: { recordHello() { throw new TypeError('bug'); } }, signer: createSigner('s') });
+  assert.throws(() => h.handle({ name: 'Ada' }), TypeError);
+});

@@ -14,8 +14,16 @@ try {
   process.exit(1);
 }
 
+let store;
+try {
+  store = createStore(config.dataFile);
+} catch (e) {
+  process.stderr.write(`cannot read data file (${e.code || 'error'}); exiting\n`);
+  process.exit(1);
+}
+
 const handler = createRouter({
-  store: createStore(config.dataFile),
+  store,
   limiter: createRateLimiter({ limit: config.rateLimit, windowMs: 60000 }),
   voteLimiter: createRateLimiter({ limit: 60, windowMs: 60000 }),
   signer: createSigner(config.signingSecret),

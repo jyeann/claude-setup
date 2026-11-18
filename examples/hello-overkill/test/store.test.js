@@ -108,3 +108,75 @@ test('prototype-like names are ordinary visitors', () => {
   assert.deepEqual(s.recordHello('constructor', cert(2)), { visit: 1, streak: 1 });
   assert.deepEqual(s.recordHello('__PROTO__', cert(3)), { visit: 2, streak: 1 });
 });
+
+test('MAX_VISITORS is 10000 and evicts the oldest visitor first', () => {
+  const { MAX_VISITORS } = require('../src/store');
+  assert.equal(MAX_VISITORS, 10000);
+  const file = path.join(dir(), 'v.json');
+  const visitors = [];
+  for (let i = 0; i < MAX_VISITORS; i += 1) visitors.push({ key: `v${i}`, displayName: `v${i}`, visits: 1, streak: 1, firstDay: '2026-01-10', lastDay: '2026-01-10' });
+  fs.writeFileSync(file, JSON.stringify({ version: 1, visitors, certificates: [], votes: [] }));
+  const s = createStore(file, () => T0, quiet);
+  assert.equal(s.stats().visitors, MAX_VISITORS);
+  assert.deepEqual(s.recordHello('v0', cert(1)), { visit: 2, streak: 1 });
+  s.recordHello('newcomer', cert(2));
+  assert.equal(s.stats().visitors, MAX_VISITORS);
+  assert.deepEqual(s.recordHello('v1', cert(3)), { visit: 1, streak: 1 }, 'v1 was oldest and evicted');
+});
+
+test('rollback restores evicted visitors in order and leaves no tmp file', () => {
+  const d = dir();
+  const file = path.join(d, 'r.json');
+  const { MAX_VISITORS } = require('../src/store');
+  const visitors = [];
+  for (let i = 0; i < MAX_VISITORS; i += 1) visitors.push({ key: `v${i}`, displayName: `v${i}`, visits: 1, streak: 1, firstDay: '2026-01-10', lastDay: '2026-01-10' });
+  fs.writeFileSync(file, JSON.stringify({ version: 1, visitors, certificates: [], votes: [] }));
+  const s = createStore(file, () => T0, quiet);
+  fs.mkdirSync(`${file}.${process.pid}.tmp`); // make the tmp path unusable: rmSync of a dir without recursive fails
+  assert.throws(() => s.recordHello('newcomer', cert(1)), (e) => e.name === 'PersistError');
+  assert.equal(s.stats().visitors, MAX_VISITORS);
+  assert.equal(s.getCertificate(cert(1).id), null);
+  fs.rmdirSync(`${file}.${process.pid}.tmp`);
+  assert.deepEqual(s.recordHello('v0', cert(2)), { visit: 2, streak: 1 }, 'v0 still present after rollback');
+});
+
+test('persist failure throws PersistError and leaves no tmp file behind', () => {
+  const d = dir();
+  const file = path.join(d, 'p.json');
+  const s = createStore(file, () => T0, quiet);
+  fs.mkdirSync(file); // rename onto a directory fails
+  assert.throws(() => s.vote('en.formal'), (e) => e.name === 'PersistError' && e.cause);
+  assert.deepEqual(fs.readdirSync(d), ['p.json']);
+  assert.equal(s.votes().size, 0);
+});
+
+test('stale tmp is replaced and the data file is written with mode 0600', () => {
+  const d = dir();
+  const file = path.join(d, 'm.json');
+  fs.writeFileSync(`${file}.${process.pid}.tmp`, 'stale', { mode: 0o666 });
+  const s = createStore(file, () => T0, quiet);
+  s.vote('en.formal');
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  assert.deepEqual(fs.readdirSync(d), ['m.json']);
+});
+
+test('non-parse read errors throw instead of quarantining', () => {
+  const d = dir();
+  const file = path.join(d, 'dirfile');
+  fs.mkdirSync(file); // reading a directory gives EISDIR
+  assert.throws(() => createStore(file, () => 1, quiet), (e) => e.code === 'EISDIR');
+  assert.deepEqual(fs.readdirSync(d), ['dirfile']);
+});
+
+test('logs the real outcome when quarantine rename fails', () => {
+  const d = dir();
+  const file = path.join(d, 'q.json');
+  fs.writeFileSync(file, 'nope');
+  const logs = [];
+  const real = fs.renameSync;
+  fs.renameSync = () => { const e = new Error('x'); e.code = 'EACCES'; throw e; };
+  try { createStore(file, () => 9, (m) => logs.push(m)); } finally { fs.renameSync = real; }
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /could not be moved/);
+  assert.doesNotMatch(logs[0], /moved to/);
+});

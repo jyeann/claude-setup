@@ -39,3 +39,11 @@ test('falls back to 10 with a warning for invalid HELLO_RATE_LIMIT', () => {
 test('dev secrets differ between loads', () => {
   assert.notEqual(run({}).cfg.signingSecret, run({}).cfg.signingSecret);
 });
+
+test('production requires a signing secret of at least 32 characters', () => {
+  const bad = [undefined, '', 'short', 'x'.repeat(31)];
+  for (const s of bad) assert.throws(() => loadConfig({ NODE_ENV: 'production', HELLO_SIGNING_SECRET: s }, () => {}), /HELLO_SIGNING_SECRET/);
+  const cfg = loadConfig({ NODE_ENV: 'production', HELLO_SIGNING_SECRET: 'x'.repeat(32) }, () => {});
+  assert.equal(cfg.secretIsDev, false);
+  assert.equal(loadConfig({ NODE_ENV: 'development' }, () => {}).secretIsDev, true);
+});

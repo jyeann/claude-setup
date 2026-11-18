@@ -6,10 +6,33 @@ const { LANGUAGES, TONES } = require('./greetings');
 const { validateVerifyBody, validateVote } = require('./validation');
 const { pickPair, leaderboard } = require('./battle');
 const page = require('./page');
+const { PersistError } = require('./store');
 
 const MAX_BODY = 16 * 1024;
 const SEC = securityHeaders(page.html);
 const JSON_TYPE = 'application/json; charset=utf-8';
+// Limiter key for a socket address: IPv4-mapped IPv6 becomes plain IPv4; other IPv6 is keyed by its /64.
+function clientKey(addr) {
+  if (typeof addr !== 'string' || !addr) return 'unknown';
+  let a = addr.split('%')[0].toLowerCase();
+  if (!a.includes(':')) return a;
+  const dotted = a.match(/^(.*:)(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (dotted) {
+    const hx = (x, y) => ((Number(x) << 8) | Number(y)).toString(16);
+    a = `${dotted[1]}${hx(dotted[2], dotted[3])}:${hx(dotted[4], dotted[5])}`;
+  }
+  const halves = a.split('::');
+  if (halves.length > 2) return addr;
+  const head = halves[0] ? halves[0].split(':') : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const fill = halves.length === 2 ? 8 - head.length - tail.length : 0;
+  const groups = [...head, ...Array(Math.max(fill, 0)).fill('0'), ...tail];
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return addr;
+  const n = groups.map((g) => parseInt(g, 16));
+  if (n.slice(0, 5).every((x) => x === 0) && n[5] === 0xffff) return `${n[6] >> 8}.${n[6] & 255}.${n[7] >> 8}.${n[7] & 255}`;
+  return `${n.slice(0, 4).map((x) => x.toString(16)).join(':')}::/64`;
+}
+
 const CERT_ID = /^[a-f0-9]{16}$/;
 
 // Builds the request handler: (req, res) => Promise<void>. Never rejects.
@@ -51,6 +74,7 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
       req.on('end', () => finish(Buffer.concat(chunks)));
       req.on('error', () => finish(null));
       req.on('aborted', () => finish(null));
+      req.on('close', () => finish(null));
     });
   }
 
@@ -62,7 +86,7 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
   }
 
   function limited(res, lim, req) {
-    const r = lim.check(req.socket.remoteAddress);
+    const r = lim.check(clientKey(req.socket.remoteAddress));
     if (r.allowed) return false;
     req.resume();
     tooMany(res, r.retryAfter);
@@ -150,7 +174,7 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
       const body = parse(buf);
       const e = validateVote(body);
       if (e) return err(res, 400, e);
-      try { store.vote(body.choice); } catch { return err(res, 500, 'could not save'); }
+      try { store.vote(body.choice); } catch (e) { if (e instanceof PersistError) return err(res, 500, 'could not save'); throw e; }
       return json(res, 200, { ok: true, leaderboard: leaderboard(store.votes()) });
     }
     if (path === '/api/leaderboard') {
@@ -162,6 +186,7 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
 
   return async function handler(req, res) {
     try {
+      if ((req.url || '').startsWith('/api/')) res.setHeader('cache-control', 'no-store');
       await dispatch(req, res);
     } catch {
       if (!res.headersSent) err(res, 500, 'internal error');
@@ -170,4 +195,4 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
   };
 }
 
-module.exports = { createRouter, MAX_BODY };
+module.exports = { createRouter, clientKey, MAX_BODY };

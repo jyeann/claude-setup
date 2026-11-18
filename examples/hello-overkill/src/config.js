@@ -3,7 +3,7 @@ const { randomBytes } = require('node:crypto');
 
 const SECRET_WARNING = 'WARNING: HELLO_SIGNING_SECRET not set; using a random per-process dev secret. Certificates will read as Forged after restart.';
 
-// Parses env into a config object. Throws Error('invalid PORT') for a bad port; warns via `warn` otherwise.
+// Parses env into a config object. Throws Error('invalid PORT') for a bad port, or when NODE_ENV=production without a >= 32 char secret; warns via `warn` otherwise.
 function loadConfig(env = process.env, warn = (m) => process.stderr.write(`${m}\n`)) {
   let port = 3000;
   if (env.PORT !== undefined && env.PORT !== '') {
@@ -19,6 +19,9 @@ function loadConfig(env = process.env, warn = (m) => process.stderr.write(`${m}\
   }
   let signingSecret = env.HELLO_SIGNING_SECRET;
   let secretIsDev = false;
+  if (env.NODE_ENV === 'production' && (typeof signingSecret !== 'string' || signingSecret.length < 32)) {
+    throw new Error('HELLO_SIGNING_SECRET must be at least 32 characters when NODE_ENV=production');
+  }
   if (!signingSecret) {
     signingSecret = randomBytes(32).toString('hex');
     secretIsDev = true;

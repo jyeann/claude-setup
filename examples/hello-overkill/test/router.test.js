@@ -277,3 +277,74 @@ test('handler exceptions become 500 internal error without details', async () =>
     assert.ok(!r.text.includes('secret detail'));
   }, { store });
 });
+
+test('clientKey normalises IPv4-mapped and keys IPv6 by /64', () => {
+  const { clientKey } = require('../src/router');
+  assert.equal(clientKey('::ffff:1.2.3.4'), '1.2.3.4');
+  assert.equal(clientKey('::ffff:102:304'), '1.2.3.4');
+  assert.equal(clientKey('1.2.3.4'), '1.2.3.4');
+  assert.equal(clientKey('2001:db8:1:2:aaaa:bbbb:cccc:dddd'), clientKey('2001:db8:1:2::1'));
+  assert.equal(clientKey('2001:DB8:1:2::1%eth0'), clientKey('2001:db8:1:2:0:0:0:9'));
+  assert.notEqual(clientKey('2001:db8:1:2::1'), clientKey('2001:db8:1:3::1'));
+  assert.equal(clientKey('::1'), clientKey('0:0:0:0:5::2'));
+  assert.equal(clientKey(undefined), 'unknown');
+});
+
+test('IPv6 and IPv4-mapped clients share limiter buckets', async () => {
+  const hits = [];
+  const limiter = { check: (k) => { hits.push(k); return { allowed: true }; } };
+  const { createRouter } = require('../src/router');
+  const handler = createRouter({ ...(await bootDeps()), limiter });
+  for (const addr of ['::ffff:9.9.9.9', '2001:db8::1', '2001:db8::2']) {
+    const res = { headersSent: false, writableEnded: false, writeHead() {}, end() {}, setHeader() {}, on() {} };
+    await handler({ url: '/hello', method: 'GET', headers: {}, socket: { remoteAddress: addr }, resume() {} }, res);
+  }
+  assert.equal(hits[0], '9.9.9.9');
+  assert.equal(hits[1], hits[2]);
+});
+
+async function bootDeps() {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ho-d-')), 'd.json');
+  return { store: createStore(file, undefined, () => {}), voteLimiter: createRateLimiter({}), signer: createSigner('unit') };
+}
+
+test('cache-control no-store on /api/* only', async () => {
+  const s = await boot();
+  try {
+    assert.equal((await s.req('GET', '/api/catalogue')).headers['cache-control'], 'no-store');
+    assert.equal((await s.req('GET', '/api/certificates/nope')).headers['cache-control'], 'no-store');
+    assert.equal((await s.req('GET', '/healthz')).headers['cache-control'], undefined);
+    assert.equal((await s.req('GET', '/')).headers['cache-control'], undefined);
+  } finally { await s.close(); }
+});
+
+test('readBody gives up when the client closes mid-body', async () => {
+  const s = await boot();
+  try {
+    const net = require('node:net');
+    const sock = net.connect(s.port, '127.0.0.1');
+    await new Promise((r) => sock.on('connect', r));
+    sock.write('POST /hello HTTP/1.1\r\nhost: x\r\ncontent-length: 50\r\ncontent-type: application/json\r\n\r\n{"na');
+    await new Promise((r) => setTimeout(r, 50));
+    sock.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal((await s.req('GET', '/healthz')).status, 200);
+  } finally { await s.close(); }
+});
+
+test('vote: only a persist failure maps to 500 could not save', async () => {
+  const bad = { vote() { throw new TypeError('boom'); }, votes: () => new Map(), getCertificate: () => null };
+  const s = await boot({ store: bad });
+  try {
+    const r = await s.req('POST', '/api/battle/vote', { body: JSON.stringify({ choice: 'en.formal' }) });
+    assert.equal(r.status, 500);
+    assert.equal(r.json.error, 'internal error');
+  } finally { await s.close(); }
+  const { PersistError } = require('../src/store');
+  const bad2 = { vote() { throw new PersistError(new Error('x')); }, votes: () => new Map(), getCertificate: () => null };
+  const s2 = await boot({ store: bad2 });
+  try {
+    const r = await s2.req('POST', '/api/battle/vote', { body: JSON.stringify({ choice: 'en.formal' }) });
+    assert.equal(r.json.error, 'could not save');
+  } finally { await s2.close(); }
+});

@@ -54,3 +54,30 @@ test('script is syntactically valid', () => {
   const body = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   assert.doesNotThrow(() => new Function(body));
 });
+
+test('control borders use a dedicated high-contrast --ctl-line token in both schemes', () => {
+  assert.match(html, /--ctl-line:#767676/);
+  assert.match(html, /prefers-color-scheme:dark\)\{:root\{[^}]*--ctl-line:#8a8a8a/);
+  assert.match(html, /border:1px solid var\(--ctl-line\)/);
+  assert.match(html, /color-scheme:light dark/);
+});
+
+test('submit buttons use aria-disabled instead of the disabled attribute', () => {
+  assert.match(html, /button\[aria-disabled=true\]/);
+  assert.ok(!/\.disabled\s*=/.test(html));
+  assert.match(html, /isBusyBtn\(sayBtn\)/);
+  assert.match(html, /isBusyBtn\(vBtn\)/);
+});
+
+test('shared error helpers, repeated-status re-announce and vote error association', () => {
+  assert.match(html, /function errorText\(res/);
+  assert.match(html, /function retrySeconds\(res/);
+  assert.match(html, /statusEl\.textContent = ''/);
+  assert.match(html, /aria-describedby', 'vote-error'/);
+  assert.ok(!/aria-busy/.test(html));
+  assert.match(html, /vIn\.setAttribute\('aria-invalid', 'true'\)/);
+});
+
+test('route handler ignores query-only hash changes', () => {
+  assert.match(html, /sig === lastSig/);
+});
