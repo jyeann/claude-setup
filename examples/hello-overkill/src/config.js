@@ -17,6 +17,30 @@ function loadConfig(env = process.env, warn = (m) => process.stderr.write(`${m}\
     if (/^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 100000) rateLimit = Number(raw);
     else warn('invalid HELLO_RATE_LIMIT, using 10');
   }
+  const limitEnv = (name, fallback) => {
+    if (env[name] === undefined) return fallback;
+    const raw = env[name];
+    if (/^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 100000) return Number(raw);
+    warn(`invalid ${name}, using ${fallback}`);
+    return fallback;
+  };
+  const readLimit = limitEnv('HELLO_READ_LIMIT', 120);
+  const fedLimit = limitEnv('HELLO_FED_LIMIT', 10);
+  const peers = typeof env.HELLO_PEERS === 'string' ? env.HELLO_PEERS : '';
+  const allowPrivatePeers = env.HELLO_PEERS_ALLOW_PRIVATE === '1';
+  const slaToken = env.HELLO_SLA_TOKEN ? env.HELLO_SLA_TOKEN : undefined;
+  const timeMachineStreaks = env.HELLO_TIME_MACHINE_STREAKS !== '0';
+  let streamHeartbeatMs = 15000;
+  if (env.HELLO_STREAM_HEARTBEAT_MS !== undefined) {
+    const raw = env.HELLO_STREAM_HEARTBEAT_MS;
+    if (/^\d+$/.test(raw) && Number(raw) >= 50 && Number(raw) <= 60000) streamHeartbeatMs = Number(raw);
+    else warn('invalid HELLO_STREAM_HEARTBEAT_MS, using 15000');
+  }
+  let chaosSeed;
+  if (env.HELLO_CHAOS_SEED !== undefined && env.HELLO_CHAOS_SEED !== '') {
+    if (/^\d{1,10}$/.test(env.HELLO_CHAOS_SEED)) chaosSeed = Number(env.HELLO_CHAOS_SEED);
+    else warn('invalid HELLO_CHAOS_SEED, ignoring');
+  }
   let signingSecret = env.HELLO_SIGNING_SECRET;
   let secretIsDev = false;
   if (env.NODE_ENV === 'production' && (typeof signingSecret !== 'string' || signingSecret.length < 32)) {
@@ -27,7 +51,7 @@ function loadConfig(env = process.env, warn = (m) => process.stderr.write(`${m}\
     secretIsDev = true;
     warn(SECRET_WARNING);
   }
-  return { port, dataFile, rateLimit, signingSecret, secretIsDev };
+  return { port, dataFile, rateLimit, signingSecret, secretIsDev, peers, allowPrivatePeers, readLimit, fedLimit, slaToken, timeMachineStreaks, chaosSeed, streamHeartbeatMs };
 }
 
 module.exports = { loadConfig, SECRET_WARNING };

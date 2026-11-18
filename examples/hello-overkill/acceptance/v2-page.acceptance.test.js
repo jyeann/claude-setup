@@ -96,8 +96,7 @@ test('page v2: dynamic text uses textContent only and there are no inline handle
 
 test('page v2: federation peers and greetings are never rendered as links', () => withServer(async (s) => {
   const { text } = await getPage(s);
-  assert.ok(!/\.href\s*=/.test(text.replace(/location\.hash|#\/[a-z-]+/g, '')) || true);
-  assert.ok(!/setAttribute\(\s*['"]href['"]\s*,\s*(?!['"]#)/.test(text), 'href only set to hash routes');
+  assert.ok(!/setAttribute\(\s*['"]href['"]\s*,[ \t]*(?![ \t]|['"]#)/.test(text), 'href only set to hash routes');
 }));
 
 test('page v2: security headers are unchanged on the page', () => withServer(async (s) => {

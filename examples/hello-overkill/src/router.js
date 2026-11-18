@@ -2,8 +2,16 @@
 const { createHello, CORE_BODY } = require('./hello');
 const { decideChaos } = require('./chaos');
 const { securityHeaders } = require('./security');
-const { LANGUAGES, TONES } = require('./greetings');
-const { validateVerifyBody, validateVote } = require('./validation');
+const crypto = require('node:crypto');
+const { validateVerifyBody, validateVote, validateName, normalizeName } = require('./validation');
+const { LANGUAGES, TONES, render, isLanguage, isTone } = require('./greetings');
+const weather = require('./weather');
+const timeMachine = require('./time-machine');
+const haiku = require('./haiku');
+const { createHub } = require('./stream');
+const { createSla, withSla } = require('./sla');
+const { createFederation } = require('./federation');
+const { createRateLimiter } = require('./rate-limiter');
 const { pickPair, leaderboard } = require('./battle');
 const page = require('./page');
 const { PersistError } = require('./store');
@@ -36,8 +44,35 @@ function clientKey(addr) {
 const CERT_ID = /^[a-f0-9]{16}$/;
 
 // Builds the request handler: (req, res) => Promise<void>. Never rejects.
-function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos, now = Date.now, random = Math.random }) {
+function createRouter({
+  store, limiter, voteLimiter, signer, chaos = decideChaos, now = Date.now, random = Math.random,
+  hub = createHub({ now }),
+  sla = createSla({ now }),
+  federation = createFederation({ peers: [], fetchPeer: async () => { throw new Error('no peers'); }, now }),
+  readLimiter = createRateLimiter({ limit: 120, windowMs: 60000 }),
+  fedLimiter = createRateLimiter({ limit: 10, windowMs: 60000 }),
+  slaToken,
+  timeMachineStreaks = true,
+}) {
   const hello = createHello({ store, signer, now });
+  const THEMES = Object.keys(haiku.BANKS.themes);
+
+  function bearerOk(req) {
+    const m = /^Bearer (.+)$/.exec(String(req.headers.authorization || ''));
+    if (!m) return false;
+    const a = crypto.createHash('sha256').update(m[1]).digest();
+    const b = crypto.createHash('sha256').update(String(slaToken)).digest();
+    return crypto.timingSafeEqual(a, b);
+  }
+
+  // Validates optional language/tone query params; returns { language, tone } or { error }.
+  function langTone(query) {
+    const language = query.has('language') ? query.get('language') : 'en';
+    const tone = query.has('tone') ? query.get('tone') : 'formal';
+    if (!isLanguage(language)) return { error: 'unknown language' };
+    if (!isTone(tone)) return { error: 'unknown tone' };
+    return { language, tone };
+  }
 
   function send(res, status, text, type = JSON_TYPE, extra = {}) {
     if (res.headersSent || res.writableEnded) return;
@@ -93,8 +128,18 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
     return true;
   }
 
+  // Fire-and-forget: a failing hub never changes the hello response.
+  function publishHello(text) {
+    try {
+      if (text === CORE_BODY) { hub.publish({ kind: 'core' }); return; }
+      const o = JSON.parse(text);
+      hub.publish({ language: o.language, tone: o.tone, visit: o.visit, streak: o.streak });
+    } catch { /* ignore */ }
+  }
+
   function sendHello(res, parsed) {
     const out = hello.handle(parsed);
+    if (out.status === 200) publishHello(out.text);
     send(res, out.status, out.text);
   }
 
@@ -181,10 +226,111 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
       if (only('GET')) json(res, 200, { leaderboard: leaderboard(store.votes()) });
       return undefined;
     }
+    if (path === '/api/weather') return weatherRoute(req, res, query, only);
+    if (path === '/api/stream') {
+      if (!only('GET')) return undefined;
+      const r = hub.subscribe(res, { ip: clientKey(req.socket.remoteAddress), lastEventId: req.headers['last-event-id'], headers: SEC });
+      if (r === 'ok') return undefined;
+      return err(res, 503, 'too many streams', { 'retry-after': '5' });
+    }
+    if (path === '/api/sla') {
+      if (!only('GET')) return undefined;
+      if (limited(res, readLimiter, req)) return undefined;
+      if (slaToken && !bearerOk(req)) return err(res, 401, 'unauthorized', { 'www-authenticate': 'Bearer' });
+      return json(res, 200, sla.snapshot({ streamsOpen: hub.size() }));
+    }
+    if (path === '/api/time-machine') return timeMachineRoute(req, res, query, only);
+    if (path === '/api/haiku') return haikuRoute(req, res, only);
+    if (path === '/api/federation') {
+      if (!only('GET')) return undefined;
+      if (limited(res, readLimiter, req)) return undefined;
+      return json(res, 200, await federation.health());
+    }
+    if (path === '/api/federation/hello') {
+      if (!only('GET')) return undefined;
+      if (limited(res, fedLimiter, req)) return undefined;
+      const nameErr = validateName(query.has('name') ? query.get('name') : undefined);
+      if (nameErr) return err(res, 400, nameErr);
+      const lt = langTone(query);
+      if (lt.error) return err(res, 400, lt.error);
+      return json(res, 200, await federation.hello({ name: normalizeName(query.get('name')), language: lt.language, tone: lt.tone }));
+    }
     return notFound(res);
   }
 
-  return async function handler(req, res) {
+  function weatherRoute(req, res, query, only) {
+    if (!only('GET')) return undefined;
+    if (limited(res, readLimiter, req)) return undefined;
+    const p = weather.normalizePlace(query.has('place') ? query.get('place') : undefined);
+    if (!p) return err(res, 400, 'place must be 1-40 characters');
+    const today = weather.utcDate(now());
+    const date = query.has('date') ? query.get('date') : today;
+    const lo = weather.utcDate(Date.parse(`${today}T00:00:00Z`) - 86400000);
+    const hi = weather.utcDate(Date.parse(`${today}T00:00:00Z`) + 86400000);
+    const ms = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) : NaN;
+    const real = Number.isFinite(ms) && weather.utcDate(ms) === date;
+    if (!real || date < lo || date > hi) return err(res, 400, 'date out of range');
+    let name;
+    if (query.has('name')) {
+      const e = validateName(query.get('name'));
+      if (e) return err(res, 400, e);
+      name = normalizeName(query.get('name'));
+    }
+    const lt = langTone(query);
+    if (lt.error) return err(res, 400, lt.error);
+    const f = weather.forecast({ date, place: p.place });
+    const greeting = weather.weatherGreeting({ forecast: f, greeting: render(lt.language, lt.tone, name === undefined ? 'World' : name) });
+    return json(res, 200, {
+      date: f.date, place: f.place, seed: f.seed, condition: f.condition, tempC: f.tempC, windKph: f.windKph,
+      chanceOfWarmRegards: f.chanceOfWarmRegards, warmthIndex: f.warmthIndex, forecast: f.forecast, greeting, simulated: true,
+    });
+  }
+
+  function timeMachineRoute(req, res, query, only) {
+    if (!only('GET')) return undefined;
+    if (limited(res, readLimiter, req)) return undefined;
+    const pd = timeMachine.parseDate(query.has('date') ? query.get('date') : undefined, weather.utcDate(now()));
+    if (pd.error) return err(res, 400, pd.error);
+    let name;
+    if (query.has('name')) {
+      const e = validateName(query.get('name'));
+      if (e) return err(res, 400, e);
+      name = normalizeName(query.get('name'));
+    }
+    const lt = langTone(query);
+    if (lt.error) return err(res, 400, lt.error);
+    const era = timeMachine.eraFor(Number(pd.date.slice(0, 4)));
+    const greeting = timeMachine.greetingFor({ date: pd.date, name, language: lt.language, tone: lt.tone });
+    if (!era || greeting === null) return err(res, 500, 'internal error');
+    let streak = null;
+    if (name !== undefined && timeMachineStreaks) {
+      const s = timeMachine.streakOn({ visitor: store.peekVisitor(name), date: pd.date });
+      streak = { name, status: s.status, dayOfStreak: s.dayOfStreak, streakLength: s.streakLength };
+    }
+    return json(res, 200, { date: pd.date, era: era.name, greeting, language: lt.language, tone: lt.tone, streak });
+  }
+
+  async function haikuRoute(req, res, only) {
+    if (!only('POST')) return undefined;
+    if (limited(res, readLimiter, req)) return undefined;
+    const buf = await readBody(req, res);
+    if (buf === null) return undefined;
+    const body = parse(buf);
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) return err(res, 400, 'name is required');
+    const nameErr = validateName(body.name);
+    if (nameErr) return err(res, 400, nameErr);
+    const theme = body.theme === undefined ? 'morning' : body.theme;
+    if (typeof theme !== 'string' || !THEMES.includes(theme)) return err(res, 400, 'unknown theme');
+    const syl = body.syllables;
+    if (syl !== undefined && !(Number.isInteger(syl) && syl >= 1 && syl <= 6)) return err(res, 400, 'syllables must be an integer 1-6');
+    const out = haiku.makeHaiku({ name: normalizeName(body.name), theme, syllables: syl });
+    if (out === null) return json(res, 422, { error: 'name cannot be scanned into a haiku', hint: 'try the syllables field or a shorter name' });
+    const ok = out && Array.isArray(out.haiku) && out.haiku.length === 3 && out.haiku.every((l) => typeof l === 'string' && l.length > 0);
+    if (!ok) return err(res, 500, 'internal error');
+    return json(res, 200, { name: out.name, theme: out.theme, haiku: out.haiku, syllables: out.syllables, verified: out.verified, nameSyllables: out.nameSyllables, limit: out.limit });
+  }
+
+  async function routerHandler(req, res) {
     try {
       if ((req.url || '').startsWith('/api/')) res.setHeader('cache-control', 'no-store');
       await dispatch(req, res);
@@ -192,7 +338,11 @@ function createRouter({ store, limiter, voteLimiter, signer, chaos = decideChaos
       if (!res.headersSent) err(res, 500, 'internal error');
       else res.destroy();
     }
-  };
+  }
+
+  const measured = withSla(routerHandler, sla);
+  // Bare response stand-ins without an event emitter API skip latency recording.
+  return (req, res) => (typeof res.once === 'function' ? measured(req, res) : routerHandler(req, res));
 }
 
 module.exports = { createRouter, clientKey, MAX_BODY };

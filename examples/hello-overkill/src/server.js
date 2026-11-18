@@ -5,6 +5,15 @@ const { createStore } = require('./store');
 const { createRateLimiter } = require('./rate-limiter');
 const { createSigner } = require('./certificates');
 const { createRouter } = require('./router');
+const { createHub } = require('./stream');
+const { createSla } = require('./sla');
+const { createFederation, parsePeers, defaultFetchPeer } = require('./federation');
+const { mulberry32 } = require('./weather');
+
+// A closed pipe (`node src/server.js | head`) must not take the server down.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (e) => { if (e.code !== 'EPIPE') throw e; });
+}
 
 let config;
 try {
@@ -22,7 +31,21 @@ try {
   process.exit(1);
 }
 
+const warn = (m) => process.stderr.write(`${m}\n`);
+const peers = parsePeers(config.peers, { allowPrivate: config.allowPrivatePeers, warn });
+const hub = createHub({ heartbeatMs: config.streamHeartbeatMs });
+const sla = createSla();
+const federation = createFederation({ peers, fetchPeer: defaultFetchPeer({ allowPrivate: config.allowPrivatePeers }) });
+
 const handler = createRouter({
+  hub,
+  sla,
+  federation,
+  readLimiter: createRateLimiter({ limit: config.readLimit, windowMs: 60000 }),
+  fedLimiter: createRateLimiter({ limit: config.fedLimit, windowMs: 60000 }),
+  slaToken: config.slaToken,
+  timeMachineStreaks: config.timeMachineStreaks,
+  ...(config.chaosSeed === undefined ? {} : { random: mulberry32(config.chaosSeed) }),
   store,
   limiter: createRateLimiter({ limit: config.rateLimit, windowMs: 60000 }),
   voteLimiter: createRateLimiter({ limit: 60, windowMs: 60000 }),
@@ -48,6 +71,7 @@ server.listen(config.port, () => {
 
 function shutdown() {
   server.close(() => process.exit(0));
+  hub.closeAll();
   server.closeAllConnections();
 }
 process.on('SIGTERM', shutdown);

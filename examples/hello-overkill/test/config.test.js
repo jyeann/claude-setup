@@ -18,7 +18,10 @@ test('returns defaults and warns about the dev secret when env is empty', () => 
 
 test('uses provided values without warnings', () => {
   const { cfg, w } = run({ PORT: '0', DATA_FILE: '/x/y.json', HELLO_RATE_LIMIT: '1000', HELLO_SIGNING_SECRET: 's3' });
-  assert.deepEqual(cfg, { port: 0, dataFile: '/x/y.json', rateLimit: 1000, signingSecret: 's3', secretIsDev: false });
+  assert.deepEqual(cfg, {
+    port: 0, dataFile: '/x/y.json', rateLimit: 1000, signingSecret: 's3', secretIsDev: false,
+    peers: '', allowPrivatePeers: false, readLimit: 120, fedLimit: 10, slaToken: undefined, timeMachineStreaks: true, chaosSeed: undefined, streamHeartbeatMs: 15000,
+  });
   assert.deepEqual(w, []);
 });
 
@@ -46,4 +49,19 @@ test('production requires a signing secret of at least 32 characters', () => {
   const cfg = loadConfig({ NODE_ENV: 'production', HELLO_SIGNING_SECRET: 'x'.repeat(32) }, () => {});
   assert.equal(cfg.secretIsDev, false);
   assert.equal(loadConfig({ NODE_ENV: 'development' }, () => {}).secretIsDev, true);
+});
+
+test('HELLO_STREAM_HEARTBEAT_MS accepts 50..60000 and falls back to 15000 with a warning otherwise', () => {
+  const base = { HELLO_SIGNING_SECRET: 's' };
+  for (const [v, want] of [['50', 50], ['60000', 60000], ['250', 250]]) {
+    const w = [];
+    assert.equal(loadConfig({ ...base, HELLO_STREAM_HEARTBEAT_MS: v }, (m) => w.push(m)).streamHeartbeatMs, want);
+    assert.deepEqual(w, []);
+  }
+  for (const v of ['49', '60001', 'abc', '1.5', '-5', '']) {
+    const w = [];
+    assert.equal(loadConfig({ ...base, HELLO_STREAM_HEARTBEAT_MS: v }, (m) => w.push(m)).streamHeartbeatMs, 15000, v);
+    assert.deepEqual(w, ['invalid HELLO_STREAM_HEARTBEAT_MS, using 15000']);
+  }
+  assert.equal(loadConfig(base, () => {}).streamHeartbeatMs, 15000);
 });

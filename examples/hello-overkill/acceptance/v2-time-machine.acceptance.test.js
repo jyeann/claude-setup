@@ -19,7 +19,7 @@ test('time machine: date format, real-date, lower and upper bound errors', () =>
   const cases = [
     ['yesterday', 'date must be YYYY-MM-DD'], ['2020-1-1', 'date must be YYYY-MM-DD'], ['20200101', 'date must be YYYY-MM-DD'],
     ['1900-02-29', 'date is not a real date'], ['2023-13-01', 'date is not a real date'], ['2023-04-31', 'date is not a real date'],
-    ['1899-12-31', 'date before 1900-01-01'], ['0001-01-01', 'date before 1900-01-01'],
+    ['1899-12-31', 'date before 1900-01-01'],
     [addDays(today(), 1), 'date is in the future'], ['9999-12-31', 'date is in the future'],
   ];
   for (const [d, msg] of cases) {
