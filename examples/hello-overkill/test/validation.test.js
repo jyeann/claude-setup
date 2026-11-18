@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateHelloBody, validateVerifyBody, validateVote, isPersonalised, normalizeName } = require('../src/validation');
+const { validateName, validateHelloBody, validateVerifyBody, validateVote, isPersonalised, normalizeName } = require('../src/validation');
 
 test('accepts a valid name with defaults and with language/tone', () => {
   assert.equal(validateHelloBody({ name: 'Ada' }), null);
@@ -57,4 +57,23 @@ test('validateVote accepts only catalogue ids', () => {
   assert.equal(validateVote({ choice: '__proto__' }), 'unknown choice');
   assert.equal(validateVote({}), 'choice is required');
   assert.equal(validateVote({ choice: 1 }), 'choice is required');
+});
+
+test('validateName: returns null for good names and the v1 messages for bad ones', () => {
+  assert.equal(validateName('Ada'), null);
+  assert.equal(validateName('  José  '), null);
+  assert.equal(validateName('😀'.repeat(40)), null);
+  assert.equal(validateName(undefined), 'name is required');
+  assert.equal(validateName('   '), 'name is required');
+  assert.equal(validateName(''), 'name is required');
+  for (const bad of [null, 5, {}, [], true]) assert.equal(validateName(bad), 'name must be a string');
+  assert.equal(validateName('x'.repeat(41)), 'name too long (max 40)');
+  assert.equal(validateName('a\u0000b'), 'name has invalid characters');
+  assert.equal(validateName('a\u200Bb'), 'name has invalid characters');
+});
+
+test('validateName agrees with validateHelloBody on the name rules', () => {
+  for (const name of ['Ada', '', 'x'.repeat(41), 'a\nb', null, 7, ' ']) {
+    assert.equal(validateHelloBody({ name }), validateName(name));
+  }
 });

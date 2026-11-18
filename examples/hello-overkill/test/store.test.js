@@ -180,3 +180,30 @@ test('logs the real outcome when quarantine rename fails', () => {
   assert.match(logs[0], /could not be moved/);
   assert.doesNotMatch(logs[0], /moved to/);
 });
+
+test('peekVisitor returns a copy, matches case/NFC/trim, and never mutates or persists', () => {
+  const file = path.join(dir(), 'd.json');
+  const s = createStore(file, () => T0, quiet);
+  assert.equal(s.peekVisitor('Ada'), null);
+  s.recordHello('Ada', cert(1));
+  const before = fs.readFileSync(file);
+  const statsBefore = s.stats();
+  const v = s.peekVisitor(' ADA ');
+  assert.deepEqual(v, { displayName: 'Ada', visits: 1, streak: 1, firstDay: '2026-01-10', lastDay: '2026-01-10' });
+  v.visits = 999; v.streak = 999;
+  assert.equal(s.peekVisitor('ada').visits, 1);
+  assert.deepEqual(s.recordHello('ada', cert(2)), { visit: 2, streak: 1 });
+  const mid = fs.readFileSync(file);
+  for (let i = 0; i < 5; i += 1) s.peekVisitor('Ada');
+  assert.deepEqual(fs.readFileSync(file), mid);
+  assert.notDeepEqual(before, mid);
+  assert.deepEqual(statsBefore, { visitors: 1, certificates: 1 });
+  assert.deepEqual(s.stats(), { visitors: 1, certificates: 2 });
+});
+
+test('peekVisitor returns null for unknown names and non-strings', () => {
+  const s = createStore(path.join(dir(), 'd.json'), () => T0, quiet);
+  s.recordHello('Ada', cert(1));
+  for (const bad of ['Bob', '', undefined, null, 5, {}]) assert.equal(s.peekVisitor(bad), null);
+  assert.equal(s.peekVisitor('__proto__'), null);
+});

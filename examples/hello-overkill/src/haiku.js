@@ -10,11 +10,12 @@ const EXCEPTIONS = {
 
 // Heuristic English syllable count; 0 means the word has no foldable letters.
 function countSyllables(word) {
+  const accentedE = /\u00e9$/i.test(String(word).normalize('NFC')); // "José": a final accented e is pronounced
   const w = String(word).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z]/g, '');
   if (!w) return 0;
   if (Object.prototype.hasOwnProperty.call(EXCEPTIONS, w)) return EXCEPTIONS[w];
   let n = (w.match(/[aeiouy]+/g) || []).length;
-  if (/e$/.test(w) && !/(le|ee|ye)$/.test(w)) n -= 1;
+  if (/e$/.test(w) && !accentedE && !/(le|ee|ye)$/.test(w)) n -= 1;
   else if (/[^aeiouytd](es|ed)$/.test(w)) n -= 1;
   n += (w.match(/(?<![tscgq])(ia|io|ua|eo)/g) || []).length;
   return Math.max(1, n);
@@ -32,10 +33,10 @@ const BANKS = {
     4: [[1, 'Hi {name}'], [1, 'Hey {name}'], [1, 'Hail {name}']],
   },
   nameLine2: {
-    1: [[6, 'the morning welcomes you, {name}'], [6, 'we gladly greet you, {name}'], [6, 'a warm hello for {name}']],
-    2: [[5, 'we gladly greet you, {name}'], [5, 'a warm hello for {name}'], [5, 'good cheer to you, {name}']],
-    3: [[4, 'we greet you, {name}'], [4, 'a hello for {name}'], [4, 'good cheer, {name}']],
-    4: [[3, 'we greet {name}'], [3, 'cheer for {name}'], [3, 'the day greets {name}']],
+    1: [[6, 'the morning welcomes you, {name}'], [6, 'we gladly greet you now, {name}'], [6, 'a warm hello to you, {name}']],
+    2: [[5, 'we gladly greet you, {name}'], [5, 'a warm hello for {name}'], [5, 'good cheer to you all, {name}']],
+    3: [[4, 'we greet you all, {name}'], [4, 'a hello for {name}'], [4, 'good cheer to you, {name}']],
+    4: [[3, 'we greet you, {name}'], [3, 'cheer for you, {name}'], [3, 'the day greets {name}']],
     5: [[2, 'hello, {name}'], [2, 'we greet {name}'], [2, 'good day, {name}']],
     6: [[1, 'hi {name}'], [1, 'hey {name}'], [1, 'hail {name}']],
   },
@@ -46,7 +47,7 @@ const BANKS = {
     },
     ocean: {
       five: [[5, 'waves fold on the sand'], [5, 'gulls cry over foam'], [5, 'the tide drifts to shore'], [5, 'salt wind on the bay']],
-      seven: [[7, 'slow waves roll across the bay'], [7, 'the tide whispers to the rocks'], [7, 'a white sail leans on the wind'], [7, 'blue water holds the sky']],
+      seven: [[7, 'slow waves roll across the bay'], [7, 'the tide whispers to the rocks'], [7, 'a white sail leans on the wind'], [7, 'deep blue water holds the sky']],
     },
     city: {
       five: [[5, 'lamps glow down the road'], [5, 'trains hum through the night'], [5, 'a busy street breathes'], [5, 'doors open and close']],

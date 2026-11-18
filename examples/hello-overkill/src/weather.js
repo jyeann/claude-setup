@@ -29,9 +29,10 @@ function mulberry32(seed) {
 function normalizePlace(v) {
   if (v === undefined) return { place: 'anywhere', key: 'anywhere' };
   if (typeof v !== 'string') return null;
-  const place = v.normalize('NFC').trim().replace(/\s+/g, ' ');
-  const len = [...place].length;
-  if (len < 1 || len > 40 || /[\p{Cc}\p{Cf}]/u.test(place)) return null;
+  const trimmed = v.normalize('NFC').trim();
+  const len = [...trimmed].length;
+  if (len < 1 || len > 40 || /[\p{Cc}\p{Cf}]/u.test(trimmed)) return null;
+  const place = trimmed.replace(/\s+/g, ' ');
   return { place, key: place.toLowerCase() };
 }
 

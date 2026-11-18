@@ -124,6 +124,12 @@ function createStore(file, now = Date.now, log = (m) => process.stderr.write(`${
     getCertificate(id) { return typeof id === 'string' && ID_RE.test(id) ? certificates.get(id) || null : null; },
     // Increments votes for id and persists; returns the new count. Throws PersistError after rollback on persist failure.
     vote(id) { return transact((undo) => { const n = (votes.get(id) || 0) + 1; put(undo, votes, id, n); return n; }); },
+    // Read-only lookup: a copy of the visitor record or null. Never mutates or persists.
+    peekVisitor(name) {
+      if (typeof name !== 'string') return null;
+      const v = visitors.get(visitorKey(name));
+      return v ? { displayName: v.displayName, visits: v.visits, streak: v.streak, firstDay: v.firstDay, lastDay: v.lastDay } : null;
+    },
     votes: () => new Map(votes),
     stats: () => ({ visitors: visitors.size, certificates: certificates.size }),
   };
