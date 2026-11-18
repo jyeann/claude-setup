@@ -38,6 +38,20 @@ in `.claude/settings.json`), never `--dangerously-skip-permissions`.
 
 Requirements and limits: Node/`node:test` projects (JS only; the mutation run copies `srcDirs`, the test dirs and `mutation.copy` to a temp dir, first proves that copy passes its own tests, and never touches your real files); a child process that is killed by a signal writes no coverage, so servers must handle `SIGTERM` and exit 0 (the gate says so when a file shows 0%); the mutation operator set is small and equivalent mutants make 100% unrealistic, hence a 60% default floor; the sample changes with the source (seeded from it) so the agent cannot memorise it. Not covered: logic placed outside `srcDirs`, TypeScript, and deleting a source file (set `coverage.minSourceFiles`; the git-tracked list is not consulted).
 
+## Held-out tests (anti-overfitting)
+A visible acceptance suite can be read, and a strong model will satisfy it. A **held-out suite** checks the same rules on
+inputs the agent has not seen, so "underspecified" actually bites. Put the tests in a directory **outside the project**,
+and start the agent with the path in an environment variable that only the `claude` process carries:
+
+```bash
+HARNESS_HIDDEN_DIR=/abs/path/to/held-out claude -p "..."      # verify.config.json: "... \"$HARNESS_HIDDEN_DIR/*.test.js\""
+```
+While a run is active, shell commands and `Read`/`Grep`/`Glob` calls that name that directory or the variable are blocked
+(`hooks/pre-read.js`, `lib/guards.js`). The held-out tests run inside `verify.js` (and so inside the Stop hook), and their
+failing assertions come back in the verify output; that is the intended feedback channel. They resolve the project from the
+current directory (`path.resolve('src/...')`), so they also run against the mutation copy. See `examples/sheet-engine/`.
+Limits: this stops a good-faith agent from reading the suite, not a determined one, and every failure reveals one expected value.
+
 ## Test
 ```bash
 node --test .claude/harness/test/*.test.js
@@ -48,6 +62,7 @@ node --test .claude/harness/test/*.test.js
 - **Shell guards are heuristic.** `lib/shell.js` is a best-effort parser, not a shell: variable indirection (`X=main; git push origin $X`), decoded payloads, and scripts written then executed get through. Pair with isolation (container/worktree, no prod credentials, network allowlist) and server-side branch protection + required CI.
 - **Known gaps found by review and left open** (documented, not fixed): implicit staging of `.env` via `git add -A`/`commit -a`; `git apply`/`patch`/`tar -C`/`unzip -d`/`find -exec` writes into protected paths; `>|` redirects; `git clean -fdx`, `git branch -D main`; hook-bypass equivalents (`core.hooksPath`, `HUSKY=0`); killing the verifier with `pkill`. A read-only `node -e` that merely mentions a protected path is blocked (false positive, by design). `--force-with-lease` is blocked even on feature branches.
 - **Hooks fail open** on internal crashes (exit 1) so a bug cannot brick a session, but a *corrupt state file* keeps guards on and refuses commits.
+- **Failure output matters as much as the gate.** A live run showed an agent spending about ten attempts reading a verify tail that said only "tests failed (3 failing)". `verify.js` now ends with a "Failing tests" section (names, error, expected/actual), and the Stop hook forwards up to 70 lines / 5000 characters.
 - **Every Stop attempt costs an iteration**, including when the agent stops to ask a human a question; with no human that is wasted budget, so tell the agent not to ask.
 - **No cost cap yet.** Bound spend with the iteration cap and your account/session limits.
 - **No evaluator-score gate yet.** `gan-evaluator` feedback is advisory; only the verify command is enforced.

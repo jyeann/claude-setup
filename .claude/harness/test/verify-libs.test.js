@@ -8,7 +8,7 @@ const { pathToFileURL } = require('node:url');
 const { lineCoverage, collectCoverage } = require('../lib/v8-coverage');
 const { listMutations, applyMutation, selectMutations, maskNonCode } = require('../lib/mutate');
 const { analyzeTestFile } = require('../lib/test-quality');
-const { parseTestSummary } = require('../lib/summary');
+const { parseTestSummary, extractFailures } = require('../lib/summary');
 const { mutationTimeoutMs } = require('../lib/strong-verify');
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'verify-libs-'));
@@ -167,4 +167,35 @@ test('analyzeTestFile does not count comments as src references or assertions', 
   const issues = analyzeTestFile(faked, { srcDirs: ['src'], minAssertions: 3 }).issues.join(' | ');
   assert.match(issues, /never references the source/);
   assert.match(issues, /1 assertion/);
+});
+
+// ---------- failing-test extraction ----------
+const TAP = [
+  'TAP version 13', '# Subtest: adds', 'ok 1 - adds', '  ---', '  duration_ms: 0.4', "  type: 'test'", '  ...',
+  '# Subtest: held-out: negative zero never escapes', 'not ok 2 - held-out: negative zero never escapes', '  ---', '  duration_ms: 1.2', "  type: 'test'",
+  "  location: '/tmp/x.test.js:9:1'", "  failureType: 'testCodeFailure'", '  error: |-', '    Expected values to be strictly deep-equal:', '    -0 !== 0',
+  "  code: 'ERR_ASSERTION'", "  name: 'AssertionError'", '  expected: 0', '  actual: -0', '  stack: |-', '    at TestContext.<anonymous> (/tmp/x.test.js:10:3)', '    at node:internal/foo', '  ...',
+  'not ok 3 - parser survives nesting', '  ---', '  duration_ms: 9', '  error: RangeError', "  error: 'Maximum call stack size exceeded'", '  stack: |-', '    at deep', '  ...',
+  '1..3', '# tests 3', '# pass 1', '# fail 2',
+].join('\n');
+
+test('extractFailures keeps each failing test name with its assertion details and drops noise and stacks', () => {
+  const out = extractFailures(TAP);
+  assert.match(out, /held-out: negative zero never escapes/);
+  assert.match(out, /-0 !== 0/);
+  assert.match(out, /expected: 0/);
+  assert.match(out, /actual: -0/);
+  assert.match(out, /parser survives nesting/);
+  assert.match(out, /Maximum call stack size exceeded/);
+  assert.doesNotMatch(out, /duration_ms|location:|at TestContext|node:internal|# Subtest|adds/);
+});
+
+test('extractFailures is bounded, reports how many were omitted, and returns empty when nothing failed', () => {
+  assert.equal(extractFailures('ok 1 - fine\n# tests 1\n# pass 1\n'), '');
+  const many = Array.from({ length: 30 }, (_, i) => `not ok ${i + 1} - t${i}\n  ---\n  error: 'boom ${i}'\n  ...`).join('\n');
+  const out = extractFailures(many, { maxFailures: 5, maxChars: 4000 });
+  assert.match(out, /t0/);
+  assert.doesNotMatch(out, /t6/);
+  assert.match(out, /25 more failing test/);
+  assert.ok(extractFailures(many, { maxFailures: 30, maxChars: 300 }).length <= 400);
 });

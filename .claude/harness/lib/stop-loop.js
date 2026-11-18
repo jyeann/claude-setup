@@ -1,8 +1,9 @@
 'use strict';
 const crypto = require('node:crypto');
 
-const TAIL_LINES = 40;
-const TAIL_CHARS = 4000;
+const TAIL_LINES = 70;
+const TAIL_CHARS = 5000;
+const TASK_BRIEF_CHARS = 200;
 
 function tailOutput(output, maxLines = TAIL_LINES, maxChars = TAIL_CHARS) {
   const tail = output.split('\n').slice(-maxLines).join('\n');
@@ -19,6 +20,9 @@ function failureSignature(output) {
 }
 
 const finish = (state, patch) => ({ ...state, ...patch, active: false });
+
+// The agent already has the full task; repeating it on every retry just re-bills it.
+const taskBrief = (task) => (task.length > TASK_BRIEF_CHARS ? `${task.slice(0, TASK_BRIEF_CHARS).trim()} ... (the full task is in the file you were given)` : task);
 
 function decideStop(state, result) {
   if (!state.active) return { decision: 'allow', reason: '', nextState: state };
@@ -50,7 +54,7 @@ function decideStop(state, result) {
   const reason = [
     `Not done: ${why} (iteration ${iteration} of ${state.maxIterations})`,
     `Verify command: ${state.verifyCommand}`,
-    state.task ? `Task: ${state.task}` : '',
+    state.task ? `Task: ${taskBrief(state.task)}` : '',
     'Fix the failures below, then try to finish again. Do not edit the verify command, the acceptance tests, or the harness files.',
     '--- verify output (tail) ---',
     tailOutput(result.output),

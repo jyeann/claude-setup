@@ -87,3 +87,19 @@ test('failureSignature ignores temp paths, uuids and hex ids', () => {
   const b = 'ENOENT /tmp/todo-ZyX987/nested/todos.json id 9d8c7b6a-1111-2222-3333-ba9876543210';
   assert.equal(failureSignature(a), failureSignature(b));
 });
+
+test('a block message carries a short task reminder, not the whole spec, so retries do not re-bill it', () => {
+  const d = decideStop({ ...base, task: `# Spec\n${'long detail '.repeat(500)}` }, fail('AssertionError: expected 201'));
+  assert.equal(d.decision, 'block');
+  assert.ok(d.reason.length < 5000, `reason was ${d.reason.length} chars`);
+  assert.match(d.reason, /Task: # Spec/);
+  assert.match(d.reason, /AssertionError: expected 201/);
+  assert.match(decideStop({ ...base, task: 'short task' }, fail()).reason, /Task: short task\n/);
+});
+
+test('the retry message keeps enough of the verify output for several failing assertions', () => {
+  const lines = Array.from({ length: 60 }, (_, i) => `line ${i} ${'x'.repeat(40)}`).join('\n');
+  const d = decideStop(base, fail(lines));
+  assert.match(d.reason, /line 59/);
+  assert.match(d.reason, /line 10 /);
+});

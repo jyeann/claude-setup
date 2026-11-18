@@ -40,6 +40,12 @@ const CREDENTIAL = /(?:api[_-]?key|secret|token|passw(?:or)?d)\s*[:=]\s*['"]([A-
 const PLACEHOLDER = /example|placeholder|changeme|your[-_]|xxxx|dummy|fake|sample|redacted/i;
 
 const stripDot = (p) => p.replace(/^\.\//, '');
+
+// Held-out tests: the dir lives outside the project and its path is never shown to the agent. While a run is
+// active neither the path nor the env var that carries it may be mentioned, and Read/Grep/Glob may not reach it.
+const HIDDEN_ENV = 'HARNESS_HIDDEN_DIR';
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const mentionsHidden = (text, dir) => text.includes(HIDDEN_ENV) || new RegExp(`${escapeRe(dir)}(?![\\w.-])`).test(text);
 const trimSlash = (p) => (p.length > 1 ? p.replace(/\/+$/, '') : p);
 
 const SECRET_NAMES = ['.env', 'id_rsa', 'id_ed25519', '.npmrc', '.netrc'];
@@ -152,7 +158,6 @@ function activeViolation({ argv, redirects }, matcher) {
   }
   const guardedMsg = 'Guardrail, state and acceptance files are read-only during a harness run.';
   if (redirects.some(matcher.isGuarded)) return guardedMsg;
-  if ((cmd === 'cd' || cmd === 'pushd') && tail[0] && matcher.isGuarded(tail[0])) return guardedMsg;
   if (WRITE_VERBS.has(cmd)) {
     const positional = tail.filter((a) => !a.startsWith('-'));
     const afterT = tail.findIndex((a) => a === '-t') >= 0 ? [tail[tail.findIndex((a) => a === '-t') + 1]] : [];
@@ -175,7 +180,20 @@ const PIPE_TO_SHELL = [
 const RAW_PIPE_TO_SHELL = /\b((ba|z)?sh\s+-c|eval)\s+["']?\$\(\s*(curl|wget)\b/;
 const blankQuotes = (t) => t.replace(/"[^"]*"|'[^']*'/g, '""');
 
+// After `cd <guarded dir>`, relative paths point inside it, so a write-like command in the same line is refused.
+// Read-only exploration (`cd .claude/harness; ls lib`) is fine.
+function writesLike({ argv, redirects }) {
+  const [cmd, sub] = argv;
+  if (redirects.length > 0 || WRITE_VERBS.has(cmd)) return true;
+  if (cmd === 'sed' && argv.some((a) => /^-[a-zA-Z]*i/.test(a) || a === '--in-place')) return true;
+  if (cmd === 'git' && (GIT_WRITE_SUBS.has(sub) || sub === 'checkout' || sub === 'restore')) return true;
+  return INTERPRETERS.has(cmd) && argv.some((a) => EVAL_FLAGS.has(a));
+}
+
 function checkBash(command, ctx = {}) {
+  if (ctx.active && ctx.hiddenDir && mentionsHidden(command, ctx.hiddenDir)) {
+    return deny('Held-out tests are not readable during a run; make the visible tests and spec pass for the right reasons.');
+  }
   const text = stripHeredocs(command);
   if (RAW_PIPE_TO_SHELL.test(text) || PIPE_TO_SHELL.some((re) => re.test(blankQuotes(text)))) return deny('Piping a download into a shell or interpreter is blocked.');
 
@@ -186,12 +204,28 @@ function checkBash(command, ctx = {}) {
   }
   if (ctx.active) {
     const matcher = guardedMatcher(ctx);
+    const cdsIntoGuarded = commands.some((c) => ['cd', 'pushd'].includes(c.argv[0]) && c.argv[1] && matcher.isGuarded(c.argv[1]));
+    if (cdsIntoGuarded && commands.some(writesLike)) {
+      return deny('Guardrail, state and acceptance files are read-only during a harness run.');
+    }
     for (const c of commands) {
       const reason = activeViolation(c, matcher);
       if (reason) return deny(reason);
     }
   }
   return ok;
+}
+
+function checkRead(event, ctx = {}, projectDir = process.cwd()) {
+  if (!ctx.active || !ctx.hiddenDir) return ok;
+  const strings = Object.values(event.tool_input ?? {}).filter((v) => typeof v === 'string');
+  const inside = (p) => {
+    const abs = path.resolve(projectDir, p);
+    return abs === ctx.hiddenDir || abs.startsWith(`${ctx.hiddenDir}${path.sep}`);
+  };
+  return strings.some((v) => mentionsHidden(v, ctx.hiddenDir) || inside(v))
+    ? deny('Held-out tests are not readable during a run.')
+    : ok;
 }
 
 function isGitCommit(command) {
@@ -236,4 +270,4 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;
 }
 
-module.exports = { checkBash, checkWrite, isGitCommit, scanSecrets };
+module.exports = { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets };
