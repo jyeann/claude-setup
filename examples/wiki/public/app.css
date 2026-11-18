@@ -183,6 +183,7 @@ input[aria-invalid="true"] { border: 2px solid var(--danger); }
   .main { padding: 12px 32px 24px; }
   .note-view { margin-top: 56px; } /* the list starts below brand and search; keeps the note top within 40 px of it (QA check 26) */
   .btn { min-height: 32px; }
+  .skip-link { left: auto; right: 8px; } /* keeps the focused link off the New note and Graph buttons */
   .back-link, .tabs { display: none; }
   .app[data-route="home"] .sidebar-heading { display: none; }
   .note-head { flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
