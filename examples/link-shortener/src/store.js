@@ -25,12 +25,15 @@ function createStore(file, now = Date.now) {
   }
   if (text.trim()) {
     let data;
-    try { data = JSON.parse(text); } catch {
-      // Never overwrite a damaged file: keep it aside and start empty.
-      fs.renameSync(file, `${file}.corrupt-${now()}`);
-      console.error(`data file was not valid JSON; moved aside as ${file}.corrupt-${now()}`);
+    try { data = JSON.parse(text); } catch { data = null; }
+    if (Array.isArray(data)) {
+      for (const l of data) if (isLoadable(l)) links.set(l.slug, l);
+    } else {
+      // Never overwrite a damaged or unexpected file: keep it aside and start empty.
+      const aside = `${file}.corrupt-${now()}`;
+      fs.renameSync(file, aside);
+      console.error(`data file was not a JSON array; moved aside as ${aside}`);
     }
-    if (Array.isArray(data)) for (const l of data) if (isLoadable(l)) links.set(l.slug, l);
   }
 
   function persist() {

@@ -61,3 +61,12 @@ test('validateCreate rejects non-object bodies and passes a minimal one', () => 
   assert.equal(typeof validateCreate({ url: 'https://a.test', slug: 'ab' }), 'string');
   assert.equal(typeof validateCreate({ url: 'https://a.test', expiresAt: '2000-01-01T00:00:00Z' }), 'string');
 });
+
+test('validateExpiresAt rejects days that do not exist in their month and accepts real ones', () => {
+  const now = Date.parse('2026-01-01T00:00:00Z');
+  assert.equal(typeof validateExpiresAt('2030-02-31', now), 'string');
+  assert.equal(typeof validateExpiresAt('2030-04-31T10:00:00Z', now), 'string');
+  assert.equal(typeof validateExpiresAt('2030-13-01', now), 'string');
+  assert.equal(validateExpiresAt('2028-02-29', now), null);
+  assert.equal(validateExpiresAt('2030-02-28T10:00:00Z', now), null);
+});

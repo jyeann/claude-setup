@@ -56,7 +56,10 @@ function createRouter({ store, limiter }) {
 
   return async function route(req, res) {
     let pathname;
-    try { pathname = new URL(req.url, 'http://localhost').pathname; } catch { return error(res, 404, 'not found'); }
+    // Take the path from the raw target: new URL() would read "//host/x" as a host and route "/x".
+    const target = String(req.url);
+    if (!target.startsWith('/') || target.startsWith('//')) return error(res, 404, 'not found');
+    try { pathname = new URL(target, 'http://localhost').pathname; } catch { return error(res, 404, 'not found'); }
     const method = req.method;
     const allow = (...methods) => methods.includes(method);
 

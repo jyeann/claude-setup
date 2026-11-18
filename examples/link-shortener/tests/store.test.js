@@ -123,3 +123,11 @@ test('memory is rolled back when the write fails, for create, remove and click',
   assert.throws(() => store.remove('keep'));
   assert.equal(store.get('keep').slug, 'keep');
 });
+
+test('a data file holding valid JSON that is not an array is moved aside, not overwritten', () => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'store-obj-')), 'links.json');
+  fs.writeFileSync(file, '{"links": []}');
+  const store = createStore(file, () => 222);
+  assert.deepEqual(store.list(), []);
+  assert.equal(fs.readFileSync(`${file}.corrupt-222`, 'utf8'), '{"links": []}');
+});

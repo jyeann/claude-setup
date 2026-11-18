@@ -20,6 +20,7 @@ module.exports = `<!doctype html>
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
   caption { text-align: left; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   th { white-space: nowrap; overflow-wrap: normal; }
   td:first-child { overflow-wrap: normal; word-break: normal; min-width: 7ch; }
   td.num, th.num { text-align: right; }

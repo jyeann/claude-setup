@@ -26,6 +26,10 @@ function validateExpiresAt(value, now = Date.now()) {
   if (typeof value !== 'string' || !ISO_RE.test(value)) return 'expiresAt must be an ISO-8601 date string';
   const t = Date.parse(value);
   if (Number.isNaN(t)) return 'expiresAt must be a valid date';
+  // Date.parse rolls 2030-02-31 over to March 3; reject any day that does not exist in its month.
+  const [y, m, d] = value.slice(0, 10).split('-').map(Number);
+  const check = new Date(Date.UTC(y, m - 1, d));
+  if (check.getUTCFullYear() !== y || check.getUTCMonth() !== m - 1 || check.getUTCDate() !== d) return 'expiresAt must be a real calendar date';
   if (t <= now) return 'expiresAt must be in the future';
   return null;
 }
