@@ -9,6 +9,7 @@ Parse from $ARGUMENTS:
 4. `--stall N` - identical-failure repeats before halting (default 3)
 5. `--protect a/,b/` - extra read-only paths, e.g. the acceptance tests
 6. `--no-commit-gate` - allow checkpoint commits while verify is failing (default: commits are refused until verify is green)
+7. `--no-checkpoint` / `--checkpoint-push` - WIP snapshots to `refs/harness/wip/<branch>` run on every Stop attempt by default (no branch commits); `--checkpoint-push` also pushes that ref to origin so a lost sandbox is recoverable (`harness.js restore`)
 
 ## Preconditions (stop and tell the human if any fails)
 - You are on a feature branch, not main/master.
@@ -17,7 +18,7 @@ Parse from $ARGUMENTS:
 
 ## Start the run
 ```bash
-node .claude/harness/bin/harness.js init --verify "<cmd>" --task-file <spec> --protect <paths> --max N --stall N [--no-commit-gate]
+node .claude/harness/bin/harness.js init --verify "<cmd>" --task-file <spec> --protect <paths> --max N --stall N [--no-commit-gate] [--checkpoint-push]
 ```
 From this point the Stop hook re-runs the verify command every time you try to finish and sends you back to work
 until it passes, the cap is hit, or the same failure repeats `--stall` times. By default commits are refused while verify fails, so keep work-in-progress in the working tree and commit when green (or start with `--no-commit-gate` if you want checkpoint commits).

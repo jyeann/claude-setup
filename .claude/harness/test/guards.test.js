@@ -138,3 +138,7 @@ test('checkWrite does not treat look-alike directories as protected', () => {
   const edit = { tool_name: 'Edit', tool_input: { file_path: '/p/acceptance-notes/a.md', new_string: 'x' } };
   assert.equal(checkWrite(edit, live, '/p').block, false);
 });
+
+test('the agent cannot run harness restore during an active run', () => {
+  assert.equal(checkBash('node .claude/harness/bin/harness.js restore', live).block, true);
+});

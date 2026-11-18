@@ -147,8 +147,8 @@ function activeViolation({ argv, redirects }, matcher) {
   const [cmd, sub] = argv;
   const tail = argv.slice(1);
   const harnessIdx = argv.findIndex((a) => a.endsWith('harness.js'));
-  if (harnessIdx >= 0 && ['off', 'init'].includes(argv[harnessIdx + 1])) {
-    return 'The agent cannot stop or re-initialise the harness run; a human does that.';
+  if (harnessIdx >= 0 && ['off', 'init', 'restore'].includes(argv[harnessIdx + 1])) {
+    return 'The agent cannot stop, re-initialise or restore over the harness run; a human does that.';
   }
   const guardedMsg = 'Guardrail, state and acceptance files are read-only during a harness run.';
   if (redirects.some(matcher.isGuarded)) return guardedMsg;

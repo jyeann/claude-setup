@@ -87,3 +87,20 @@ test('failureSignature ignores temp paths, uuids and hex ids', () => {
   const b = 'ENOENT /tmp/todo-ZyX987/nested/todos.json id 9d8c7b6a-1111-2222-3333-ba9876543210';
   assert.equal(failureSignature(a), failureSignature(b));
 });
+
+test('sends the full task only on the first block, then a short pointer', () => {
+  const withTask = { ...base, task: 'BUILD THE WHOLE TODO API SPEC', taskFile: 'spec.md' };
+  const first = decideStop(withTask, fail('error A'));
+  assert.match(first.reason, /BUILD THE WHOLE TODO API SPEC/);
+  const second = decideStop(first.nextState, fail('error B'));
+  assert.doesNotMatch(second.reason, /BUILD THE WHOLE TODO API SPEC/);
+  assert.match(second.reason, /spec\.md/);
+  assert.match(second.reason, /error B/);
+});
+
+test('later blocks still point at the task when it was given inline (no file)', () => {
+  const first = decideStop({ ...base, task: 'inline task text' }, fail('error A'));
+  const second = decideStop(first.nextState, fail('error B'));
+  assert.doesNotMatch(second.reason, /inline task text/);
+  assert.match(second.reason, /first message of this run/i);
+});

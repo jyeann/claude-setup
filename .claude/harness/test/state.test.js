@@ -59,3 +59,14 @@ test('buildState normalises protected paths and defaults the commit gate on', ()
   assert.equal(s.commitGate, true);
   assert.equal(buildState({ verifyCommand: 'true', commitGate: false }).commitGate, false);
 });
+
+test('buildState records the task file and the checkpoint settings', () => {
+  const s = buildState({ verifyCommand: 'true', task: 't', taskFile: 'spec.md', checkpointPush: true });
+  assert.equal(s.taskFile, 'spec.md');
+  assert.equal(s.checkpoint, true);
+  assert.equal(s.checkpointPush, true);
+  const d = buildState({ verifyCommand: 'true' });
+  assert.equal(d.checkpoint, true);
+  assert.equal(d.checkpointPush, false);
+  assert.equal(buildState({ verifyCommand: 'true', checkpoint: false }).checkpoint, false);
+});

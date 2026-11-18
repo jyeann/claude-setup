@@ -128,3 +128,33 @@ test('a bare git push on main is refused using the real current branch', () => {
   spawnSync('git', ['checkout', '-q', '-b', 'claude/feat'], { cwd: dir });
   assert.equal(bash(dir, 'git push').status, 0);
 });
+
+const { execFileSync } = require('node:child_process');
+const gitIn = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+test('stop hook checkpoints uncommitted work on every blocked stop while the commit gate stays on', () => {
+  const dir = project();
+  gitIn(dir, 'init', '-q', '-b', 'feature');
+  gitIn(dir, 'config', 'user.email', 't@example.com');
+  gitIn(dir, 'config', 'user.name', 't');
+  fs.writeFileSync(path.join(dir, 'seed.txt'), 's');
+  gitIn(dir, 'add', '.');
+  gitIn(dir, 'commit', '-qm', 'init');
+  cli(dir, 'init', '--verify', 'exit 1', '--task', 'build it');
+  fs.writeFileSync(path.join(dir, 'wip.txt'), 'half done');
+
+  const r = stop(dir);
+  assert.match(r.stdout, /"decision":"block"/);
+  assert.equal(gitIn(dir, 'show', 'refs/harness/wip/feature:wip.txt'), 'half done');
+  assert.equal(gitIn(dir, 'log', '--oneline').split('\n').length, 1, 'no commit on the branch');
+  assert.equal(bash(dir, 'git commit -m "wip"').status, 2, 'commit gate still refuses');
+});
+
+test('stop hook does not checkpoint when --no-checkpoint is set', () => {
+  const dir = project();
+  gitIn(dir, 'init', '-q', '-b', 'feature');
+  fs.writeFileSync(path.join(dir, 'x.txt'), 'x');
+  cli(dir, 'init', '--verify', 'exit 1', '--no-checkpoint');
+  stop(dir);
+  assert.equal(gitIn(dir, 'for-each-ref', 'refs/harness/'), '');
+});

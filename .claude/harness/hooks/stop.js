@@ -4,6 +4,15 @@ const { readEvent, projectDirOf, failOpen } = require('../lib/hook-io');
 const { readState, writeState } = require('../lib/state');
 const { runVerify } = require('../lib/verify');
 const { decideStop } = require('../lib/stop-loop');
+const { writeCheckpoint } = require('../lib/checkpoint');
+
+// Best effort: a checkpoint problem must never change the loop's decision.
+function checkpoint(projectDir, state, nextState) {
+  if (state.checkpoint === false) return;
+  const r = writeCheckpoint(projectDir, { message: `harness wip: ${nextState.status}, iteration ${state.iteration}`, push: state.checkpointPush === true });
+  if (r.status === 'created') process.stderr.write(`[harness] checkpoint ${r.commit.slice(0, 8)} -> ${r.ref}${state.checkpointPush ? (r.pushed ? ' (pushed)' : ' (push failed)') : ''}\n`);
+  else if (r.status === 'error') process.stderr.write(`[harness] checkpoint failed: ${r.reason}\n`);
+}
 
 async function main() {
   const projectDir = projectDirOf(readEvent());
@@ -13,6 +22,7 @@ async function main() {
   const result = await runVerify(state.verifyCommand, { cwd: projectDir });
   const { decision, reason, nextState } = decideStop(state, result);
   writeState(projectDir, nextState);
+  checkpoint(projectDir, state, nextState);
 
   if (decision === 'block') process.stdout.write(JSON.stringify({ decision: 'block', reason }));
   else process.stderr.write(`[harness] run ended: ${nextState.status}. ${reason}\n`);

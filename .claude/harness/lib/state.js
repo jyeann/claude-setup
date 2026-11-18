@@ -37,7 +37,7 @@ function normaliseProtected(entries, projectDir) {
   });
 }
 
-function buildState({ verifyCommand, task = '', maxIterations, stallLimit, protectedPaths = [], commitGate = true, projectDir }) {
+function buildState({ verifyCommand, task = '', taskFile = '', checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, projectDir }) {
   if (!verifyCommand || !verifyCommand.trim()) {
     throw new Error('A non-empty verify command is required: it is the objective definition of done.');
   }
@@ -45,6 +45,9 @@ function buildState({ verifyCommand, task = '', maxIterations, stallLimit, prote
     active: true,
     status: 'running',
     task,
+    taskFile,
+    checkpoint,
+    checkpointPush,
     verifyCommand: verifyCommand.trim(),
     maxIterations: maxIterations ?? DEFAULTS.maxIterations,
     stallLimit: stallLimit ?? DEFAULTS.stallLimit,

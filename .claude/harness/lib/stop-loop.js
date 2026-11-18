@@ -46,11 +46,17 @@ function decideStop(state, result) {
 
   const iteration = state.iteration + 1;
   const nextState = { ...state, iteration, history, stallCount, lastSignature: signature };
+  // The full spec goes in once; repeating it on every iteration only grows the context.
+  const taskLine = state.task
+    ? (state.iteration === 0
+      ? `Task: ${state.task}`
+      : `Task: unchanged since the first message of this run${state.taskFile ? ` (spec: ${state.taskFile})` : ''}.`)
+    : '';
   const why = result.timedOut ? 'The verify command timed out.' : 'The verify command failed.';
   const reason = [
     `Not done: ${why} (iteration ${iteration} of ${state.maxIterations})`,
     `Verify command: ${state.verifyCommand}`,
-    state.task ? `Task: ${state.task}` : '',
+    taskLine,
     'Fix the failures below, then try to finish again. Do not edit the verify command, the acceptance tests, or the harness files.',
     '--- verify output (tail) ---',
     tailOutput(result.output),
