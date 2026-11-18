@@ -14,10 +14,11 @@
 <main id="main">
 <h1 id="export-title" tabindex="-1">Export markdown</h1>
 <p id="export-hint">Preview of what will be copied or downloaded.</p>
+<p id="export-notice" data-testid="export-notice" class="banner banner-warn">Card text is exported exactly as typed, including any HTML or links. Paste it only into a tool that sanitises HTML.</p>
 <p id="loading" data-testid="loading" role="status">Preparing the export...</p>
 <p id="export-error" class="banner banner-danger" role="alert" hidden>Could not prepare the export. Go back to the board and try again.</p>
 <div id="export-actions" class="toolbar" hidden>
-<button id="copy-markdown" data-testid="copy-markdown" class="btn btn-primary" type="button">Copy to clipboard</button>
+<button id="copy-markdown" data-testid="copy-markdown" class="btn btn-primary" type="button" aria-label="Copy markdown">Copy to clipboard</button>
 <a id="download-markdown" data-testid="download-markdown" class="btn" download="retro.md">Download .md</a>
 </div>
 <p id="copy-status" class="hint" hidden></p>

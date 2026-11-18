@@ -68,7 +68,7 @@ test('poll delay is 3 s when healthy and backs off 3, 6, 10 s after failures', (
 
 test('vote button label names the card and trims to 40 characters', () => {
   assert.equal(L.voteButtonLabel(false, 'Pair more'), 'Vote for: Pair more');
-  assert.equal(L.voteButtonLabel(true, 'a'.repeat(60)), `Remove your vote from: ${'a'.repeat(40)}`);
+  assert.equal(L.voteButtonLabel(true, 'a'.repeat(60)), `Remove vote from: ${'a'.repeat(40)}`);
 });
 
 test('board paths parse participant, facilitator and export routes and reject others', () => {
@@ -85,4 +85,66 @@ test('the server asset loader serves logic.js as JavaScript so the browser can i
   assert.ok(logic, 'logic.js is in the allowlist');
   assert.match(logic.type, /javascript/);
   assert.match(logic.body.toString('utf8'), /export function votesLeftLabel/);
+});
+
+test('vote button names start with the visible text', () => {
+  assert.equal(L.voteButtonLabel(false, 'Pair more'), 'Vote for: Pair more');
+  assert.equal(L.voteButtonLabel(true, 'Pair more'), 'Remove vote from: Pair more');
+});
+
+test('a failed add with an empty textarea puts the text back and says it is still there', () => {
+  const o = L.addFailureOutcome({ status: 0, code: 'network' }, 'my idea', '');
+  assert.equal(o.restore, true);
+  assert.equal(o.rescue, false);
+  assert.match(o.message, /Your text is still here/);
+});
+
+test('a failed add never loses the text when the user already typed something new', () => {
+  const o = L.addFailureOutcome({ status: 500, code: 'error' }, 'my idea', 'second thought');
+  assert.equal(o.restore, false);
+  assert.equal(o.rescue, true);
+  assert.doesNotMatch(o.message, /still here/);
+  assert.match(o.message, /kept|shown/i);
+});
+
+test('a whitespace-only textarea counts as empty for restoring', () => {
+  assert.equal(L.addFailureOutcome({ status: 0, code: 'network' }, 'x', '  \n').restore, true);
+});
+
+test('409 board_full shows This board is full. and applies the board', () => {
+  const board = { version: 3 };
+  const o = L.addFailureOutcome({ status: 409, code: 'board_full', board }, 'idea', '');
+  assert.equal(o.message, 'This board is full.');
+  assert.equal(o.applyBoard, board);
+  assert.equal(o.restore, true);
+});
+
+test('board_closed applies the board, shows no error and keeps the text', () => {
+  const board = { closed: true };
+  const o = L.addFailureOutcome({ status: 409, code: 'board_closed', board }, 'idea', 'typed');
+  assert.equal(o.applyBoard, board);
+  assert.equal(o.message, '');
+  assert.equal(o.rescue, true);
+});
+
+test('a text_ validation failure from the server shows the local message or the server message', () => {
+  assert.equal(L.addFailureOutcome({ status: 400, code: 'text_empty', message: 'Server says no' }, 'ok', '').message, 'Server says no');
+  assert.match(L.addFailureOutcome({ status: 400, code: 'text_too_long', message: 'm' }, 'a'.repeat(501), '').message, /501 characters/);
+});
+
+test('poll failures: network and HTTP errors are offline, 404 board_not_found is a load error, anything else is a bug', () => {
+  assert.equal(L.pollFailureKind({ status: 0, code: 'network' }), 'offline');
+  assert.equal(L.pollFailureKind({ status: 503, code: 'error' }), 'offline');
+  assert.equal(L.pollFailureKind({ status: 429, code: 'error' }), 'offline');
+  assert.equal(L.pollFailureKind({ status: 404, code: 'board_not_found' }), 'not-found');
+  assert.equal(L.pollFailureKind(new TypeError('x is undefined')), 'bug');
+  assert.equal(L.pollFailureKind(null), 'bug');
+});
+
+test('the share panel starts collapsed on a phone for an existing board, expanded right after creation', () => {
+  assert.equal(L.shareStartsOpen({ stored: null, narrow: true, justCreated: false }), false);
+  assert.equal(L.shareStartsOpen({ stored: null, narrow: true, justCreated: true }), true);
+  assert.equal(L.shareStartsOpen({ stored: null, narrow: false, justCreated: false }), true);
+  assert.equal(L.shareStartsOpen({ stored: 'hidden', narrow: false, justCreated: false }), false);
+  assert.equal(L.shareStartsOpen({ stored: 'shown', narrow: true, justCreated: false }), true);
 });

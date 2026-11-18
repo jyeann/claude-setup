@@ -68,7 +68,7 @@ function hostAllowed(ctx, req) {
   const host = req.headers.host;
   if (typeof host !== 'string' || !host) return false;
   if (ctx.loopback) {
-    const m = /^(localhost|127\.0\.0\.1|\[::1\])(?::(\d+))?$/i.exec(host);
+    const m = /^(localhost|127(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}|\[::1\])(?::(\d+))?$/i.exec(host);
     if (!m) return false;
     const port = m[2] === undefined ? 80 : Number(m[2]);
     if (port !== ctx.port) return false;

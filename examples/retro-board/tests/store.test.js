@@ -154,3 +154,32 @@ test('validShape accepts a real board and rejects broken cards', () => {
   assert.equal(validShape({ ...ok, closed: 'no' }), false);
   assert.equal(validShape(null), false);
 });
+
+test('a lock holding this process own pid from a previous run is stale and taken over', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, '.lock'), String(process.pid));
+  const s = open(dir);
+  assert.equal(fs.readFileSync(path.join(dir, '.lock'), 'utf8'), String(process.pid));
+  s.close();
+  assert.equal(fs.existsSync(path.join(dir, '.lock')), false);
+});
+
+test('board files and the lock are 0600, the boards dir and DATA_DIR are 0700', () => {
+  const dir = path.join(tmp(), 'data');
+  const s = open(dir);
+  s.create(H, createBoard('T', 'f'));
+  const mode = (p) => fs.statSync(p).mode & 0o777;
+  assert.equal(mode(path.join(boardsDir(dir), `${H}.json`)), 0o600);
+  assert.equal(mode(path.join(dir, '.lock')), 0o600);
+  assert.equal(mode(boardsDir(dir)), 0o700);
+  assert.equal(mode(dir), 0o700);
+  s.close();
+});
+
+test('an existing DATA_DIR with loose permissions is tightened to 0700', () => {
+  const dir = tmp();
+  fs.chmodSync(dir, 0o755);
+  const s = open(dir);
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  s.close();
+});

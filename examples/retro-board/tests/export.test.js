@@ -32,6 +32,14 @@ test('escapeLine flattens newlines and tabs and escapes leading markers only', (
   assert.equal(e.escapeLine('<b>hi</b>'), '<b>hi</b>');
 });
 
+test('escapeLine collapses spaces around newlines and flattens U+2028 and U+2029', () => {
+  assert.equal(e.escapeLine('a \n b'), 'a b');
+  assert.equal(e.escapeLine('a  \r\n  b'), 'a b');
+  assert.equal(e.escapeLine('a\u2028b\u2029c'), 'a b c');
+  assert.equal(e.escapeLine('a \u2028 b'), 'a b');
+  assert.equal(e.escapeLine('a  b'), 'a  b');
+});
+
 test('toMarkdown escapes a leading marker in the title and in card text', () => {
   const md = e.toMarkdown(bd('# Big', [card(1, 'went-well', '- nested')]), 'D');
   assert.ok(md.startsWith('# \\# Big\n'));

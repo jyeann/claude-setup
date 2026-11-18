@@ -42,7 +42,7 @@ export function validateTitle(title) {
 
 export const voteButtonLabel = (voted, text) => {
   const short = Array.from(String(text)).slice(0, 40).join('').replace(/\s+/g, ' ');
-  return voted ? `Remove your vote from: ${short}` : `Vote for: ${short}`;
+  return voted ? `Remove vote from: ${short}` : `Vote for: ${short}`;
 };
 
 export const newCardsMessage = (n) => `${n} new ${n === 1 ? 'card' : 'cards'} from others`;
@@ -92,4 +92,41 @@ export function parseBoardPath(pathname) {
   const m = /^\/b\/([A-Za-z0-9_-]+)(?:\/f\/([A-Za-z0-9_-]+))?(\/export)?\/?$/.exec(pathname);
   if (!m) return null;
   return { p: m[1], f: m[2] || null, isExport: Boolean(m[3]) };
+}
+
+// What to do when adding a card failed. `err` is an ApiError-like {status, code, message, board}.
+// `current` is what the textarea holds now. The failed text is never dropped: it goes back into an
+// empty textarea (restore) or is shown in the rescue area (rescue).
+export function addFailureOutcome(err, sent, current) {
+  const empty = !String(current).trim();
+  const out = { message: '', applyBoard: null, restore: empty, rescue: !empty };
+  const code = err && err.code;
+  if (code === 'board_closed' && err.board) {
+    out.applyBoard = err.board;
+  } else if (code === 'board_full') {
+    out.message = 'This board is full.';
+    out.applyBoard = err.board || null;
+  } else if (err && err.status === 400 && String(code).startsWith('text_')) {
+    out.message = validateCardText(sent) || err.message;
+  } else {
+    out.message = empty
+      ? 'Could not save your card. Your text is still here. Try again.'
+      : 'Could not save your card. Its text is kept in the notice at the top of the page. Try again.';
+  }
+  return out;
+}
+
+// 'offline' for network and HTTP failures, 'not-found' for a deleted board, 'bug' for anything else.
+export function pollFailureKind(err) {
+  if (!err || typeof err.status !== 'number') return 'bug';
+  if (err.status === 404 && err.code === 'board_not_found') return 'not-found';
+  return 'offline';
+}
+
+// Phones start with the share panel collapsed unless the board was just created.
+export function shareStartsOpen({ stored, narrow, justCreated }) {
+  if (justCreated) return true;
+  if (stored === 'hidden') return false;
+  if (stored === 'shown') return true;
+  return !narrow;
 }

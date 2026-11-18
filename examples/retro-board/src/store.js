@@ -7,12 +7,16 @@ const HASH_FILE = /^[0-9a-f]{64}\.json$/;
 
 class BootError extends Error {}
 
+// Lock files this process holds right now. A lock with our own pid that is not in here is a leftover
+// from an earlier run (a container restart gives the new process the same pid, often 1).
+const heldLocks = new Set();
+
 // Write `<file>.tmp-<pid>`, fsync, rename over the target, fsync the directory (best effort).
 function writeFileAtomic(fs, file, data, pid = process.pid) {
   const tmp = `${file}.tmp-${pid}`;
   let fd;
   try {
-    fd = fs.openSync(tmp, 'w');
+    fd = fs.openSync(tmp, 'w', 0o600);
     fs.writeSync(fd, data);
     fs.fsyncSync(fd);
     fs.closeSync(fd);
@@ -52,13 +56,15 @@ function createStore({ dir, maxBoards = 1000, fs = nodeFs, pid = process.pid, no
   function takeLock() {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        fs.writeFileSync(lockFile, String(pid), { flag: 'wx' });
+        fs.writeFileSync(lockFile, String(pid), { flag: 'wx', mode: 0o600 });
         locked = true;
+        heldLocks.add(lockFile);
         return;
       } catch (e) {
         if (e.code !== 'EEXIST') throw e;
         const other = Number.parseInt(String(fs.readFileSync(lockFile, 'utf8')).trim(), 10);
-        if (Number.isInteger(other) && other > 0 && pidAlive(other)) {
+        const ours = other === pid;
+        if (Number.isInteger(other) && other > 0 && (ours ? heldLocks.has(lockFile) : pidAlive(other))) {
           throw new BootError(`Another retro board is using ${dir} (pid ${other})`);
         }
         fs.unlinkSync(lockFile); // stale
@@ -69,7 +75,9 @@ function createStore({ dir, maxBoards = 1000, fs = nodeFs, pid = process.pid, no
 
   function open() {
     try {
-      fs.mkdirSync(boardsDir, { recursive: true });
+      fs.mkdirSync(boardsDir, { recursive: true, mode: 0o700 });
+      fs.chmodSync(dir, 0o700);
+      fs.chmodSync(boardsDir, 0o700);
       const probe = path.join(dir, `.probe-${pid}`);
       fs.writeFileSync(probe, 'ok');
       fs.unlinkSync(probe);
@@ -89,6 +97,7 @@ function createStore({ dir, maxBoards = 1000, fs = nodeFs, pid = process.pid, no
       }
       if (validShape(board)) {
         boards.set(name.slice(0, -5), board);
+        try { fs.chmodSync(file, 0o600); } catch { /* best effort */ }
       } else {
         const aside = `${file}.corrupt-${now()}`;
         fs.renameSync(file, aside);
@@ -130,6 +139,7 @@ function createStore({ dir, maxBoards = 1000, fs = nodeFs, pid = process.pid, no
     close() {
       if (!locked) return;
       locked = false;
+      heldLocks.delete(lockFile);
       try { fs.unlinkSync(lockFile); } catch { /* already gone */ }
     },
   };

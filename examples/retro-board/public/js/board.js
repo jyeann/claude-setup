@@ -1,7 +1,7 @@
 import { boardApi, ApiError } from './api.js';
 import {
   COLUMNS, MAX_CARD, columnLabel, counterText, validateCardText, votesLeftLabel, voteButtonLabel,
-  sortCards, pollAnnouncements, nextDelay, parseBoardPath,
+  sortCards, pollAnnouncements, nextDelay, parseBoardPath, addFailureOutcome, pollFailureKind, shareStartsOpen,
 } from './logic.js';
 import { announcePolite, announceAssertive, toast, focusEl, focusHeading, flashLabel, copyText, selectContents } from './live.js';
 
@@ -66,18 +66,24 @@ async function load(isRetry = false) {
     state.version = r.data.version;
     if (r.data.role !== 'facilitator') api = boardApi(route.p, null);
     $('loading').hidden = true;
-    build();
+    if (!state.built) build();
     render(null);
     if (store.get('retroBoard.justCreated') === '1') { store.del('retroBoard.justCreated'); focusHeading($('board-title')); }
     else if (isRetry) focusHeading($('board-title'));
     schedule(nextDelay(0));
   } catch {
     $('loading').hidden = true;
-    const retry = h('button', { id: 'retry-load', class: 'btn', type: 'button', text: 'Try again' });
-    retry.addEventListener('click', () => load(true));
-    $('status-region').append(h('div', { id: 'load-error', class: 'banner banner-danger', role: 'alert' },
-      h('p', { text: 'Could not load this board. Check your connection and try again.' }), retry));
+    showLoadError(isRetry);
   }
+}
+
+function showLoadError(focusRetry) {
+  $('load-error')?.remove();
+  const retry = h('button', { id: 'retry-load', class: 'btn', type: 'button', text: 'Try again' });
+  retry.addEventListener('click', () => load(true));
+  $('status-region').append(h('div', { id: 'load-error', class: 'banner banner-danger', role: 'alert' },
+    h('p', { text: 'Could not load this board. Check your connection and try again.' }), retry));
+  if (focusRetry) retry.focus();
 }
 
 // ---- building the static structure once ------------------------------------
@@ -155,7 +161,11 @@ function buildShare() {
   const origin = window.location.origin;
   const pUrl = `${origin}/b/${route.p}`;
   const fUrl = `${origin}/b/${route.p}/f/${route.f}`;
-  const open = store.get(`retroBoard.share.${route.p}`) !== 'hidden';
+  const open = shareStartsOpen({
+    stored: store.get(`retroBoard.share.${route.p}`),
+    narrow: typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 759px)').matches,
+    justCreated: store.get('retroBoard.justCreated') === '1',
+  });
 
   const toggle = h('button', { id: 'share-toggle', class: 'btn', type: 'button', 'aria-expanded': String(open), 'aria-controls': 'share-blocks', text: open ? 'Hide links' : 'Show links' });
   const blocks = h('div', { id: 'share-blocks', class: 'share-blocks', hidden: !open });
@@ -170,7 +180,7 @@ function buildShare() {
   const linkBlock = (opts) => {
     const input = h('input', { id: opts.inputId, testid: opts.inputId, class: 'link-input', type: 'text', readonly: true, value: opts.url });
     input.value = opts.url;
-    const btn = h('button', { id: opts.btnId, testid: opts.btnId, class: 'btn', type: 'button', text: opts.btnText });
+    const btn = h('button', { id: opts.btnId, testid: opts.btnId, class: 'btn', type: 'button', 'aria-label': opts.btnLabel, text: opts.btnText });
     const fail = h('p', { class: 'field-error', hidden: true });
     btn.addEventListener('click', async () => {
       if (await copyText(opts.url)) {
@@ -196,12 +206,12 @@ function buildShare() {
     linkBlock({
       blockId: 'participant-link-block', cls: 'share', badge: 'Share this', badgeCls: 'badge-share', heading: 'Participant link',
       text: 'Send this link to your team. Anyone with it can read the board, add cards and vote.',
-      label: 'Participant link (share this)', inputId: 'participant-link', url: pUrl, btnId: 'copy-participant', btnText: 'Copy', done: 'Participant link copied',
+      label: 'Participant link (share this)', inputId: 'participant-link', url: pUrl, btnId: 'copy-participant', btnText: 'Copy', btnLabel: 'Copy participant link', done: 'Participant link copied',
     }),
     linkBlock({
       blockId: 'facilitator-link-block', cls: 'private', badge: 'Private (locked)', badgeCls: 'badge-private', heading: 'Facilitator link',
       text: 'Keep this private. Do not share it. Anyone with it can close the retro, delete any card and export. We cannot recover it for you, so bookmark it now.',
-      label: 'Facilitator link (keep private)', inputId: 'facilitator-link', url: fUrl, btnId: 'copy-facilitator', btnText: 'Copy private link', done: 'Facilitator link copied',
+      label: 'Facilitator link (keep private)', inputId: 'facilitator-link', url: fUrl, btnId: 'copy-facilitator', btnText: 'Copy private link', btnLabel: 'Copy facilitator link', done: 'Facilitator link copied',
     }),
   );
   return h('section', { id: 'share-panel', testid: 'share-panel', class: 'share-panel', 'data-role': 'facilitator', 'aria-label': 'Share links' }, toggle, blocks);
@@ -333,6 +343,7 @@ function showError(key, message) {
   c.error.textContent = message;
   c.error.hidden = false;
   c.ta.setAttribute('aria-invalid', 'true');
+  announceAssertive(message);
 }
 function clearError(key) {
   const c = cols[key];
@@ -374,19 +385,13 @@ async function addCard(key) {
     announcePolite(`Card added to ${columnLabel(key)}`);
   } catch (err) {
     c.temps.delete(temp); temp.remove();
-    if (c.form === form) {
-      if (!c.ta.value) { c.ta.value = text; c.ta.dispatchEvent(new Event('input')); }
-    }
-    if (err instanceof ApiError && err.code === 'board_closed' && err.board) {
-      applyView(err.board, { announce: true });
-    } else if (err instanceof ApiError && err.status === 400 && err.code.startsWith('text_')) {
-      showError(key, validateCardText(text) || err.message);
-    } else {
-      const msg = 'Could not save your card. Your text is still here. Try again.';
-      showError(key, msg);
-      announceAssertive(msg);
-    }
-    if (c.form === form) c.ta.focus();
+    const alive = c.form === form;
+    const out = addFailureOutcome(err, text, alive ? c.ta.value : '');
+    if (alive && out.restore) { c.ta.value = text; c.ta.dispatchEvent(new Event('input')); }
+    if (!alive || out.rescue) rescueText(text);
+    if (out.applyBoard) applyView(out.applyBoard, { announce: true });
+    if (out.message) showError(key, out.message);
+    if (cols[key].form === form) c.ta.focus();
     render(state.view);
   } finally {
     state.pending--;
@@ -555,6 +560,15 @@ function rescueDrafts() {
   for (const d of drafts) box.append(h('p', { text: `The retro was closed. Your unsent card: ${d}` }));
 }
 
+function rescueText(text) {
+  let box = $('draft-rescue');
+  if (!box) {
+    box = h('div', { id: 'draft-rescue', testid: 'draft-rescue', class: 'banner banner-info' });
+    $('status-region').append(box);
+  }
+  box.append(h('p', { text: `Not saved. Your card text: ${text}` }));
+}
+
 function restoreDrafts() {
   $('draft-rescue')?.remove();
   queueMicrotask(() => {
@@ -578,7 +592,7 @@ function setOffline(on) {
   state.offline = on;
   let banner = $('offline-banner');
   if (on && !banner) {
-    banner = h('div', { id: 'offline-banner', testid: 'offline-banner', class: 'banner banner-warn', text: 'You are offline or the server is not reachable. Showing the last version. Trying again...' });
+    banner = h('div', { id: 'offline-banner', testid: 'offline-banner', role: 'status', class: 'banner banner-warn', text: 'You are offline or the server is not reachable. Showing the last version. Trying again...' });
     $('status-region').append(banner);
   } else if (!on && banner) {
     banner.remove();
@@ -590,20 +604,38 @@ async function poll() {
   if (state.pending > 0) { schedule(500); return; }
   state.polling = true;
   let retryAfter = 0;
+  let stop = false;
   try {
-    const r = await api.get(state.etag);
+    let r;
+    try {
+      r = await api.get(state.etag);
+    } catch (err) {
+      const kind = pollFailureKind(err);
+      if (kind === 'offline') {
+        state.failures += 1;
+        retryAfter = err.retryAfter || 0;
+        setOffline(true);
+      } else if (kind === 'not-found') {
+        stop = true;
+        setOffline(false);
+        showLoadError(false);
+      } else {
+        console.error(err);
+      }
+      return;
+    }
     if (state.pending > 0) return;
-    const wasOffline = state.offline;
-    if (r.status !== 304) applyView(r.data, { announce: !wasOffline, etag: r.etag });
     state.failures = 0;
-    if (wasOffline) { setOffline(false); announcePolite('Back online. Board updated.'); }
-  } catch (err) {
-    state.failures += 1;
-    retryAfter = err.retryAfter || 0;
-    setOffline(true);
+    try {
+      const wasOffline = state.offline;
+      if (r.status !== 304) applyView(r.data, { announce: !wasOffline, etag: r.etag });
+      if (wasOffline) { setOffline(false); announcePolite('Back online. Board updated.'); }
+    } catch (err) {
+      console.error(err);
+    }
   } finally {
     state.polling = false;
-    schedule(nextDelay(state.failures, retryAfter));
+    if (!stop) schedule(nextDelay(state.failures, retryAfter));
   }
 }
 

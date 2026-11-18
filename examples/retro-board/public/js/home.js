@@ -13,6 +13,7 @@ function showFieldError(message) {
   titleError.hidden = false;
   input.setAttribute('aria-invalid', 'true');
   input.focus();
+  announceAssertive(message);
 }
 
 function clearErrors() {

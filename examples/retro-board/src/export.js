@@ -6,9 +6,9 @@ const SECTIONS = [
   { key: 'actions', heading: 'Actions', prefix: '- [ ] ' },
 ];
 
-// Newlines and tabs become one space; a leading markdown marker gets a backslash. `<` stays as typed.
+// Newlines, tabs and U+2028/9 (with spaces around them) become one space; a leading markdown marker gets a backslash. `<` stays as typed.
 function escapeLine(text) {
-  const flat = String(text).replace(/[\r\n\t]+/g, ' ').trim();
+  const flat = String(text).replace(/[ \t]*[\r\n\t\u2028\u2029]+[ \t]*/g, ' ').trim();
   return flat.replace(/^([#\-*>[+])/, '\\$1').replace(/^(\d+)\./, '$1\\.');
 }
 
