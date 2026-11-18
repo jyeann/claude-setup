@@ -11,7 +11,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { runVerify } = require('./verify');
 const { tailOutput } = require('./stop-loop');
-const { parseTestSummary } = require('./summary');
+const { parseTestSummary, extractFailures } = require('./summary');
 const { lineCoverage, collectCoverage } = require('./v8-coverage');
 const { analyzeTestFile } = require('./test-quality');
 const { listMutations, applyMutation, selectMutations } = require('./mutate');
@@ -229,6 +229,7 @@ async function checkMutation(root, config, baselineMs, out) {
 async function strongVerify(root, config, { fast = false, out = console.log } = {}) {
   const covDir = makeTemp('verify-cov-');
   const failures = [];
+  let failingTests = '';
   try {
     out('[1/5] tests');
     const startedAt = Date.now();
@@ -237,7 +238,10 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     const tests = checkTests(result, config);
     failures.push(...tests.failures);
     out(`  ${tests.summary.pass}/${tests.summary.tests} passing`);
-    if (tests.failures.length > 0) out(tailOutput(result.output, 25, 2500));
+    if (tests.failures.length > 0) {
+      failingTests = extractFailures(result.output);
+      if (failingTests === '') out(tailOutput(result.output, 25, 2500));
+    }
     if (tests.failures.length === 0 && config.replicates > 1) {
       if (fast) out('  replicates: skipped (--fast); the full run is the definition of done');
       else failures.push(...await checkReplicates(root, config, result, out));
@@ -264,6 +268,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     removeTemp(covDir);
   }
   out(failures.length === 0 ? 'VERIFY PASSED' : `VERIFY FAILED:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
+  if (failingTests !== '') out(`\nFailing tests (fix these at the root cause):\n${failingTests}`);
   return { pass: failures.length === 0, failures };
 }
 

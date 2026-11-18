@@ -77,6 +77,21 @@ node .claude/harness/bin/tune.js --task-file spec.md --verify "node .claude/harn
 ```
 Commit the spec and acceptance tests first: each trial runs `claude -p --model … --effort …` in a fresh worktree of `HEAD`, then the verify command grades it. Output is a table of pass rate, mean cost (from `--output-format json`) and mean time, the cheapest candidate that meets `--min-pass-rate` (default 100%), and `.harness/tune-report.json`. `--agent-cmd` replaces the default command (it receives `$HARNESS_MODEL`, `$HARNESS_EFFORT`, `$HARNESS_PROMPT_FILE`). This spends real tokens: use a small spec, and trials >= 2 when results are noisy. The rule of thumb to test is that a stronger model at low effort beats a weaker one at high effort on cost.
 
+## Held-out tests: environment variable (`HARNESS_HIDDEN_DIR`)
+The other way to hold out tests, besides `--hide` above. Use `--hide` when the harness starts the run; use this when you launch `claude` yourself and want the path kept out of `state.json` too. Both are enforced by the same read guards, and either can be used alone.
+A visible acceptance suite can be read, and a strong model will satisfy it. A **held-out suite** checks the same rules on
+inputs the agent has not seen, so "underspecified" actually bites. Put the tests in a directory **outside the project**,
+and start the agent with the path in an environment variable that only the `claude` process carries:
+
+```bash
+HARNESS_HIDDEN_DIR=/abs/path/to/held-out claude -p "..."      # verify.config.json: "... \"$HARNESS_HIDDEN_DIR/*.test.js\""
+```
+While a run is active, shell commands and `Read`/`Grep`/`Glob` calls that name that directory or the variable are blocked
+(`hooks/pre-read.js`, `lib/guards.js`). The held-out tests run inside `verify.js` (and so inside the Stop hook), and their
+failing assertions come back in the verify output; that is the intended feedback channel. They resolve the project from the
+current directory (`path.resolve('src/...')`), so they also run against the mutation copy. See `examples/sheet-engine/`.
+Limits: this stops a good-faith agent from reading the suite, not a determined one, and every failure reveals one expected value.
+
 ## Test
 ```bash
 node --test .claude/harness/test/*.test.js
@@ -94,9 +109,10 @@ node --test .claude/harness/test/*.test.js
 - **The Stop feedback sends the full spec once** (first block); later blocks carry only a pointer plus the verify-output tail, so context does not grow by one spec copy per iteration.
 - **Hooks fail open** on internal crashes (exit 1) so a bug cannot brick a session (each crash is written to `.harness/hook-errors.jsonl` and shown in the report). A *corrupt state file* is stricter: guards stay on, commits are refused, and the Stop hook blocks once (then lets the session end, since the agent cannot repair `.harness/`).
 - **Gate files are always read-only during a run**: `verify.config.json`, `acceptance/` and `spec.md` are protected by default, in addition to any `--protect` paths.
-- **Timeouts:** verify defaults to 600 s (`--verify-timeout SECONDS` to change); the Stop and commit hooks time out at 700 s in `settings.json`. Keep the verify budget (tests plus mutation samples) below that.
+- **Timeouts:** verify defaults to 600 s (`--verify-timeout SECONDS` to change); the Stop and commit hooks time out at 900 s in `settings.json`. Keep the verify budget (tests plus mutation samples) below that.
 - **Per-edit lint:** `init --lint "<cmd>"` runs the command after every Write/Edit (`hooks/post-edit.js`) and sends failures back to the agent with exit 2. Exit 1 would not block.
 - **Sandbox:** `settings.json` enables the OS sandbox for Bash and its child processes (credential dirs unreadable, network limited to npm and GitHub). Hooks cannot see what `npm test` reads; the sandbox can. Verify the key names against your Claude Code version.
+- **Failure output matters as much as the gate.** A live run showed an agent spending about ten attempts reading a verify tail that said only "tests failed (3 failing)". `verify.js` now ends with a "Failing tests" section (names, error, expected/actual), and the Stop hook forwards up to 70 lines / 5000 characters.
 - **Every Stop attempt costs an iteration**, including when the agent stops to ask a human a question; with no human that is wasted budget, so tell the agent not to ask.
 - **No cost cap yet.** Time and iterations are capped (`--max`, `--max-minutes`); dollars are not. Bound spend with account/session limits, and use `tune.js` to find a cheaper model/effort.
 - **The time budget is checked at Stop attempts**, so one long agent turn can overrun it; it is not a watchdog.

@@ -252,3 +252,14 @@ test('holdout config needs a command', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /holdout\.command/);
 });
+
+test('when tests fail, the output ends with the failing assertions so a truncated tail still carries them', () => {
+  const r = verify(project({ 'math.test.js': `${GOOD_TEST}\ntest('boom', () => { assert.equal(add(1, 1), 3); });\n` }));
+  assert.equal(r.status, 1);
+  const tail = r.stdout.trimEnd().split('\n').slice(-25).join('\n');
+  assert.match(tail, /VERIFY FAILED/);
+  assert.match(tail, /Failing tests/i);
+  assert.match(tail, /boom/);
+  assert.match(tail, /2 !== 3|expected: 3|actual: 2/);
+  assert.doesNotMatch(tail, /duration_ms|# Subtest/);
+});

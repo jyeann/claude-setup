@@ -43,9 +43,9 @@ test('pipe-to-shell: more sources, fewer false positives', () => {
   ]) allowed(cmd);
 });
 
-test('during a run, cd into a guarded directory is blocked', () => {
-  for (const cmd of ['cd acceptance && echo x > a', '(cd acceptance; rm a)', 'pushd acceptance; rm a', 'cd ./acceptance/']) blocked(cmd, live);
-  allowed('cd src && ls', live);
+test('during a run, cd into a guarded directory is blocked only when the same command also writes', () => {
+  for (const cmd of ['cd acceptance && echo x > a', '(cd acceptance; rm a)', 'pushd acceptance; rm a', 'cd acceptance; sed -i s/a/b/ t.js', 'cd acceptance; git checkout -- .', 'cd .claude && tee x < /dev/null']) blocked(cmd, live);
+  for (const cmd of ['cd ./acceptance/', 'cd .claude/harness; ls lib; grep -n slice lib/*.js bin/verify.js 2>&1 | head', 'cd acceptance && cat a.test.js', 'cd src && ls']) allowed(cmd, live);
 });
 
 test('during a run, the whole .claude directory and checkout of guarded paths are protected', () => {

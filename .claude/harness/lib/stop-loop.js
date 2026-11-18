@@ -2,8 +2,8 @@
 const crypto = require('node:crypto');
 const { clusterFailures, diagnosisPrompt, normaliseFailure, REPORT_FILE } = require('./failure-cluster');
 
-const TAIL_LINES = 40;
-const TAIL_CHARS = 4000;
+const TAIL_LINES = 70;
+const TAIL_CHARS = 5000;
 
 function tailOutput(output, maxLines = TAIL_LINES, maxChars = TAIL_CHARS) {
   const tail = output.split('\n').slice(-maxLines).join('\n');

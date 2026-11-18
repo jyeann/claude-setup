@@ -189,3 +189,10 @@ test('no-progress tracking is skipped when failures cannot be counted', () => {
     state = d.nextState;
   }
 });
+
+test('the retry message keeps enough of the verify output for several failing assertions', () => {
+  const lines = Array.from({ length: 60 }, (_, i) => `line ${i} ${'x'.repeat(40)}`).join('\n');
+  const d = decideStop(base, fail(lines));
+  assert.match(d.reason, /line 59/);
+  assert.match(d.reason, /line 10 /);
+});

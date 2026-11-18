@@ -49,10 +49,21 @@
     "autoAllowBashIfSandboxed": false,
     "allowUnsandboxedCommands": false,
     "filesystem": {
-      "denyRead": ["~/.ssh", "~/.aws", "~/.config/gh", "~/.npmrc", "~/.netrc", "~/.git-credentials"]
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws",
+        "~/.config/gh",
+        "~/.npmrc",
+        "~/.netrc",
+        "~/.git-credentials"
+      ]
     },
     "network": {
-      "allowedDomains": ["registry.npmjs.org", "github.com", "api.github.com"]
+      "allowedDomains": [
+        "registry.npmjs.org",
+        "github.com",
+        "api.github.com"
+      ]
     }
   },
   "hooks": {
@@ -63,7 +74,7 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/pre-bash.js\"",
-            "timeout": 700
+            "timeout": 900
           }
         ]
       },
@@ -98,6 +109,15 @@
             "timeout": 60
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/post-tool.js\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "Stop": [
@@ -106,18 +126,7 @@
           {
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/stop.js\"",
-            "timeout": 700
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/post-tool.js\"",
-            "timeout": 10
+            "timeout": 900
           }
         ]
       }
