@@ -47,3 +47,51 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: node .claude/harness/bin/scan-secrets.js --history "origin/$BASE_REF"
+
+  gate-link-shortener:
+    name: gate-link-shortener
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Full verify gate (tests, coverage, test quality, hidden holdout, mutation)
+        working-directory: examples/link-shortener
+        run: CLAUDE_PROJECT_DIR="$PWD" node ../../.claude/harness/bin/verify.js
+
+  gate-retro-board:
+    name: gate-retro-board
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Full verify gate (tests, coverage, test quality, hidden holdout, mutation)
+        working-directory: examples/retro-board
+        run: CLAUDE_PROJECT_DIR="$PWD" node ../../.claude/harness/bin/verify.js
+
+  eval-kit-selftest:
+    name: eval-kit-selftest
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Install Playwright and Chromium for the browser seeds
+        run: |
+          npm install -g playwright@1.63.0
+          playwright install --with-deps chromium
+      - name: Graders accept the golden artifacts and reject degraded ones
+        run: NODE_PATH="$(npm root -g)" node examples/retro-board/tune/selftest.js

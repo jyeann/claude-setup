@@ -19,6 +19,10 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 - **Tag every delegated agent** with its phase: `description: "[phase:design] ..."`. The KPI roll-up groups cost by this tag. Pass `effort` explicitly (see Effort).
 - **Done means a person can use it.** The build is not finished until phase 7 has executed every journey in `ux.md` in a real browser and they pass.
 
+## Starting the build run
+
+`node .claude/harness/bin/harness.js init --verify "cd examples/<p> && CLAUDE_PROJECT_DIR=$PWD node ../../.claude/harness/bin/verify.js" --task-file examples/<p>/spec.md --protect examples/<p>/acceptance/,examples/<p>/verify.config.json,docs/product/<p>/ --hide examples/<p>/holdout --max 14 --stall 3`. The holdout lives in the repo so every gate and CI can run it; `--hide` keeps it from the agent while the run is active. Stay in the turn while a builder works: ending it makes the Stop hook re-run verify and count identical red results toward the stall breaker.
+
 ## Phases, roles, artifacts
 
 | # | Phase tag | Who | Output (under `docs/product/<slug>/`) | Exit check |
