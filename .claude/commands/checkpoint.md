@@ -2,6 +2,8 @@
 description: Create, verify, or list workflow checkpoints after running verification checks.
 ---
 
+> **Not during a harness run** (`.harness/state.json` has `"active": true`): the commit gate refuses commits until verify is green, and the Stop hook already snapshots work to `refs/harness/wip/<branch>` every iteration (`harness.js checkpoint` / `restore`). Use this command only in interactive sessions.
+
 # Checkpoint Command
 
 Create or verify a checkpoint in your workflow.
