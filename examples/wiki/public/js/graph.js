@@ -11,6 +11,7 @@ export const READY_MS = 1000;
 export const LABEL_LIMIT = 200;
 const REDUCED_CAP_MS = 1500;
 const RAF_BUDGET_MS = 8;
+export const GRAPH_MAX_SCALE = 5; // lets a small graph grow to fill the pane instead of sitting in a cluster
 
 export const graphSummary = (nodes, edges) => `${plural(nodes, 'note', 'notes')}, ${plural(edges, 'link', 'links')}`;
 
@@ -205,7 +206,7 @@ export function createGraphView(ctx, route) {
     const layout = createLayout(data.nodes.length, prep.edges);
     const now = () => win.performance.now();
     const reduced = win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const fit = () => fitToBox(layout, data.nodes.length, width, height, { pad: 60 });
+    const fit = () => fitToBox(layout, data.nodes.length, width, height, { pad: 60, maxScale: GRAPH_MAX_SCALE });
     let drawn = null;
 
     // Spread out dots that ended up on top of each other: about 16 px apart, less when the graph is large.

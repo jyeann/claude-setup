@@ -622,6 +622,16 @@ test('the tab pattern: preview first for notes with text, arrows move between ta
     assert.equal(u.focused(), 'tab-preview');
     u.t('tab-edit').click();
     assert.equal(u.t('note-view').getAttribute('data-tab'), 'edit');
+    u.t('tab-preview').focus();
+    u.press('ArrowRight');
+    assert.equal(u.focused(), 'tab-edit', 'arrows move from the focused tab (preview), not the selected one (edit)');
+    assert.equal(u.t('note-view').getAttribute('data-tab'), 'edit');
+    u.t('tab-edit').focus();
+    u.t('tab-preview').click();
+    u.t('tab-edit').focus();
+    u.press('ArrowLeft');
+    assert.equal(u.focused(), 'tab-preview', 'from the focused edit tab, left wraps to preview');
+    u.t('tab-edit').click();
     assert.equal(u.doc.querySelector('#panel-preview').getAttribute('data-active'), 'false');
   }, { 'Full.md': 'text', 'Empty.md': '' });
   await withBackend(async (b) => {

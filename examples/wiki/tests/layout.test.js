@@ -152,3 +152,16 @@ test('separate handles identical positions and leaves spread nodes alone', () =>
   separate(far, 2, 10);
   assert.deepEqual([...far.x], [0, 50]);
 });
+
+test('fitToBox grows a small layout to fill the box when maxScale allows it, and stays inside the padding', () => {
+  const l = { x: [0, 10, 5], y: [0, 4, 8] };
+  const small = fitToBox(l, 3, 800, 600, { pad: 60 });
+  const big = fitToBox(l, 3, 800, 600, { pad: 60, maxScale: 5 });
+  assert.equal(small.scale, 1.5);
+  assert.ok(big.scale > small.scale);
+  const ys = l.y.map((y) => y * big.scale + big.offsetY);
+  const xs = l.x.map((x) => x * big.scale + big.offsetX);
+  assert.ok(Math.min(...xs) >= 59.999 && Math.max(...xs) <= 740.001);
+  assert.ok(Math.min(...ys) >= 59.999 && Math.max(...ys) <= 540.001);
+  assert.ok(Math.abs((Math.min(...ys) + Math.max(...ys)) / 2 - 300) < 1e-9, 'centred');
+});

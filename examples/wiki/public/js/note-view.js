@@ -79,8 +79,9 @@ export function buildNoteView(ctx, data, meta = {}) {
   tabPreview.addEventListener('click', () => setTab('preview'));
   tabs.addEventListener('keydown', (ev) => {
     const order = ['edit', 'preview'];
-    const now = article.getAttribute('data-tab');
-    const idx = order.indexOf(now);
+    // Arrow keys move from the tab that has focus, which can differ from the selected one.
+    const focused = ev.target === tabPreview ? 'preview' : ev.target === tabEdit ? 'edit' : article.getAttribute('data-tab');
+    const idx = order.indexOf(focused);
     let next = null;
     if (ev.key === 'ArrowRight') next = order[(idx + 1) % 2];
     else if (ev.key === 'ArrowLeft') next = order[(idx + 1) % 2];
