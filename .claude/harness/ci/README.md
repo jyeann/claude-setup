@@ -17,7 +17,7 @@ request whose checks pass, and the checks themselves cannot be quietly weakened.
 ## Turn it on (order matters)
 1. Merge or push the workflow so each check runs at least once. A required check that never reports blocks every merge.
 2. Preview: `bash .claude/harness/ci/protect.sh --repo OWNER/NAME`
-3. Apply: `bash .claude/harness/ci/protect.sh --repo OWNER/NAME --apply` (needs `gh auth login` with admin rights).
+3. Apply: `bash .claude/harness/ci/protect.sh --repo OWNER/NAME --apply` (needs `gh auth login` with admin rights). Add `--no-bypass` if an agent works with an admin token (see Limits).
    For a harness-built project: `--checks verify,protected-files,secret-scan`. For a team: `--approvals 1` plus `CODEOWNERS.example`.
 
 Defaults suit a solo owner: a PR and green checks are required, but zero approvals, because GitHub does not let
@@ -26,6 +26,7 @@ deliberate change to the gate (there is no label override: anyone with triage ri
 a public repo, or a Pro/Team plan on a private one.
 
 ## Limits (read these)
+- **If the agent's token is an admin's, use `--no-bypass`.** The default ruleset lets repository admins merge past the required checks through a PR; a session signed in as the owner then is not held to the checks (a PR with checks still running showed `unstable`, not `blocked`). `--no-bypass` empties the bypass list so nobody can skip them; the human override becomes switching the ruleset off in Settings.
 - **Do not give the agent an admin token.** An admin can bypass the ruleset, and any token that can edit rulesets
   or settings can remove it. Give the agent a fine-grained token: contents + pull requests write on one repo, nothing else.
 - **Workflow files come from the PR.** `pull_request` runs the PR's own `.github/workflows/*.yml`, so a PR could replace

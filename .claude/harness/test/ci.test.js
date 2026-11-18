@@ -187,6 +187,25 @@ test('protect.sh --apply creates the ruleset, with overridable checks and approv
   assert.equal(rules.pull_request.required_approving_review_count, 1);
 });
 
+test('protect.sh keeps the admin bypass by default and --no-bypass removes it', () => {
+  const withBypass = run('bash', [PROTECT, '--repo', 'o/r'], { env: cleanEnv });
+  const strict = run('bash', [PROTECT, '--repo', 'o/r', '--no-bypass'], { env: cleanEnv });
+  const parse = (out) => JSON.parse(out.stdout.slice(out.stdout.indexOf('{'), out.stdout.lastIndexOf('}') + 1));
+  assert.equal(withBypass.status, 0, withBypass.stderr);
+  assert.equal(strict.status, 0, strict.stderr);
+  assert.equal(parse(withBypass).bypass_actors.length, 1);
+  assert.deepEqual(parse(strict).bypass_actors, []);
+  assert.equal(parse(strict).rules.find((x) => x.type === 'required_status_checks').parameters.required_status_checks.length, 5, 'the checks must be untouched');
+});
+
+test('protect.sh --apply --no-bypass sends an empty bypass list to GitHub', () => {
+  const gh = fakeGh('[{"id": 42, "name": "protect-main"}]');
+  const r = run('bash', [PROTECT, '--repo', 'o/r', '--apply', '--no-bypass'], { env: { ...cleanEnv, GH: gh.bin } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(fs.readFileSync(gh.log, 'utf8'), /-X PUT repos\/o\/r\/rulesets\/42/);
+  assert.deepEqual(JSON.parse(fs.readFileSync(gh.body, 'utf8')).bypass_actors, []);
+});
+
 test('protect.sh --apply updates an existing ruleset of the same name instead of duplicating it', () => {
   const gh = fakeGh('[{"id": 42, "name": "protect-main"}, {"id": 5, "name": "other"}]');
   const r = run('bash', [PROTECT, '--repo', 'o/r', '--apply'], { env: { ...cleanEnv, GH: gh.bin } });
