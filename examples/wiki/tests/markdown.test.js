@@ -159,3 +159,45 @@ test('empty and whitespace text renders nothing', () => {
 test('CRLF text renders like LF text', () => {
   assert.deepEqual(render('# A\r\n\r\ntext\r\n').children.map((e) => e.localName), ['h2', 'p']);
 });
+
+// ---- linear-time guards (R7) ----
+const timed = (name, text, check = () => {}) => test(`${name} renders well under a second without throwing`, () => {
+  const t0 = performance.now();
+  const root = render(text);
+  const ms = performance.now() - t0;
+  assert.ok(ms < 1000, `took ${ms.toFixed(0)} ms`);
+  check(root);
+});
+
+timed('20000 unclosed double underscores', '__a '.repeat(20000), (root) => assert.equal(root.textContent, '__a '.repeat(20000).trim()));
+timed('20000 links and code spans', '[a](http://x.y) `c` '.repeat(20000), (root) => assert.equal(root.descendants().filter((e) => e.localName === 'a').length, 20000));
+timed('a heading with 40000 inner spaces', `# a${' '.repeat(40000)}b`, (root) => assert.equal(root.children[0].localName, 'h2'));
+timed('a heading with a long trailing space run', `# a${' '.repeat(40000)}`, (root) => assert.equal(root.children[0].textContent, 'a'));
+timed('12000 blockquote markers', '>'.repeat(12000), (root) => {
+  assert.equal(root.children[0].localName, 'blockquote');
+  assert.equal(root.textContent, '>'.repeat(12000 - 20));
+});
+
+test('blockquote nesting up to the cap stays nested and the rest is text', () => {
+  const root = render(`${'> '.repeat(5)}deep`);
+  let el = root;
+  let depth = 0;
+  while (el.children[0] && el.children[0].localName === 'blockquote') { el = el.children[0]; depth += 1; }
+  assert.equal(depth, 5);
+  assert.equal(el.textContent, 'deep');
+});
+
+test('heading syntax edge cases keep their meaning', () => {
+  assert.deepEqual(tokenizeBlocks('#hello')[0].type, 'paragraph');
+  assert.deepEqual(tokenizeBlocks('####### seven')[0].type, 'paragraph');
+  assert.deepEqual(tokenizeBlocks('    # code-ish')[0].type, 'paragraph');
+  assert.equal(tokenizeBlocks('#')[0].text, '');
+  assert.equal(tokenizeBlocks('## Title ##  ')[0].text, 'Title');
+  assert.equal(tokenizeBlocks('# ###')[0].text, '###');
+  assert.equal(tokenizeBlocks('#\tTabbed')[0].text, 'Tabbed');
+});
+
+test('emphasis still nests and a link keeps its wikilink intact after the straddle rewrite', () => {
+  const root = render('**bold *it* x** and [[Ideas]] and *a [[Ideas*]] b*');
+  assert.deepEqual(tags(root).filter((t) => t === 'strong' || t === 'em'), ['strong', 'em', 'em']);
+});

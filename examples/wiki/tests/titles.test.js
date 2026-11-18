@@ -86,3 +86,14 @@ test('TITLE_MESSAGES is frozen', () => {
   assert.equal(Object.keys(TITLE_MESSAGES).length, 11);
   assert.match(TITLE_MESSAGES.title_exists, /\{existing\}/);
 });
+
+test('validateTitle rejects lone surrogates with title_control and the same message', () => {
+  for (const t of ['a\uD800b', '\uDC00', 'x\uDBFF', 'a\uDFFFb', '\uD83D', 'ok \uDE00']) {
+    const r = validateTitle(t);
+    assert.equal(r.ok, false, JSON.stringify(t));
+    assert.equal(r.code, 'title_control', JSON.stringify(t));
+    assert.equal(r.message, TITLE_MESSAGES.title_control);
+  }
+  assert.equal(validateTitle('smile \u{1F600}').ok, true);
+  assert.equal(validateTitle('😀😀').ok, true);
+});

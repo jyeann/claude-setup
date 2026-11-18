@@ -31,7 +31,7 @@ test('titleToPath validates and keeps the file directly in the vault', () => tmp
   assert.throws(() => v.pathFor('..'));
 }));
 
-test('writeAtomic replaces content, leaves no tmp file and uses mode 0644', () => tmpVault((v) => {
+test('writeAtomic replaces content and leaves no tmp file', () => tmpVault((v) => {
   v.createFile('A.md', Buffer.from('one'));
   v.writeAtomic('A.md', Buffer.from('two'));
   assert.equal(fs.readFileSync(path.join(v.root, 'A.md'), 'utf8'), 'two');
@@ -124,8 +124,71 @@ test('the lock is taken, refused while a live pid holds it, and taken over when 
   assert.equal(fs.existsSync(v.lockPath), true, 'a lock held by another pid is not removed');
 }));
 
-test('removeStaleTmp deletes .wiki-*.tmp only', () => tmpVault((v) => {
-  for (const n of ['.wiki-1-ab.tmp', '.wiki-2-cd.tmp', '.wiki-keep.txt', '.other.tmp', 'A.md']) fs.writeFileSync(path.join(v.root, n), '');
-  v.removeStaleTmp();
-  assert.deepEqual(fs.readdirSync(v.root).sort(), ['.other.tmp', '.wiki-keep.txt', 'A.md']);
+test('writeAtomic keeps the existing mode and createFile uses 0644', () => tmpVault((v) => {
+  v.createFile('A.md', Buffer.from('one'));
+  assert.equal(fs.statSync(path.join(v.root, 'A.md')).mode & 0o777, 0o644);
+  fs.chmodSync(path.join(v.root, 'A.md'), 0o600);
+  v.writeAtomic('A.md', Buffer.from('two'));
+  assert.equal(fs.statSync(path.join(v.root, 'A.md')).mode & 0o777, 0o600);
+  fs.chmodSync(path.join(v.root, 'A.md'), 0o664);
+  v.writeAtomic('A.md', Buffer.from('three'));
+  assert.equal(fs.statSync(path.join(v.root, 'A.md')).mode & 0o777, 0o664);
 }));
+
+test('the lock file is never visible empty: it is linked into place from a tmp file that already holds the pid', () => tmpVault((v) => {
+  const seen = [];
+  const realLink = fs.linkSync;
+  fs.linkSync = (from, to) => {
+    if (to === v.lockPath) seen.push({ content: fs.readFileSync(from, 'utf8'), lockExists: fs.existsSync(v.lockPath) });
+    return realLink(from, to);
+  };
+  try { v.acquireLock(); } finally { fs.linkSync = realLink; }
+  assert.deepEqual(seen, [{ content: String(process.pid), lockExists: false }]);
+  assert.equal(fs.readFileSync(v.lockPath, 'utf8'), String(process.pid));
+  assert.deepEqual(dots(v).filter((n) => n.endsWith('.tmp')), []);
+}));
+
+test('an empty or unparsable lock is retried after 50 ms, not taken over at once', () => tmpVault((v) => {
+  for (const initial of ['', 'garbage']) {
+    fs.writeFileSync(v.lockPath, initial);
+    const sleeps = [];
+    v.sleepMs = (ms) => { sleeps.push(ms); fs.writeFileSync(v.lockPath, String(process.ppid)); }; // the real owner finishes writing
+    assert.throws(() => v.acquireLock(), (e) => e.message === `Another wiki server is using ${v.root}`, JSON.stringify(initial));
+    assert.deepEqual(sleeps, [50]);
+    assert.equal(fs.readFileSync(v.lockPath, 'utf8'), String(process.ppid));
+  }
+}));
+
+test('a lock that stays empty is taken over after a bounded number of retries', () => tmpVault((v) => {
+  fs.writeFileSync(v.lockPath, '');
+  const sleeps = [];
+  v.sleepMs = (ms) => sleeps.push(ms);
+  v.acquireLock();
+  assert.ok(sleeps.length >= 1 && sleeps.length <= 10 && sleeps.every((ms) => ms === 50), String(sleeps));
+  assert.equal(fs.readFileSync(v.lockPath, 'utf8'), String(process.pid));
+}));
+
+test('removeStaleTmp only deletes names this server makes: .wiki-<pid>-<8 hex>.tmp', () => tmpVault((v) => {
+  const mine = ['.wiki-1-deadbeef.tmp', '.wiki-12345-0badf00d.tmp'];
+  const others = ['.wiki-1-ab.tmp', '.wiki-x-deadbeef.tmp', '.wiki-1-DEADBEEF.tmp', '.wiki-1-deadbeef.tmp.bak', '.wiki-1-deadbeefff.tmp', '.wiki-keep.txt', '.other.tmp', 'A.md', '.wiki--deadbeef.tmp'];
+  for (const n of [...mine, ...others]) fs.writeFileSync(path.join(v.root, n), '');
+  v.removeStaleTmp();
+  assert.deepEqual(fs.readdirSync(v.root).sort(), [...others].sort());
+}));
+
+test('readFile returns null for a FIFO without blocking', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-fifo-')));
+  try {
+    const v = openVault(path.join(base, 'v'));
+    const mk = spawnSync('mkfifo', [path.join(v.root, 'P.md')]);
+    if (mk.status !== 0) return;
+    const script = `import { openVault } from ${JSON.stringify(new URL('../src/vault.js', import.meta.url).href)};
+      console.log(String(openVault(${JSON.stringify(v.root)}).readFile('P.md')));`;
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { timeout: 5000, encoding: 'utf8' });
+    assert.equal(r.status, 0, `timed out or failed: ${r.error || r.stderr}`);
+    assert.equal(r.stdout.trim(), 'null');
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

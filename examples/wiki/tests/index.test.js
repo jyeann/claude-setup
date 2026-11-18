@@ -135,3 +135,21 @@ test('reload and remove keep the index in step with the app\'s own writes', () =
   assert.equal(index.get('m'), null);
   assert.equal(index.reload('bad:x.md'), null);
 }));
+
+test('skipped file names are logged as JSON strings so they cannot forge log lines', () => {
+  const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-log-')));
+  try {
+    const vault = openVault(path.join(base, 'v'));
+    fs.writeFileSync(path.join(vault.root, 'a\nFAKE: line.md'), '');
+    fs.writeFileSync(path.join(vault.root, 'Dup.md'), '');
+    fs.writeFileSync(path.join(vault.root, 'dup.md'), '');
+    const lines = [];
+    new Index(vault, (l) => lines.push(l)).scan();
+    assert.ok(lines.length >= 2);
+    for (const l of lines) assert.equal(l.includes('\n'), false, JSON.stringify(l));
+    assert.ok(lines.some((l) => l.includes('"a\\nFAKE: line.md"')), JSON.stringify(lines));
+    assert.ok(lines.some((l) => l.includes('"dup.md"') && l.includes('"Dup.md"')), JSON.stringify(lines));
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true });
+  }
+});

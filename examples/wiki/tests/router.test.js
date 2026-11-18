@@ -210,3 +210,22 @@ test('rename rewrites links, reports failures and leaves unrelated notes alone',
   fs.writeFileSync(path.join(root, 'A.md'), '[[Old]] [[OLD|x]]');
   fs.writeFileSync(path.join(root, 'Other.md'), 'nothing\r\n');
 }));
+
+test('a request error after an early answer is swallowed: the handler listens for req errors before anything else', async () => {
+  const { EventEmitter } = await import('node:events');
+  const req = Object.assign(new EventEmitter(), { method: 'POST', url: '/api/notes', headers: { host: 'localhost:1', 'content-type': 'text/plain' } });
+  const res = Object.assign(new EventEmitter(), {
+    headersSent: false, writableEnded: false, setHeader() {}, writeHead() {}, end() { this.writableEnded = true; },
+  });
+  const handle = createHandler({ ctx: {}, statics: new Map(), getPort: () => 1, log: () => {} });
+  await handle(req, res);
+  assert.ok(req.listenerCount('error') >= 1);
+  assert.doesNotThrow(() => req.emit('error', new Error('ECONNRESET')));
+});
+
+test('storageError is one shared helper producing the 503 storage_error', async () => {
+  const { storageError } = await import('../src/errors.js');
+  const e = storageError();
+  assert.ok(e instanceof WikiError);
+  assert.deepEqual([e.status, e.code, e.message], [503, 'storage_error', 'The vault could not be written. Try again.']);
+});

@@ -5,10 +5,33 @@ import { validateTitle } from './titles.js';
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
 const FENCE_CLOSE = /^ {0,3}(`+|~+)\s*$/;
-const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*$/;
 const QUOTE = /^ {0,3}>/;
 const LIST = /^([ \t]*)([-*+]|\d{1,9}[.)])[ \t]+(.*)$/;
 const LINK = /\[([^\[\]]*)\]\(\s*((?:[^()\s]|\([^()\s]*\))*)(?:\s+"[^"]*")?\s*\)/y;
+
+const MAX_QUOTE_DEPTH = 20;
+
+const isBlank = (ch) => ch === ' ' || ch === '\t';
+
+// ATX heading by indexed scan (no regex backtracking). Returns {hashes, text} or null.
+function parseHeading(line) {
+  let i = 0;
+  while (i < 3 && line[i] === ' ') i += 1;
+  let n = 0;
+  while (line[i + n] === '#') n += 1;
+  if (n < 1 || n > 6) return null;
+  let end = line.length;
+  while (end > i + n && isBlank(line[end - 1])) end -= 1;
+  let from = i + n;
+  if (from < end && !isBlank(line[from])) return null;
+  while (from < end && isBlank(line[from])) from += 1;
+  const content = line.slice(from, end);
+  if (/[\u2028\u2029\r]/.test(content)) return null;
+  let e = content.length;
+  while (e > 0 && content[e - 1] === '#') e -= 1;
+  const text = e < content.length && e > 0 && isBlank(content[e - 1]) ? content.slice(0, e) : content;
+  return { hashes: n, text: text.trim() };
+}
 
 const indentOf = (ws) => ws.replace(/\t/g, '    ').length;
 const isOrdered = (marker) => /\d/.test(marker[0]);
@@ -20,7 +43,7 @@ export function safeHref(href) {
 }
 
 function startsBlock(line, nested) {
-  return (!nested && FENCE.test(line)) || HEADING.test(line) || QUOTE.test(line) || LIST.test(line);
+  return (!nested && FENCE.test(line)) || parseHeading(line) !== null || QUOTE.test(line) || LIST.test(line);
 }
 
 function parseList(lines, from, nested) {
@@ -66,7 +89,7 @@ function parseList(lines, from, nested) {
   return { list, next: i };
 }
 
-export function tokenizeBlocks(text, { nested = false } = {}) {
+export function tokenizeBlocks(text, { nested = false, depth = 0 } = {}) {
   const lines = String(text).replace(/\r\n?/g, '\n').split('\n');
   const blocks = [];
   let i = 0;
@@ -91,19 +114,22 @@ export function tokenizeBlocks(text, { nested = false } = {}) {
       blocks.push({ type: 'fence', text: body.join('\n'), info: m[2].trim() });
       continue;
     }
-    m = HEADING.exec(line);
-    if (m) {
-      blocks.push({ type: 'heading', level: Math.min(6, m[1].length + 1), text: (m[2] || '').replace(/[ \t]+#+$/, '').trim() });
+    const heading = parseHeading(line);
+    if (heading) {
+      blocks.push({ type: 'heading', level: Math.min(6, heading.hashes + 1), text: heading.text });
       i += 1;
       continue;
     }
     if (QUOTE.test(line)) {
       const inner = [];
+      const raw = [];
       while (i < lines.length && QUOTE.test(lines[i])) {
+        raw.push(lines[i].trim());
         inner.push(lines[i].replace(/^ {0,3}> ?/, ''));
         i += 1;
       }
-      blocks.push({ type: 'quote', children: tokenizeBlocks(inner.join('\n'), { nested: true }) });
+      if (depth >= MAX_QUOTE_DEPTH) blocks.push({ type: 'paragraph', text: raw.join('\n') });
+      else blocks.push({ type: 'quote', children: tokenizeBlocks(inner.join('\n'), { nested: true, depth: depth + 1 }) });
       continue;
     }
     if (LIST.test(line)) {
@@ -134,7 +160,39 @@ function atomsOf(s) {
   return atoms;
 }
 
+// Sorted starts plus a running maximum of ends, so "does an atom cross point p" is a binary search.
+function indexAtoms(atoms) {
+  const list = [...atoms.values()].sort((a, b) => a.start - b.start);
+  const starts = list.map((a) => a.start);
+  const maxEnd = [];
+  let top = -1;
+  for (const a of list) {
+    top = Math.max(top, a.end);
+    maxEnd.push(top);
+  }
+  return { starts, maxEnd };
+}
+
+function crosses(index, p) {
+  let lo = 0;
+  let hi = index.starts.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (index.starts[mid] < p) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo > 0 && index.maxEnd[lo - 1] > p;
+}
+
 function findClose(s, from, hi, marker, env) {
+  const known = env.noClose.get(marker);
+  if (known && from >= known.from && hi <= known.hi) return -1;
+  const found = scanClose(s, from, hi, marker, env);
+  if (found === -1 && (!known || hi > known.hi || (hi === known.hi && from < known.from))) env.noClose.set(marker, { from, hi });
+  return found;
+}
+
+function scanClose(s, from, hi, marker, env) {
   let k = from;
   while (k < hi) {
     const atom = env.atoms.get(k);
@@ -148,13 +206,9 @@ function findClose(s, from, hi, marker, env) {
   return -1;
 }
 
+// True when an atom starts before a boundary and ends after it (the span would cut it in two).
 function straddles(env, from, to) {
-  for (const atom of env.atoms.values()) {
-    const inside = atom.start >= from && atom.end <= to;
-    const outside = atom.end <= from || atom.start >= to;
-    if (!inside && !outside) return true;
-  }
-  return false;
+  return crosses(env.index, from) || crosses(env.index, to);
 }
 
 function codeNode(doc, s, atom) {
@@ -287,7 +341,8 @@ function inlineInto(doc, parent, s, lo, hi, env) {
 }
 
 export function renderInline(doc, parent, text, resolve) {
-  inlineInto(doc, parent, text, 0, text.length, { atoms: atomsOf(text), resolve });
+  const atoms = atomsOf(text);
+  inlineInto(doc, parent, text, 0, text.length, { atoms, index: indexAtoms(atoms), noClose: new Map(), resolve });
 }
 
 function listNode(doc, list, resolve) {
