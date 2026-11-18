@@ -4,14 +4,18 @@ const fs = require('node:fs');
 const { readState, writeState, buildState } = require('../lib/state');
 const { runVerify } = require('../lib/verify');
 const { tailOutput } = require('../lib/stop-loop');
+const { writeCheckpoint, restoreCheckpoint } = require('../lib/checkpoint');
 
 const USAGE = `harness <command>
-  init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--no-commit-gate]
+  init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--verify-timeout SECONDS] [--lint "<cmd>"] [--no-commit-gate]
+        [--no-checkpoint] [--checkpoint-push]\n        [--hide <paths>] [--no-diagnosis]\n        [--max-minutes N] [--no-progress N]
+  checkpoint    snapshot the worktree to refs/harness/wip/<branch> now (the Stop hook does this every iteration)
+  restore       copy the latest checkpoint's files back into the worktree (fetches from origin if needed)
   status        show the current run
   verify        run the verify command once (does not change state)
   off           deactivate the run (humans only; blocked for the agent while a run is active)`;
 
-const BOOLEAN_FLAGS = new Set(['no-commit-gate']);
+const BOOLEAN_FLAGS = new Set(['no-commit-gate', 'no-checkpoint', 'checkpoint-push', 'no-diagnosis']);
 
 function parseFlags(argv) {
   const flags = {};
@@ -42,10 +46,19 @@ async function main([command, ...rest]) {
       const state = buildState({
         verifyCommand: f.verify,
         task,
+        taskFile: f['task-file'] ?? '',
+        diagnose: !f['no-diagnosis'],
+        hiddenPaths: f.hide ? f.hide.split(',').map((p) => p.trim()).filter(Boolean) : [],
+        checkpoint: !f['no-checkpoint'],
+        checkpointPush: Boolean(f['checkpoint-push']),
         maxIterations: toInt(f.max, 'max'),
         stallLimit: toInt(f.stall, 'stall'),
+        maxMinutes: toInt(f['max-minutes'], 'max-minutes') ?? null,
+        noProgressLimit: toInt(f['no-progress'], 'no-progress') ?? null,
         protectedPaths: f.protect ? f.protect.split(',').map((p) => p.trim()).filter(Boolean) : [],
         commitGate: !f['no-commit-gate'],
+        verifyTimeoutMs: f['verify-timeout'] ? toInt(f['verify-timeout'], 'verify-timeout') * 1000 : undefined,
+        lintCommand: f.lint,
         projectDir,
       });
       writeState(projectDir, state);
@@ -60,9 +73,19 @@ async function main([command, ...rest]) {
     case 'verify': {
       const state = readState(projectDir);
       if (!state) throw new Error('No harness run; run `init` first.');
-      const result = await runVerify(state.verifyCommand, { cwd: projectDir });
+      const result = await runVerify(state.verifyCommand, { cwd: projectDir, timeoutMs: state.verifyTimeoutMs });
       console.log(result.pass ? 'PASS' : `FAIL${result.timedOut ? ' (timed out)' : ''}\n${tailOutput(result.output)}`);
       return result.pass ? 0 : 1;
+    }
+    case 'checkpoint': {
+      const r = writeCheckpoint(projectDir, { message: 'harness checkpoint (manual)', push: readState(projectDir)?.checkpointPush === true });
+      console.log(JSON.stringify(r));
+      return r.status === 'error' ? 1 : 0;
+    }
+    case 'restore': {
+      const r = restoreCheckpoint(projectDir);
+      console.log(JSON.stringify(r));
+      return r.status === 'restored' ? 0 : 1;
     }
     case 'off': {
       const state = readState(projectDir);

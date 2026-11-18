@@ -1,5 +1,5 @@
 ---
-description: Prepare a managed autonomous loop pattern with safety defaults and explicit stop conditions, then print the commands to launch and monitor it. Use to set up sequential, continuous-pr, rfc-dag, or infinite loop patterns with safety gates before starting one; the continuous-agent-loop skill covers the same pattern selection and quality-gate guidance for in-conversation use (supersedes the deprecated autonomous-loops skill).
+description: Prepare a managed autonomous loop pattern with safety defaults and explicit stop conditions, then print the commands to launch and monitor it. Use to set up sequential, continuous-pr, rfc-dag, or infinite loop patterns with safety gates before starting one; for hard-enforced limits run the loop under `/harness-build`.
 ---
 
 # Loop Start Command
@@ -22,6 +22,11 @@ Start a managed autonomous loop pattern with safety defaults.
 3. Enable required hooks/profile for the chosen mode.
 4. Create loop plan and write runbook under `.claude/plans/`.
 5. Print commands to start and monitor the loop.
+
+## Enforcement
+
+The runbook is prose the agent follows on its honour. Anything that must hold is a harness flag instead, and the runbook
+names the exact `/harness-build` line (`--max`, `--stall`, `--max-minutes`, `--no-progress`). Print that line in step 5.
 
 ## Required Safety Checks
 

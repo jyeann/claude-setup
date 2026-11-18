@@ -1,0 +1,28 @@
+{
+  "testCommand": "node --test \"acceptance/*.test.js\" \"tests/*.test.js\" \"$HARNESS_HIDDEN_DIR/*.test.js\"",
+  "timeoutMs": 240000,
+  "minTests": 40,
+  "srcDirs": [
+    "src"
+  ],
+  "coverage": {
+    "minLines": 85,
+    "minFileLines": 70,
+    "minSourceFiles": 3,
+    "exclude": []
+  },
+  "testQuality": {
+    "dirs": [
+      "tests"
+    ],
+    "minAssertionsPerFile": 3
+  },
+  "mutation": {
+    "samples": 10,
+    "minKillRate": 0.7,
+    "copy": [
+      "acceptance"
+    ],
+    "timeoutMs": 150000
+  }
+}

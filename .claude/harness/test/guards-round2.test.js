@@ -43,9 +43,9 @@ test('pipe-to-shell: more sources, fewer false positives', () => {
   ]) allowed(cmd);
 });
 
-test('during a run, cd into a guarded directory is blocked', () => {
-  for (const cmd of ['cd acceptance && echo x > a', '(cd acceptance; rm a)', 'pushd acceptance; rm a', 'cd ./acceptance/']) blocked(cmd, live);
-  allowed('cd src && ls', live);
+test('during a run, cd into a guarded directory is blocked only when the same command also writes', () => {
+  for (const cmd of ['cd acceptance && echo x > a', '(cd acceptance; rm a)', 'pushd acceptance; rm a', 'cd acceptance; sed -i s/a/b/ t.js', 'cd acceptance; git checkout -- .', 'cd .claude && tee x < /dev/null']) blocked(cmd, live);
+  for (const cmd of ['cd ./acceptance/', 'cd .claude/harness; ls lib; grep -n slice lib/*.js bin/verify.js 2>&1 | head', 'cd acceptance && cat a.test.js', 'cd src && ls']) allowed(cmd, live);
 });
 
 test('during a run, the whole .claude directory and checkout of guarded paths are protected', () => {
@@ -58,4 +58,17 @@ test('during a run, only the destination of cp/rsync/install/ln counts as a writ
   allowed('cp .claude/settings.json /tmp/x', live);
   blocked('cp /tmp/evil.js acceptance/a.test.js', live);
   blocked('mv acceptance/a.test.js /tmp/', live);
+});
+
+test('irreversible git commands are blocked, their safe forms are not', () => {
+  for (const cmd of ['git clean -fdx', 'git clean -f', 'git checkout -- src/', 'git checkout -f main', 'git restore .', 'git restore src/a.js',
+    'git branch -D old', 'git stash drop', 'git stash clear']) blocked(cmd);
+  for (const cmd of ['git clean -n', 'git clean --dry-run', 'git restore --staged src/a.js', 'git branch -d merged', 'git stash', 'git stash pop',
+    'git checkout feat/x', 'git branch -a']) allowed(cmd);
+});
+
+test('more file readers are treated as secret readers', () => {
+  for (const cmd of ['sort .env', 'cut -c1- .env', 'paste .env', 'diff .env /dev/null', 'dd if=.env', 'openssl enc -in .env', 'cat ~/.aws/config', 'cat ~/.config/gh/hosts.yml'])
+    blocked(cmd);
+  allowed('sort notes.txt');
 });

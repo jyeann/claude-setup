@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { checkBash, checkWrite, isGitCommit, scanSecrets } = require('../lib/guards');
+const { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets } = require('../lib/guards');
 
 const idle = { active: false, protectedPaths: [] };
 const live = { active: true, protectedPaths: ['acceptance/'] };
@@ -137,4 +137,26 @@ test('checkWrite protects guardrail and acceptance files only while active', () 
 test('checkWrite does not treat look-alike directories as protected', () => {
   const edit = { tool_name: 'Edit', tool_input: { file_path: '/p/acceptance-notes/a.md', new_string: 'x' } };
   assert.equal(checkWrite(edit, live, '/p').block, false);
+});
+
+test('the agent cannot run harness restore during an active run', () => {
+  assert.equal(checkBash('node .claude/harness/bin/harness.js restore', live).block, true);
+});
+
+const hidden = { active: true, protectedPaths: [], hiddenPaths: ['/p/holdout', '/srv/secret'], projectDir: '/p' };
+
+test('hidden paths cannot be read with the file tools while a run is active', () => {
+  for (const input of [{ file_path: '/p/holdout/a.test.js' }, { file_path: 'holdout/a.test.js' }, { path: '/srv/secret' }, { file_path: '/srv/secret/x.js' }, { pattern: 'holdout/**' }, { glob: '/srv/secret/*.js' }]) {
+    assert.equal(checkRead({ tool_input: input }, hidden, '/p').block, true, JSON.stringify(input));
+  }
+  assert.equal(checkRead({ tool_input: { file_path: '/p/src/a.js' } }, hidden, '/p').block, false);
+  assert.equal(checkRead({ tool_input: { file_path: '/p/holdout/a.js' } }, { ...hidden, active: false }, '/p').block, false);
+});
+
+test('shell commands that mention a hidden path are blocked while a run is active', () => {
+  for (const cmd of ['cat holdout/a.test.js', 'ls /srv/secret', 'node --test ./holdout/', 'grep -r x /srv/secret/']) {
+    assert.equal(checkBash(cmd, hidden).block, true, cmd);
+  }
+  assert.equal(checkBash('cat src/a.js', hidden).block, false);
+  assert.equal(checkBash('cat holdout/a.test.js', { ...hidden, active: false }).block, false);
 });

@@ -19,6 +19,7 @@ const SECRET_READERS = new Set([
   'cat', 'less', 'more', 'head', 'tail', 'bat', 'nl', 'tac', 'od', 'xxd', 'hexdump', 'strings', 'grep', 'rg', 'ag',
   'awk', 'sed', 'base64', 'cp', 'mv', 'scp', 'rsync', 'tar', 'zip', 'curl', 'wget', 'source', '.',
   'node', 'python', 'python3', 'perl', 'ruby',
+  'sort', 'cut', 'paste', 'diff', 'cmp', 'dd', 'openssl', 'column', 'fold', 'rev', 'uniq', 'tee',
 ]);
 const DANGEROUS_RM = new Set([
   '/', '/*', '~', '~/*', '$HOME', '${HOME}', '$PWD', '${PWD}', '.', '..', '*', './*', '.git',
@@ -40,6 +41,12 @@ const CREDENTIAL = /(?:api[_-]?key|secret|token|passw(?:or)?d)\s*[:=]\s*['"]([A-
 const PLACEHOLDER = /example|placeholder|changeme|your[-_]|xxxx|dummy|fake|sample|redacted/i;
 
 const stripDot = (p) => p.replace(/^\.\//, '');
+
+// Held-out tests: the dir lives outside the project and its path is never shown to the agent. While a run is
+// active neither the path nor the env var that carries it may be mentioned, and Read/Grep/Glob may not reach it.
+const HIDDEN_ENV = 'HARNESS_HIDDEN_DIR';
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const mentionsHidden = (text, dir) => text.includes(HIDDEN_ENV) || new RegExp(`${escapeRe(dir)}(?![\\w.-])`).test(text);
 const trimSlash = (p) => (p.length > 1 ? p.replace(/\/+$/, '') : p);
 
 const SECRET_NAMES = ['.env', 'id_rsa', 'id_ed25519', '.npmrc', '.netrc'];
@@ -52,14 +59,15 @@ function globMatchesSecret(base) {
 }
 
 function isSecretPath(arg) {
-  const value = arg.replace(/^--?[\w-]+=/, '').replace(/^@/, '');
+  const value = arg.replace(/^(--?[\w-]+|if)=/, '').replace(/^@/, '');
   const base = path.basename(value);
   if (TEMPLATE_ENV.test(base)) return false;
   return /^\.env(\.[\w.-]+)?$/.test(base)
     || /^id_(rsa|ed25519|ecdsa|dsa)$/.test(base)
     || /^\.(npmrc|netrc|pgpass|git-credentials)$/.test(base)
     || /\.(pem|p12|pfx)$/.test(base)
-    || /(^|\/)\.aws\/credentials$/.test(value)
+    || /(^|\/)\.aws\/(credentials|config)$/.test(value)
+    || /(^|\/)\.config\/gh\/hosts\.yml$/.test(value)
     || /^\/proc\/[^/]+\/environ$/.test(value)
     || globMatchesSecret(base);
 }
@@ -91,18 +99,56 @@ function rmViolation(argv) {
   return targets.some((t) => DANGEROUS_RM.has(t)) ? 'Recursive delete of a root, home or whole-project path is blocked.' : null;
 }
 
-// `-n` is --no-verify for commit, including bundled forms like -nm / -anm (but not -am or `-m "-n"`).
-function commitSkipsHooks(args) {
+// True when a short flag letter is present, including bundled forms (-anm) but not inside a flag's value (-m "-n").
+function hasBundledFlag(args, wanted) {
   for (let i = 0; i < args.length; i += 1) {
     const a = args[i];
-    if (a === '--no-verify') return true;
     if (!/^-[a-zA-Z]+$/.test(a)) continue;
     for (const letter of a.slice(1)) {
-      if (letter === 'n') return true;
+      if (letter === wanted) return true;
       if (VALUE_SHORT_FLAGS.has(letter)) { if (a.endsWith(letter)) i += 1; break; }
     }
   }
   return false;
+}
+
+// `-n` is --no-verify for commit, including bundled forms like -nm / -anm (but not -am or `-m "-n"`).
+const commitSkipsHooks = (args) => args.includes('--no-verify') || hasBundledFlag(args, 'n');
+
+// Commands that stage files nobody named, so a secret in the working tree could ride along.
+function stagesImplicitly({ argv }) {
+  if (argv[0] !== 'git') return false;
+  const args = argv.slice(2);
+  if (argv[1] === 'add') return args.some((a) => ['-A', '--all', '.', '*', '-u', '--update'].includes(a)) || hasBundledFlag(args, 'A') || hasBundledFlag(args, 'u');
+  if (argv[1] === 'commit') return args.includes('--all') || hasBundledFlag(args, 'a');
+  return false;
+}
+
+const impliesBulkStaging = (command) => parseCommands(command).some(stagesImplicitly);
+
+// Names of staged/untracked/modified files (git status --porcelain=v1 -z output) that look like secrets.
+function secretPathsInStatus(porcelainZ) {
+  return porcelainZ.split('\0').filter((e) => e.length > 3).map((e) => e.slice(3)).filter(isSecretPath);
+}
+
+// `kill $(pgrep node)` and `pgrep x | xargs kill` hide the target name from the argv check.
+const KILL_BY_LOOKUP = /\bkill\b[^\n]*(\$\(|`)\s*pgrep\b|\bpgrep\b[^\n]*\|\s*xargs\s+(\S+\s+)*kill\b/;
+const KILLERS = new Set(['pkill', 'killall', 'kill']);
+const BRANCH_DESTRUCTIVE = new Set(['-d', '-D', '-m', '-M', '-f', '-c', '-C', '--delete', '--force', '--move']);
+// Hook bypass by config or environment: neither shows up as a git subcommand.
+const HOOK_BYPASS = /core\.hooksPath|\bHUSKY(_SKIP_HOOKS)?\s*=\s*(0|true)\b|\bGIT_CONFIG_(COUNT|PARAMETERS|GLOBAL)\b/i;
+
+// Commands that destroy uncommitted work or history. The dry-run / staged / lowercase forms stay allowed.
+function irreversibleGit(argv) {
+  const [, sub] = argv;
+  const rest = argv.slice(2);
+  const has = (...flags) => rest.some((a) => flags.includes(a));
+  if (sub === 'clean' && !has('-n', '--dry-run')) return 'git clean deletes untracked files and is blocked.';
+  if (sub === 'checkout' && (has('--', '-f', '--force'))) return 'git checkout -- / -f discards uncommitted work and is blocked.';
+  if (sub === 'restore' && !has('--staged', '-S')) return 'git restore discards uncommitted work and is blocked.';
+  if (sub === 'branch' && has('-D')) return 'git branch -D deletes unmerged work and is blocked.';
+  if (sub === 'stash' && (rest[0] === 'drop' || rest[0] === 'clear')) return 'git stash drop/clear discards saved work and is blocked.';
+  return null;
 }
 
 function commandViolation({ argv }, ctx) {
@@ -111,12 +157,16 @@ function commandViolation({ argv }, ctx) {
   if (cmd === 'env' && argv.length === 1) return 'Dumping the environment can leak secrets.';
   if (cmd === 'export' && (argv.length === 1 || argv.includes('-p'))) return 'Dumping the environment can leak secrets.';
   if (cmd === 'rm') return rmViolation(argv);
+  if (KILLERS.has(cmd) && argv.slice(1).some((a) => /verify|harness|node|claude/i.test(a))) return 'Killing node, the verifier or the harness is blocked.';
   if (cmd !== 'git') return null;
   if (sub === 'push') return pushViolation(argv, ctx.currentBranch);
   if (sub === 'commit' && commitSkipsHooks(argv.slice(2))) return '--no-verify / -n skips the safety gates and is blocked.';
   if (sub === 'checkout' && argv.slice(2).includes('.') && !argv.includes('-b')) return 'git checkout . discards all uncommitted work and is blocked.';
+  if (sub === 'clean' && argv.slice(2).some((a) => /^-[a-zA-Z]*[fxX]/.test(a) || a === '--force')) return 'git clean deletes untracked and ignored files (including .env) and is blocked.';
+  if (sub === 'branch' && argv.slice(2).some((a) => BRANCH_DESTRUCTIVE.has(a) || /^-[a-zA-Z]*[dDmMf]/.test(a))
+    && argv.slice(2).some((a) => PROTECTED_BRANCHES.has(a))) return 'Deleting, renaming or force-moving a protected branch is blocked.';
   if (sub === 'reset' && argv.includes('--hard')) return 'git reset --hard discards work and is blocked.';
-  return null;
+  return irreversibleGit(argv);
 }
 
 function secretReadViolation({ argv, redirects }) {
@@ -147,12 +197,11 @@ function activeViolation({ argv, redirects }, matcher) {
   const [cmd, sub] = argv;
   const tail = argv.slice(1);
   const harnessIdx = argv.findIndex((a) => a.endsWith('harness.js'));
-  if (harnessIdx >= 0 && ['off', 'init'].includes(argv[harnessIdx + 1])) {
-    return 'The agent cannot stop or re-initialise the harness run; a human does that.';
+  if (harnessIdx >= 0 && ['off', 'init', 'restore'].includes(argv[harnessIdx + 1])) {
+    return 'The agent cannot stop, re-initialise or restore over the harness run; a human does that.';
   }
   const guardedMsg = 'Guardrail, state and acceptance files are read-only during a harness run.';
   if (redirects.some(matcher.isGuarded)) return guardedMsg;
-  if ((cmd === 'cd' || cmd === 'pushd') && tail[0] && matcher.isGuarded(tail[0])) return guardedMsg;
   if (WRITE_VERBS.has(cmd)) {
     const positional = tail.filter((a) => !a.startsWith('-'));
     const afterT = tail.findIndex((a) => a === '-t') >= 0 ? [tail[tail.findIndex((a) => a === '-t') + 1]] : [];
@@ -175,23 +224,67 @@ const PIPE_TO_SHELL = [
 const RAW_PIPE_TO_SHELL = /\b((ba|z)?sh\s+-c|eval)\s+["']?\$\(\s*(curl|wget)\b/;
 const blankQuotes = (t) => t.replace(/"[^"]*"|'[^']*'/g, '""');
 
+// After `cd <guarded dir>`, relative paths point inside it, so a write-like command in the same line is refused.
+// Read-only exploration (`cd .claude/harness; ls lib`) is fine.
+function writesLike({ argv, redirects }) {
+  const [cmd, sub] = argv;
+  if (redirects.length > 0 || WRITE_VERBS.has(cmd)) return true;
+  if (cmd === 'sed' && argv.some((a) => /^-[a-zA-Z]*i/.test(a) || a === '--in-place')) return true;
+  if (cmd === 'git' && (GIT_WRITE_SUBS.has(sub) || sub === 'checkout' || sub === 'restore')) return true;
+  return INTERPRETERS.has(cmd) && argv.some((a) => EVAL_FLAGS.has(a));
+}
+
 function checkBash(command, ctx = {}) {
+  if (ctx.active && ctx.hiddenDir && mentionsHidden(command, ctx.hiddenDir)) {
+    return deny('Held-out tests are not readable during a run; make the visible tests and spec pass for the right reasons.');
+  }
   const text = stripHeredocs(command);
   if (RAW_PIPE_TO_SHELL.test(text) || PIPE_TO_SHELL.some((re) => re.test(blankQuotes(text)))) return deny('Piping a download into a shell or interpreter is blocked.');
+
+  if (KILL_BY_LOOKUP.test(blankQuotes(text))) return deny('Killing processes found by name lookup is blocked.');
+  if (HOOK_BYPASS.test(blankQuotes(text))) return deny('Changing the hooks path or disabling hooks by environment is blocked.');
 
   const commands = parseCommands(command);
   for (const c of commands) {
     const reason = commandViolation(c, ctx) || secretReadViolation(c);
     if (reason) return deny(reason);
   }
+  if (ctx.active && hiddenViolation(command, ctx)) return deny(HIDDEN_MSG);
   if (ctx.active) {
     const matcher = guardedMatcher(ctx);
+    const cdsIntoGuarded = commands.some((c) => ['cd', 'pushd'].includes(c.argv[0]) && c.argv[1] && matcher.isGuarded(c.argv[1]));
+    if (cdsIntoGuarded && commands.some(writesLike)) {
+      return deny('Guardrail, state and acceptance files are read-only during a harness run.');
+    }
     for (const c of commands) {
       const reason = activeViolation(c, matcher);
       if (reason) return deny(reason);
     }
   }
   return ok;
+}
+
+const HIDDEN_MSG = 'That path holds hidden (held-out) acceptance tests and is off limits during a harness run.';
+
+// Hidden paths are absolute. For a path inside the project the relative form is matched too, so `cat holdout/x` is caught.
+function hiddenForms(ctx) {
+  const root = ctx.projectDir ? `${trimSlash(ctx.projectDir)}/` : null;
+  return (ctx.hiddenPaths ?? []).flatMap((h) => (root && h.startsWith(root) ? [h, h.slice(root.length)] : [h]));
+}
+const hiddenViolation = (text, ctx) => hiddenForms(ctx).some((form) => text.includes(form)) || Boolean(ctx.hiddenDir && mentionsHidden(text, ctx.hiddenDir));
+
+function checkRead(event, ctx = {}, projectDir = process.cwd()) {
+  if (!ctx.active || ((ctx.hiddenPaths ?? []).length === 0 && !ctx.hiddenDir)) return ok;
+  const input = event.tool_input ?? {};
+  const values = [input.file_path, input.notebook_path, input.path, input.pattern, input.glob].filter((v) => typeof v === 'string' && v !== '');
+  const roots = [...(ctx.hiddenPaths ?? []), ...(ctx.hiddenDir ? [ctx.hiddenDir] : [])];
+  const inside = (abs) => roots.some((h) => abs === h || abs.startsWith(`${h}/`));
+  const hit = values.some((v) => {
+    const abs = path.resolve(projectDir, v);
+    const real = fs.existsSync(abs) ? fs.realpathSync(abs) : abs;
+    return inside(abs) || inside(real) || hiddenViolation(v, { ...ctx, projectDir });
+  });
+  return hit ? deny(HIDDEN_MSG) : ok;
 }
 
 function isGitCommit(command) {
@@ -236,4 +329,4 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;
 }
 
-module.exports = { checkBash, checkWrite, isGitCommit, scanSecrets };
+module.exports = { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets, isSecretPath, impliesBulkStaging, secretPathsInStatus };

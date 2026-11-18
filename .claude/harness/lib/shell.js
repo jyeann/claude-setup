@@ -65,6 +65,8 @@ function scan(text) {
     if (ch === '\\' && i + 1 < text.length) { cur += text[i + 1]; has = true; i += 1; continue; }
     if (/\s/.test(ch) && ch !== '\n') { endToken(); continue; }
     const next = text[i + 1];
+    // `>|` is a clobbering redirect, not a pipe: keep it inside the token so the target stays a redirect.
+    if (ch === '|' && cur.endsWith('>')) { cur += ch; has = true; continue; }
     const redirectAmp = ch === '&' && (cur.endsWith('>') || cur.endsWith('<') || next === '>');
     if (ch === '\n' || ch === ';' || ch === '|' || ch === '(' || ch === ')' || ch === '`' || (ch === '&' && !redirectAmp)) {
       endCommand();
@@ -76,8 +78,8 @@ function scan(text) {
   return commands;
 }
 
-const REDIRECT_OP = /^(\d*|&)>>?$/;
-const REDIRECT_ATTACHED = /^(?:\d*|&)>>?([^&].*)$/;
+const REDIRECT_OP = /^(\d*|&)>>?\|?$/;
+const REDIRECT_ATTACHED = /^(?:\d*|&)>>?\|?([^&|].*)$/;
 const FD_DUP = /^\d*[<>]&(\d+|-)$/;
 
 function splitRedirects(tokens) {
