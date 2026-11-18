@@ -29,10 +29,10 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 |---|-----------|-----|----------------------------------------|------------|
 | 1 | `discover` | `product-scoper` | `brief.md` | build/adopt/extend decided; success criteria are user-visible and testable |
 | 2 | `ux` | `ux-designer` (+ `a11y-architect` for review) | `ux.md` | every success criterion has a journey and a UI acceptance check |
-| 3 | `design` | `architect`, `api-design` skill; record choices with `architecture-decision-records` | `design.md`, `adr/` | interfaces, data, failure modes, security notes written; ADR per real choice |
+| 3 | `design` | `architect`, `api-design` skill; record choices with `architecture-decision-records` | `design.md`, `adr/` | interfaces, data, failure modes, security notes written; ADR per real choice; `architect` is read-only, so save its text verbatim (a writer agent given the exact text, a diff-free check, or give it Write). Never retype or shorten it: a dropped caveat reached the holdout author and failed a gate |
 | 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec and acceptance tests | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder |
 | 5 | `build` | `tdd-guide` / `gan-generator` under `/harness-build` | code, unit tests | `verify.js` exits 0 (tests, coverage, mutation, holdout) |
-| 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer` in parallel, foreground | `reviews.md` | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason |
+| 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer` in parallel, foreground | `reviews.md` | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason; every reviewer is given `ux.md` as a hard requirement list, and a finding that contradicts it is escalated, not applied |
 | 7 | `qa` | `e2e-runner` (Playwright) or `gan-evaluator` | `qa.md`, screenshots | every journey and UI acceptance check in `ux.md` passes in a browser |
 | 8 | `release` | `doc-updater` | README with run steps, `CHANGELOG` entry | someone with only the README can run it |
 | 9 | `retro` | `harness-improver` + the KPI roll-up | `retro.md` | one evidence-backed change proposed; KPI file refreshed |
