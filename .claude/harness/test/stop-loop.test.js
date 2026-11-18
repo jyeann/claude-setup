@@ -36,8 +36,8 @@ test('does not mutate the input state', () => {
   assert.doesNotThrow(() => decideStop(frozen, fail()));
 });
 
-test('halts when the iteration cap is reached', () => {
-  const d = decideStop({ ...base, iteration: 5 }, fail());
+test('halts when the iteration cap is reached (diagnosis off)', () => {
+  const d = decideStop({ ...base, iteration: 5, diagnose: false }, fail());
   assert.equal(d.decision, 'allow');
   assert.equal(d.nextState.status, 'halted-max-iterations');
   assert.equal(d.nextState.active, false);
@@ -47,7 +47,7 @@ test('circuit breaker halts after stallLimit identical failures in a row', () =>
   let state = base;
   const outcomes = [];
   for (let i = 0; i < 3; i += 1) {
-    const d = decideStop(state, fail('same failure took 12ms'));
+    const d = decideStop({ ...state, diagnose: false }, fail('same failure took 12ms'));
     outcomes.push(d.decision);
     state = d.nextState;
   }
@@ -103,4 +103,43 @@ test('later blocks still point at the task when it was given inline (no file)', 
   const second = decideStop(first.nextState, fail('error B'));
   assert.doesNotMatch(second.reason, /inline task text/);
   assert.match(second.reason, /first message of this run/i);
+});
+
+const failing = 'FAIL: x\n✖ creates todo (3ms)\n  AssertionError: Expected 200 !== 201\n';
+
+test('at the cap the agent gets one diagnosis turn (no fixing) before the run is halted', () => {
+  const d = decideStop({ ...base, iteration: 5 }, fail(failing));
+  assert.equal(d.decision, 'block');
+  assert.equal(d.nextState.active, true);
+  assert.equal(d.nextState.diagnosing, 'halted-max-iterations');
+  assert.match(d.reason, /IMPL_BUG/);
+  assert.match(d.reason, /creates todo/);
+  assert.match(d.reason, /HARNESS-DIAGNOSIS\.md/);
+});
+
+test('a stall also triggers diagnosis, then the next stop ends the run with the original status', () => {
+  let state = { ...base };
+  let d;
+  for (let i = 0; i < 3; i += 1) { d = decideStop(state, fail(failing)); state = d.nextState; }
+  assert.equal(d.decision, 'block');
+  assert.equal(state.diagnosing, 'halted-stalled');
+  const end = decideStop(state, null, { diagnosisWritten: true });
+  assert.equal(end.decision, 'allow');
+  assert.equal(end.nextState.status, 'halted-stalled');
+  assert.equal(end.nextState.active, false);
+  assert.equal(end.nextState.diagnosis, 'written');
+  assert.equal(end.nextState.diagnosing, null);
+});
+
+test('diagnosis is bounded: a missing report does not trap the agent', () => {
+  const end = decideStop({ ...base, diagnosing: 'halted-max-iterations' }, null, { diagnosisWritten: false });
+  assert.equal(end.decision, 'allow');
+  assert.equal(end.nextState.status, 'halted-max-iterations');
+  assert.equal(end.nextState.diagnosis, 'missing');
+  assert.match(end.reason, /no diagnosis/i);
+});
+
+test('the diagnosis turn does not consume an iteration', () => {
+  const d = decideStop({ ...base, iteration: 5 }, fail(failing));
+  assert.equal(d.nextState.iteration, 5);
 });

@@ -9,7 +9,9 @@ Parse from $ARGUMENTS:
 4. `--stall N` - identical-failure repeats before halting (default 3)
 5. `--protect a/,b/` - extra read-only paths, e.g. the acceptance tests
 6. `--no-commit-gate` - allow checkpoint commits while verify is failing (default: commits are refused until verify is green)
-7. `--no-checkpoint` / `--checkpoint-push` - WIP snapshots to `refs/harness/wip/<branch>` run on every Stop attempt by default (no branch commits); `--checkpoint-push` also pushes that ref to origin so a lost sandbox is recoverable (`harness.js restore`)
+7. `--hide <paths>` - hidden holdout acceptance tests (keep them outside the project; agent cannot read them; wire them into `verify.config.json` as `holdout`)
+8. `--no-diagnosis` - skip the one-turn failure diagnosis when the run is stuck
+9. `--no-checkpoint` / `--checkpoint-push` - WIP snapshots to `refs/harness/wip/<branch>` run on every Stop attempt by default (no branch commits); `--checkpoint-push` also pushes that ref to origin so a lost sandbox is recoverable (`harness.js restore`)
 
 ## Preconditions (stop and tell the human if any fails)
 - You are on a feature branch, not main/master.
@@ -34,4 +36,4 @@ When verify passes the loop releases you. Then: `node .claude/harness/bin/harnes
 (what was built, verify output, anything the evaluator flagged, what a human must review), and stop. A human reviews the
 diff before any merge or deploy.
 
-If the run halts (`halted-stalled` or `halted-max-iterations`), do not retry silently: report the last failure and what you tried.
+If the run halts (`halted-stalled` or `halted-max-iterations`), do not retry silently. The harness gives you one diagnosis turn first: do not fix anything, write `HARNESS-DIAGNOSIS.md` classifying each failure group as IMPL_BUG, TEST_AMBIGUOUS, TEST_WRONG or ENV, then report the last failure and what you tried.

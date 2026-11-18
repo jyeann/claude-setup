@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
 const { readEvent, projectDirOf, failOpen } = require('../lib/hook-io');
 const { readState, writeState } = require('../lib/state');
 const { runVerify } = require('../lib/verify');
 const { decideStop } = require('../lib/stop-loop');
 const { writeCheckpoint } = require('../lib/checkpoint');
+const { REPORT_FILE } = require('../lib/failure-cluster');
 
 // Best effort: a checkpoint problem must never change the loop's decision.
 function checkpoint(projectDir, state, nextState) {
@@ -19,8 +22,13 @@ async function main() {
   const state = readState(projectDir);
   if (!state?.active) return;
 
-  const result = await runVerify(state.verifyCommand, { cwd: projectDir });
-  const { decision, reason, nextState } = decideStop(state, result);
+  const report = path.join(projectDir, REPORT_FILE);
+  // The diagnosis turn is bounded and needs no verify run.
+  const result = state.diagnosing ? null : await runVerify(state.verifyCommand, { cwd: projectDir });
+  const diagnosisWritten = fs.existsSync(report) && fs.statSync(report).size > 0;
+  const { decision, reason, nextState } = decideStop(state, result, { diagnosisWritten });
+  // A report left over from an earlier run must not count as this run's diagnosis.
+  if (nextState.diagnosing && !state.diagnosing) fs.rmSync(report, { force: true });
   writeState(projectDir, nextState);
   checkpoint(projectDir, state, nextState);
 

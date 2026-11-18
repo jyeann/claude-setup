@@ -173,3 +173,82 @@ test('deleting all source cannot shrink the coverage denominator to nothing', ()
   assert.equal(r.status, 1);
   assert.match(r.stdout, /at least 2 source file/i);
 });
+
+const FLAKY_TEST = `const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { add } = require('../src/math');
+const marker = path.join(__dirname, '..', '.flaky-marker');
+test('flaky', () => {
+  const seen = fs.existsSync(marker);
+  fs.writeFileSync(marker, '1');
+  assert.equal(seen, false);
+  assert.equal(add(1, 2), 3);
+  assert.equal(add(2, 2), 4);
+});
+`;
+
+test('a test that passes once and then fails is reported as flaky, and --fast skips the replicate run', () => {
+  const dir = project({ 'math.test.js': GOOD_TEST, 'flaky.test.js': FLAKY_TEST });
+  const r = verify(dir);
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /flaky|non-?determinis/i);
+  fs.rmSync(path.join(dir, '.flaky-marker'), { force: true });
+  const fast = verify(dir, '--fast');
+  assert.equal(fast.status, 0, text(fast));
+  assert.match(fast.stdout, /replicate.*skipped/i);
+});
+
+test('replicates can be turned off with replicates: 1', () => {
+  const dir = project({ 'math.test.js': GOOD_TEST, 'flaky.test.js': FLAKY_TEST }, { ...CONFIG, replicates: 1 });
+  assert.equal(verify(dir).status, 0);
+});
+
+const HOLDOUT_FAIL = `const test = require('node:test');
+const assert = require('node:assert/strict');
+const { add } = require('../src/math');
+test('hidden case SECRET_CASE_NAME', () => { assert.equal(add(2, 2), 'SECRET_EXPECTED_VALUE'); });
+`;
+const HOLDOUT_PASS = `const test = require('node:test');
+const assert = require('node:assert/strict');
+const { add } = require('../src/math');
+test('hidden ok', () => { assert.equal(add(2, 2), 4); });
+`;
+const withHoldout = (file, cfg = {}) => {
+  const dir = project({ 'math.test.js': GOOD_TEST }, { ...CONFIG, holdout: { command: 'node --test "holdout/*.test.js"', ...cfg } });
+  fs.mkdirSync(path.join(dir, 'holdout'));
+  if (file) fs.writeFileSync(path.join(dir, 'holdout', 'h.test.js'), file);
+  return dir;
+};
+
+test('a failing holdout set fails the gate but reveals only counts, never names, paths or expected values', () => {
+  const r = verify(withHoldout(HOLDOUT_FAIL));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /holdout: 1 of 1/i);
+  assert.doesNotMatch(text(r), /SECRET_EXPECTED_VALUE|SECRET_CASE_NAME|h\.test\.js/);
+});
+
+test('a passing holdout set lets the gate pass', () => {
+  const r = verify(withHoldout(HOLDOUT_PASS));
+  assert.equal(r.status, 0, text(r));
+  assert.match(r.stdout, /holdout: 1\/1 passing/i);
+});
+
+test('an empty or deleted holdout cannot pass vacuously', () => {
+  const r = verify(withHoldout(null));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /holdout/i);
+});
+
+test('--fast skips the holdout', () => {
+  const r = verify(withHoldout(HOLDOUT_FAIL), '--fast');
+  assert.equal(r.status, 0, text(r));
+  assert.match(r.stdout, /holdout: skipped/i);
+});
+
+test('holdout config needs a command', () => {
+  const r = verify(project({ 'math.test.js': GOOD_TEST }, { ...CONFIG, holdout: {} }));
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /holdout\.command/);
+});

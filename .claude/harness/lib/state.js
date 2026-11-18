@@ -37,10 +37,21 @@ function normaliseProtected(entries, projectDir) {
   });
 }
 
-function buildState({ verifyCommand, task = '', taskFile = '', checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, projectDir }) {
+// Hidden paths are absolute so they can live outside the project (the safest place for a holdout set).
+function normaliseHidden(entries, projectDir) {
+  return entries.map((entry) => {
+    const p = entry.replace(/^\.\//, '').replace(/\/+$/, '');
+    return path.isAbsolute(p) ? p : path.join(projectDir ?? process.cwd(), p);
+  });
+}
+
+function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, hiddenPaths = [], checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, projectDir }) {
   if (!verifyCommand || !verifyCommand.trim()) {
     throw new Error('A non-empty verify command is required: it is the objective definition of done.');
   }
+  const hidden = normaliseHidden(hiddenPaths, projectDir);
+  const root = projectDir ? `${projectDir}/` : null;
+  const hiddenInside = root ? hidden.filter((h) => h.startsWith(root)).map((h) => `${h.slice(root.length)}/`) : [];
   return {
     active: true,
     status: 'running',
@@ -51,7 +62,9 @@ function buildState({ verifyCommand, task = '', taskFile = '', checkpoint = true
     verifyCommand: verifyCommand.trim(),
     maxIterations: maxIterations ?? DEFAULTS.maxIterations,
     stallLimit: stallLimit ?? DEFAULTS.stallLimit,
-    protectedPaths: normaliseProtected(protectedPaths, projectDir),
+    diagnose,
+    hiddenPaths: hidden,
+    protectedPaths: [...new Set([...normaliseProtected(protectedPaths, projectDir), ...hiddenInside])],
     commitGate,
     iteration: 0,
     lastSignature: null,

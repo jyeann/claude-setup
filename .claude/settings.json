@@ -42,6 +42,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/pre-read.js\"",
+            "timeout": 30
+          }
+        ]
       }
     ],
     "Stop": [

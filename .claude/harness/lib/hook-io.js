@@ -14,10 +14,10 @@ const projectDirOf = (event) => process.env.CLAUDE_PROJECT_DIR || event.cwd || p
 function guardContext(projectDir) {
   try {
     const state = readState(projectDir);
-    return { state, active: Boolean(state?.active), protectedPaths: state?.protectedPaths ?? [], projectDir, corrupt: false };
+    return { state, active: Boolean(state?.active), protectedPaths: state?.protectedPaths ?? [], hiddenPaths: state?.hiddenPaths ?? [], projectDir, corrupt: false };
   } catch (err) {
     process.stderr.write(`[harness] ${err.message}; guards stay on.\n`);
-    return { state: null, active: true, protectedPaths: [], projectDir, corrupt: true };
+    return { state: null, active: true, protectedPaths: [], hiddenPaths: [], projectDir, corrupt: true };
   }
 }
 

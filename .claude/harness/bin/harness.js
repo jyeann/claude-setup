@@ -8,14 +8,14 @@ const { writeCheckpoint, restoreCheckpoint } = require('../lib/checkpoint');
 
 const USAGE = `harness <command>
   init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--no-commit-gate]
-        [--no-checkpoint] [--checkpoint-push]
+        [--no-checkpoint] [--checkpoint-push]\n        [--hide <paths>] [--no-diagnosis]
   checkpoint    snapshot the worktree to refs/harness/wip/<branch> now (the Stop hook does this every iteration)
   restore       copy the latest checkpoint's files back into the worktree (fetches from origin if needed)
   status        show the current run
   verify        run the verify command once (does not change state)
   off           deactivate the run (humans only; blocked for the agent while a run is active)`;
 
-const BOOLEAN_FLAGS = new Set(['no-commit-gate', 'no-checkpoint', 'checkpoint-push']);
+const BOOLEAN_FLAGS = new Set(['no-commit-gate', 'no-checkpoint', 'checkpoint-push', 'no-diagnosis']);
 
 function parseFlags(argv) {
   const flags = {};
@@ -47,6 +47,8 @@ async function main([command, ...rest]) {
         verifyCommand: f.verify,
         task,
         taskFile: f['task-file'] ?? '',
+        diagnose: !f['no-diagnosis'],
+        hiddenPaths: f.hide ? f.hide.split(',').map((p) => p.trim()).filter(Boolean) : [],
         checkpoint: !f['no-checkpoint'],
         checkpointPush: Boolean(f['checkpoint-push']),
         maxIterations: toInt(f.max, 'max'),

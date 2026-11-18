@@ -184,6 +184,7 @@ function checkBash(command, ctx = {}) {
     const reason = commandViolation(c, ctx) || secretReadViolation(c);
     if (reason) return deny(reason);
   }
+  if (ctx.active && hiddenViolation(command, ctx)) return deny(HIDDEN_MSG);
   if (ctx.active) {
     const matcher = guardedMatcher(ctx);
     for (const c of commands) {
@@ -192,6 +193,29 @@ function checkBash(command, ctx = {}) {
     }
   }
   return ok;
+}
+
+const HIDDEN_MSG = 'That path holds hidden acceptance tests and is off limits during a harness run.';
+
+// Hidden paths are absolute. For a path inside the project the relative form is matched too, so `cat holdout/x` is caught.
+function hiddenForms(ctx) {
+  const root = ctx.projectDir ? `${trimSlash(ctx.projectDir)}/` : null;
+  return (ctx.hiddenPaths ?? []).flatMap((h) => (root && h.startsWith(root) ? [h, h.slice(root.length)] : [h]));
+}
+const hiddenViolation = (text, ctx) => hiddenForms(ctx).some((form) => text.includes(form));
+
+function checkRead(event, ctx = {}, projectDir = process.cwd()) {
+  if (!ctx.active || (ctx.hiddenPaths ?? []).length === 0) return ok;
+  const input = event.tool_input ?? {};
+  const values = [input.file_path, input.notebook_path, input.path, input.pattern, input.glob].filter((v) => typeof v === 'string' && v !== '');
+  const roots = ctx.hiddenPaths;
+  const inside = (abs) => roots.some((h) => abs === h || abs.startsWith(`${h}/`));
+  const hit = values.some((v) => {
+    const abs = path.resolve(projectDir, v);
+    const real = fs.existsSync(abs) ? fs.realpathSync(abs) : abs;
+    return inside(abs) || inside(real) || hiddenViolation(v, { ...ctx, projectDir });
+  });
+  return hit ? deny(HIDDEN_MSG) : ok;
 }
 
 function isGitCommit(command) {
@@ -236,4 +260,4 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;
 }
 
-module.exports = { checkBash, checkWrite, isGitCommit, scanSecrets };
+module.exports = { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets };

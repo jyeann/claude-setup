@@ -30,14 +30,19 @@ function loadConfig(file) {
     srcDirs: raw.srcDirs ?? ['src'],
     coverage: { minLines: 80, minFileLines: 50, minSourceFiles: 1, exclude: [], ...raw.coverage },
     testQuality: { dirs: ['tests'], minAssertionsPerFile: 3, ...raw.testQuality },
+    replicates: raw.replicates ?? 2,
+    holdout: raw.holdout ? { minTests: 1, ...raw.holdout } : null,
     mutation: { samples: 6, minKillRate: 0.6, copy: ['acceptance', 'package.json'], timeoutMs: 120_000, timeoutFactor: 3, minTimeoutMs: 10_000, ...raw.mutation },
   };
   validate(config);
   return config;
 }
 
-function validate({ coverage, mutation }) {
+function validate({ coverage, mutation, replicates, holdout }) {
   const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+  if (!Number.isInteger(replicates) || replicates < 1 || replicates > 5) throw new Error('replicates must be an integer between 1 and 5');
+  if (holdout && (typeof holdout.command !== 'string' || !holdout.command.trim())) throw new Error('holdout.command (string) is required when holdout is set');
+  if (holdout && (!Number.isInteger(holdout.minTests) || holdout.minTests < 1)) throw new Error('holdout.minTests must be an integer >= 1');
   if (!Number.isInteger(mutation.samples) || mutation.samples < 1) throw new Error('mutation.samples must be an integer >= 1');
   if (!inRange(mutation.minKillRate, 0.01, 1)) throw new Error('mutation.minKillRate must be a number in (0, 1]');
   if (!inRange(coverage.minLines, 0, 100)) throw new Error('coverage.minLines must be between 0 and 100');
@@ -131,6 +136,43 @@ function checkTestQuality(root, config) {
   }));
 }
 
+const runSignature = (result) => {
+  const s = parseTestSummary(result.output);
+  return `${result.pass ? 'pass' : 'fail'}: ${s.pass}/${s.tests} passing, ${s.fail} failing`;
+};
+
+// Variance check (the first run's tests passed): the same command must give the same answer again, or the
+// gate is noise and the agent would be steered by luck.
+async function checkReplicates(root, config, first, out) {
+  const failures = [];
+  const expected = runSignature(first);
+  for (let run = 2; run <= config.replicates; run += 1) {
+    const again = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs });
+    const got = runSignature(again);
+    if (got !== expected) {
+      failures.push(`flaky tests: run 1 -> ${expected}; run ${run} -> ${got}. The suite is non-deterministic, so it cannot be a definition of done; make it deterministic`);
+      out(tailOutput(again.output, 25, 2500));
+      break;
+    }
+  }
+  out(failures.length === 0 ? `  replicates: ${config.replicates} runs agree` : '  replicates: DISAGREE');
+  return failures;
+}
+
+// Hidden acceptance tests: run only here, and only counts are reported, so the agent cannot code to them.
+async function checkHoldout(root, config, out) {
+  const { command, minTests } = config.holdout;
+  const result = await runVerify(command, { cwd: root, timeoutMs: config.timeoutMs });
+  const s = parseTestSummary(result.output);
+  out(`  holdout: ${s.pass}/${s.tests} passing`);
+  const detail = 'Details are withheld on purpose: re-read the spec\'s acceptance criteria and handle cases beyond the visible tests.';
+  if (result.timedOut) return [`holdout: the hidden tests timed out. ${detail}`];
+  if (s.tests < minTests) return [`holdout: only ${s.tests} hidden test(s) ran; at least ${minTests} expected (is the holdout set missing?)`];
+  if (s.skipped > 0 || s.todo > 0) return ['holdout: skipped or todo hidden tests are not passing'];
+  if (!result.pass || s.fail > 0) return [`holdout: ${s.fail || 'some'} of ${s.tests} hidden acceptance test(s) fail. ${detail}`];
+  return [];
+}
+
 // A mutant that hangs the suite counts as killed, so wait only a few multiples of the healthy run time.
 function mutationTimeoutMs(baselineMs, { timeoutMs, timeoutFactor, minTimeoutMs }) {
   return Math.min(timeoutMs, Math.max(minTimeoutMs, Math.round(baselineMs * timeoutFactor)));
@@ -188,7 +230,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
   const covDir = makeTemp('verify-cov-');
   const failures = [];
   try {
-    out('[1/4] tests');
+    out('[1/5] tests');
     const startedAt = Date.now();
     const result = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env: { NODE_V8_COVERAGE: covDir } });
     const baselineMs = Date.now() - startedAt;
@@ -196,15 +238,25 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     failures.push(...tests.failures);
     out(`  ${tests.summary.pass}/${tests.summary.tests} passing`);
     if (tests.failures.length > 0) out(tailOutput(result.output, 25, 2500));
+    if (tests.failures.length === 0 && config.replicates > 1) {
+      if (fast) out('  replicates: skipped (--fast); the full run is the definition of done');
+      else failures.push(...await checkReplicates(root, config, result, out));
+    }
 
-    out('[2/4] source coverage');
+    out('[2/5] source coverage');
     failures.push(...checkCoverage(root, config, covDir, out));
-    out('[3/4] test quality');
+    out('[3/5] test quality');
     const quality = checkTestQuality(root, config);
     failures.push(...quality);
     out(quality.length === 0 ? '  ok' : quality.map((q) => `  ${q}`).join('\n'));
 
-    out('[4/4] mutation spot-check');
+    out('[4/5] hidden holdout set');
+    if (!config.holdout) out('  holdout: not configured');
+    else if (fast) out('  holdout: skipped (--fast); the full run is the definition of done');
+    else if (failures.length > 0) out('  holdout: skipped until the checks above pass');
+    else failures.push(...await checkHoldout(root, config, out));
+
+    out('[5/5] mutation spot-check');
     if (fast) out('  mutation: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  mutation: skipped until the checks above pass');
     else failures.push(...await checkMutation(root, config, baselineMs, out));

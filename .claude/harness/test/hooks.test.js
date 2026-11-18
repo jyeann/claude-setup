@@ -62,10 +62,11 @@ test('stop hook blocks while verify fails, then releases once it passes', () => 
 test('stop hook halts at the iteration cap instead of looping forever', () => {
   const dir = project();
   cli(dir, 'init', '--verify', 'echo "fail $RANDOM" >&2; false', '--max', '2', '--stall', '99');
-  const decisions = [stop(dir), stop(dir), stop(dir)].map((r) => r.stdout);
+  const decisions = [stop(dir), stop(dir), stop(dir), stop(dir)].map((r) => r.stdout);
   assert.equal(JSON.parse(decisions[0]).decision, 'block');
   assert.equal(JSON.parse(decisions[1]).decision, 'block');
-  assert.equal(decisions[2], '');
+  assert.match(JSON.parse(decisions[2]).reason, /diagnosis/i, 'one bounded diagnosis turn at the cap');
+  assert.equal(decisions[3], '');
   assert.equal(state(dir).status, 'halted-max-iterations');
 });
 
@@ -157,4 +158,43 @@ test('stop hook does not checkpoint when --no-checkpoint is set', () => {
   cli(dir, 'init', '--verify', 'exit 1', '--no-checkpoint');
   stop(dir);
   assert.equal(gitIn(dir, 'for-each-ref', 'refs/harness/'), '');
+});
+
+test('end to end: a stalled run gets one diagnosis turn, then is halted with the report noted', () => {
+  const dir = project();
+  cli(dir, 'init', '--verify', 'echo "✖ creates todo (3ms)"; echo "  AssertionError: Expected 200 !== 201"; exit 1', '--stall', '2', '--no-checkpoint');
+  assert.match(stop(dir).stdout, /"decision":"block"/);
+  const diag = stop(dir);
+  assert.match(diag.stdout, /IMPL_BUG/);
+  assert.equal(state(dir).diagnosing, 'halted-stalled');
+  fs.writeFileSync(path.join(dir, 'HARNESS-DIAGNOSIS.md'), '# diagnosis\nIMPL_BUG');
+  const end = stop(dir);
+  assert.equal(end.stdout, '');
+  assert.equal(state(dir).status, 'halted-stalled');
+  assert.equal(state(dir).diagnosis, 'written');
+  assert.equal(state(dir).active, false);
+});
+
+test('a stale diagnosis file from an earlier run does not count', () => {
+  const dir = project();
+  fs.writeFileSync(path.join(dir, 'HARNESS-DIAGNOSIS.md'), 'old');
+  cli(dir, 'init', '--verify', 'exit 1', '--stall', '1', '--no-checkpoint');
+  stop(dir);
+  stop(dir);
+  assert.equal(state(dir).diagnosis, 'missing');
+});
+
+test('--no-diagnosis halts immediately', () => {
+  const dir = project();
+  cli(dir, 'init', '--verify', 'exit 1', '--stall', '1', '--no-checkpoint', '--no-diagnosis');
+  stop(dir);
+  assert.equal(state(dir).status, 'halted-stalled');
+});
+
+test('pre-read blocks a hidden path and allows others', () => {
+  const dir = project();
+  cli(dir, 'init', '--verify', 'true', '--hide', 'holdout/', '--no-checkpoint');
+  const read = (file_path) => run(path.join(HOOKS, 'pre-read.js'), dir, { tool_name: 'Read', tool_input: { file_path } });
+  assert.equal(read(path.join(dir, 'holdout', 'a.js')).status, 2);
+  assert.equal(read(path.join(dir, 'src', 'a.js')).status, 0);
 });

@@ -70,3 +70,11 @@ test('buildState records the task file and the checkpoint settings', () => {
   assert.equal(d.checkpointPush, false);
   assert.equal(buildState({ verifyCommand: 'true', checkpoint: false }).checkpoint, false);
 });
+
+test('buildState defaults diagnosis on and normalises hidden paths (inside the project or absolute outside it)', () => {
+  assert.equal(buildState({ verifyCommand: 'true' }).diagnose, true);
+  assert.equal(buildState({ verifyCommand: 'true', diagnose: false }).diagnose, false);
+  const s = buildState({ verifyCommand: 'true', protectedPaths: ['acceptance/'], hiddenPaths: ['./holdout/', '/srv/secret-holdout'], projectDir: '/p' });
+  assert.deepEqual(s.hiddenPaths, ['/p/holdout', '/srv/secret-holdout']);
+  assert.ok(s.protectedPaths.includes('holdout/'), 'a hidden path inside the project is also read-only');
+});
