@@ -116,3 +116,25 @@ test('the user-prompt hook records a human event from the hook payload', () => {
   assert.equal(r.status, 0);
   assert.equal(trace.readSessions(dir)[0].events[0].type, 'human');
 });
+
+test('a completion notice fills the matching unreported background run and is flagged as from a notice', () => {
+  const dir = project();
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'architect', description: '[phase:design] design it', effort: 'high' }, tool_response: {} }, 1);
+  const finals = [{ agent: 'architect', task: '[phase:design] design it', tokens: 62067, durationMs: 256673, toolUses: 11 }];
+  const kpi = buildKpi(dir, path.join(dir, 'none'), { finals });
+  const row = kpi.rows.find((r) => r.agent === 'architect');
+  assert.equal(row.runs, 1);
+  assert.equal(row.tokens, 62067);
+  assert.equal(row.unreported, 0);
+  assert.equal(kpi.byEffort[0].effort, 'high');
+  assert.equal(kpi.byPhase[0].tokens, 62067);
+});
+
+test('a completion notice with no matching launch is added as its own run', () => {
+  const dir = project();
+  const finals = [{ agent: 'planner', task: '[phase:plan] plan it', phase: 'plan', effort: 'medium', model: 'opus', tokens: 40357, durationMs: 53771, toolUses: 5 }];
+  const kpi = buildKpi(dir, path.join(dir, 'none'), { finals });
+  assert.equal(kpi.totals.runs, 1);
+  assert.equal(kpi.byPhase[0].phase, 'plan');
+  assert.equal(kpi.byEffort[0].effort, 'medium');
+});

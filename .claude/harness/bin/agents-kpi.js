@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 'use strict';
-// Usage: node .claude/harness/bin/agents-kpi.js [--out file.json] [--interventions list.json] [--tune tune-report.json]   Prints the per-agent KPI roll-up as JSON.
+// Usage: node .claude/harness/bin/agents-kpi.js [--out file.json] [--interventions list.json] [--tune tune-report.json] [--finals agent-runs.json]   Prints the per-agent KPI roll-up as JSON.
 const fs = require('node:fs');
 const path = require('node:path');
 const { buildKpi } = require('../lib/agents-kpi');
 
 const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const i = process.argv.indexOf('--out');
-const kpi = buildKpi(root, path.join(root, '.claude', 'agents'));
+const f = process.argv.indexOf('--finals');
+// A JSON array of completion-notice figures for background agents (see lib/agents-kpi.js applyFinals).
+const finals = f > -1 && process.argv[f + 1] ? JSON.parse(fs.readFileSync(process.argv[f + 1], 'utf8')) : [];
+const kpi = buildKpi(root, path.join(root, '.claude', 'agents'), { finals });
 const j = process.argv.indexOf('--interventions');
 // Interventions from before the human-prompt hook existed: a hand-kept JSON array, shown as such.
 if (j > -1 && process.argv[j + 1]) kpi.knownInterventions = JSON.parse(fs.readFileSync(process.argv[j + 1], 'utf8'));

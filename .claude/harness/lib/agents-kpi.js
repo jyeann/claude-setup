@@ -18,8 +18,22 @@ function readRoster(agentsDir) {
 const tally = (list) => { const m = {}; for (const v of list) m[v ?? 'default'] = (m[v ?? 'default'] ?? 0) + 1; return m; };
 const sum = (xs) => xs.reduce((a, b) => a + (b ?? 0), 0);
 
-function buildKpi(projectDir, agentsDir) {
-  const runs = readSessions(projectDir).flatMap((s) => s.events.filter((e) => e.type === 'agent').map((e) => ({ ...e, session: s.id })));
+// Background agents give the hook no usage figures; their completion notice does. A "final" is one such notice
+// ({agent, task, tokens, durationMs, toolUses, ok}). It fills the matching unreported run, or is added as a run.
+function applyFinals(runs, finals) {
+  const out = runs.map((r) => ({ ...r }));
+  for (const f of finals) {
+    const hit = out.find((r) => r.agent === f.agent && r.task === f.task && r.tokens === null && r.durationMs === null && !r.fromNotice);
+    const filled = { tokens: f.tokens ?? null, durationMs: f.durationMs ?? null, toolUses: f.toolUses ?? null, ok: f.ok !== false, fromNotice: true };
+    if (hit) Object.assign(hit, filled);
+    else out.push({ type: 'agent', ts: f.ts ?? 0, agent: f.agent, task: f.task, phase: f.phase ?? null, model: f.model ?? null, effort: f.effort ?? null, session: 'notice', ...filled });
+  }
+  return out;
+}
+
+function buildKpi(projectDir, agentsDir, { finals = [] } = {}) {
+  const traced = readSessions(projectDir).flatMap((s) => s.events.filter((e) => e.type === 'agent').map((e) => ({ ...e, session: s.id })));
+  const runs = applyFinals(traced, finals);
   const roster = readRoster(agentsDir);
   const names = [...new Set([...roster.map((r) => r.name), ...runs.map((r) => r.agent)])].sort();
   const rows = names.map((name) => {
@@ -69,4 +83,4 @@ function buildKpi(projectDir, agentsDir) {
   };
 }
 
-module.exports = { buildKpi, readRoster };
+module.exports = { buildKpi, readRoster, applyFinals };
