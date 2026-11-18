@@ -373,3 +373,10 @@ Coverage map (each success criterion to its journey and checks)
 | Decision 5 | J11 | 24 |
 | States, layout | all | 25, 26, 27 |
 | Accessibility (WCAG 2.2 AA) | all | 28, 29, 30, 31 |
+
+## Addendum from design.md (decided by the orchestrator; design.md section 10 wins on conflict)
+- New error copy: `title_too_long_bytes` "This title is too long for a file name. Shorten it."; `title_char` "A title cannot contain : * ? \" < > | [ ] or #."; `title_trailing_dot` "A title cannot end with a dot." Messages for all title rules are listed in design.md section 2 and are shared by client and server through `public/js/titles.js`.
+- Markdown headings render one level lower (`#` is an h2) so each page keeps one h1.
+- Relative Markdown links render as `unsafe-link` text, like `javascript:` links.
+- A case-only rename is allowed and goes to the server. Delete sends no revision. The "Too long" count is code points after NFC and trim.
+- Graph `data-ready` is set after 60 iterations or 1 s; tests must not assert final node positions.

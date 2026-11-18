@@ -11,3 +11,10 @@ Format: decision | options | chosen | why | decided by. Only spend, legal or rea
 | 5 | Search shortcut (a11y finding SC 2.1.4, medium) | keep `/`; setting; modifier key | Ctrl+K / Cmd+K, `/` removed | Modifier shortcut needs no setting and is the common convention; ux.md and check 17 updated | orchestrator |
 | 6 | Graph accessibility | role=img svg; role=group plus text list | role=group plus visible `graph-list` text alternative | role=img hides node links from screen readers | a11y-architect |
 | 7 | Routes, env, startup line | unspecified in brief | `/n/<title>`, `/graph?note=`, `PORT` default 3000, `VAULT_DIR`, startup line `Wiki running at http://localhost:<port>`, SPA fallback for non-/api paths | Needed by tests and builder; ux-designer assumptions accepted | ux-designer, orchestrator |
+| 8 | Product location | repo root; examples/wiki | `examples/wiki/` | Same layout and gate as retro-board | architect |
+| 9 | Revision and conflicts | mtime; hash; counter | SHA-256 content hash, `If-Match` required on PUT (428), 412 on stale | Catches external edits; standard HTTP | architect |
+| 10 | Index freshness | fs.watch; timer; stat scan per request | On-demand stat scan | Correct by construction; watcher is Later | architect |
+| 11 | Renderer safety | escape then HTML string; DOM nodes | DOM nodes with allow-lists, strict CSP, no `innerHTML` anywhere (unit test enforces) | No HTML-string attack surface | architect |
+| 12 | Title charset stricter than brief | brief rules only; portable subset | Portable subset (design.md section 2); ux.md addendum adds copy | Vault must survive Windows/macOS and avoid link syntax chars | architect, orchestrator |
+| 13 | Network exposure | any HOST; loopback only | Refuse non-loopback HOST; Host/Origin/Sec-Fetch-Site checks | No auth, so exposure is a human decision (not made here) | architect |
+| 14 | ADRs | adr/ files; design.md section 9 | design.md section 9 (13 ADRs) | One place to read, as in retro-board | orchestrator |
