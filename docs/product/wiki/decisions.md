@@ -18,3 +18,7 @@ Format: decision | options | chosen | why | decided by. Only spend, legal or rea
 | 12 | Title charset stricter than brief | brief rules only; portable subset | Portable subset (design.md section 2); ux.md addendum adds copy | Vault must survive Windows/macOS and avoid link syntax chars | architect, orchestrator |
 | 13 | Network exposure | any HOST; loopback only | Refuse non-loopback HOST; Host/Origin/Sec-Fetch-Site checks | No auth, so exposure is a human decision (not made here) | architect |
 | 14 | ADRs | adr/ files; design.md section 9 | design.md section 9 (13 ADRs) | One place to read, as in retro-board | orchestrator |
+| 15 | `.wiki.lock` inside the vault vs ux.md "empty vault / exact listing" | keep lock in vault, tests ignore dot entries; move lock outside | Keep in vault; tests filter dot entries | A lock outside the vault is not found when the vault is moved; dotfiles are never notes | planner, orchestrator |
+| 16 | Plan | see TASKS.md | 12 build slices in builder groups S (src and shared modules, green over HTTP) then P (UI) | Same split as retro-board decisions 12-13 | planner |
+| 17 | Who writes acceptance tests and holdout | builder; test-owner agent | Separate test-owner agent, before the build; holdout kept apart in `examples/wiki/holdout` and hidden during the run | Builder must not grade its own work | orchestrator |
+| 18 | Server-side perf budgets (search 300 ms at 5,000 notes, graph 1 s at 1,000) | none; add | Added to acceptance | Gives SC8/SC9 an objective check before the browser walkthrough | planner |
