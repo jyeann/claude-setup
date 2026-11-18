@@ -7,7 +7,7 @@
 - Pair programming and code generation
 - Worker agents in multi-agent systems
 
-**Sonnet** (Best coding model):
+**Sonnet** (Strong general coding model):
 - Main development work
 - Orchestrating multi-agent workflows
 - Complex coding tasks
@@ -16,6 +16,10 @@
 - Complex architectural decisions
 - Maximum reasoning requirements
 - Research and analysis tasks
+
+**Model x effort:** a stronger model at low effort is often cheaper than a weaker model at high effort, because it spends
+fewer tokens. Start with the strongest model at `low` effort and raise effort only when an eval shows it is needed. When
+a verify gate exists, measure instead of guessing: `node .claude/harness/bin/tune.js`.
 
 ## Context Window Management
 

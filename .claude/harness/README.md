@@ -8,6 +8,9 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | Definition of done | `hooks/stop.js` + `lib/stop-loop.js` | Agent cannot stop until the verify command exits 0. Re-runs it on every stop attempt and feeds failures back. |
 | Iteration cap | `lib/stop-loop.js` | Halts after `--max` iterations. |
 | Circuit breaker | `lib/stop-loop.js` | Halts when the same failure (numbers stripped) repeats `--stall` times. |
+| Time budget | `lib/stop-loop.js` | `--max-minutes N` halts (`halted-time`) once the run is older than N minutes, checked on each failing Stop attempt. |
+| No-progress breaker | `lib/stop-loop.js` | `--no-progress N` halts (`halted-no-progress`) when the number of failing tests has not dropped below its best for N failing iterations. Skipped when failures cannot be counted (non-`node:test` output). |
+| Model x effort search | `bin/tune.js` + `lib/tune.js` | Runs the same task per `model:effort` candidate in a throwaway git worktree, grades with the verify command, reports the cheapest that passes (see below). |
 | Commit gate | `hooks/pre-bash.js` | `git commit` is refused while verify fails (`--no-commit-gate` allows checkpoint commits). |
 | WIP checkpoint | `lib/checkpoint.js` + `hooks/stop.js` | Every Stop attempt snapshots the worktree to `refs/harness/wip/<branch>` via a throwaway index: the branch, index and worktree are untouched, so the commit gate still holds. Skips `.harness/`, `.env*`, `*.pem`, `*.key`, `*.p12`. `--no-checkpoint` disables it; `--checkpoint-push` also pushes that one ref to `origin` so it survives losing the sandbox. |
 | Stuck diagnosis | `lib/failure-cluster.js` + `hooks/stop.js` | At the iteration cap or a stall the agent gets ONE bounded turn (no fixing) to classify the remaining failures, grouped by error, as `IMPL_BUG`, `TEST_AMBIGUOUS`, `TEST_WRONG` or `ENV` in `HARNESS-DIAGNOSIS.md`, then the run halts. A stuck loop is usually a broken eval. `--no-diagnosis` halts immediately. |
@@ -49,6 +52,13 @@ node .claude/harness/bin/harness.js init --verify "node .claude/harness/bin/veri
 ```
 The human writes extra acceptance tests from the spec and keeps them **outside the project tree** (recommended). `--hide` makes the harness refuse, while a run is active, the Read/Grep/Glob tools and any shell command that names those paths (`hooks/pre-read.js`, `lib/guards.js`). A hidden path inside the project is also made read-only, but a repo-wide Grep can still surface its lines, so keep it outside. This is the analogue of a train/test split: the agent iterates against the visible acceptance tests and is graded once on cases it has not seen.
 
+## Tuning model and effort (`bin/tune.js`)
+```bash
+node .claude/harness/bin/tune.js --task-file spec.md --verify "node .claude/harness/bin/verify.js" \
+  --candidates "claude-opus-5-5:low,claude-sonnet-5-5:low,claude-sonnet-5-5:high" --trials 2
+```
+Commit the spec and acceptance tests first: each trial runs `claude -p --model … --effort …` in a fresh worktree of `HEAD`, then the verify command grades it. Output is a table of pass rate, mean cost (from `--output-format json`) and mean time, the cheapest candidate that meets `--min-pass-rate` (default 100%), and `.harness/tune-report.json`. `--agent-cmd` replaces the default command (it receives `$HARNESS_MODEL`, `$HARNESS_EFFORT`, `$HARNESS_PROMPT_FILE`). This spends real tokens: use a small spec, and trials >= 2 when results are noisy. The rule of thumb to test is that a stronger model at low effort beats a weaker one at high effort on cost.
+
 ## Test
 ```bash
 node --test .claude/harness/test/*.test.js
@@ -65,5 +75,6 @@ node --test .claude/harness/test/*.test.js
 - **Checkpoints are local unless `--checkpoint-push`.** A local ref survives a crashed agent or lost context, not a lost container. `restore` copies files back but does not delete files created after the checkpoint. Gitignored files are not captured.
 - **The Stop feedback sends the full spec once** (first block); later blocks carry only a pointer plus the verify-output tail, so context does not grow by one spec copy per iteration.
 - **Every Stop attempt costs an iteration**, including when the agent stops to ask a human a question; with no human that is wasted budget, so tell the agent not to ask.
-- **No cost cap yet.** Bound spend with the iteration cap and your account/session limits.
+- **No cost cap yet.** Time and iterations are capped (`--max`, `--max-minutes`); dollars are not. Bound spend with account/session limits, and use `tune.js` to find a cheaper model/effort.
+- **The time budget is checked at Stop attempts**, so one long agent turn can overrun it; it is not a watchdog.
 - **No evaluator-score gate yet.** `gan-evaluator` feedback is advisory; only the verify command is enforced.

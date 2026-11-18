@@ -198,3 +198,19 @@ test('pre-read blocks a hidden path and allows others', () => {
   assert.equal(read(path.join(dir, 'holdout', 'a.js')).status, 2);
   assert.equal(read(path.join(dir, 'src', 'a.js')).status, 0);
 });
+
+test('--max-minutes and --no-progress are accepted and stored; an expired budget halts the run', () => {
+  const dir = project();
+  const init = cli(dir, 'init', '--verify', 'exit 1', '--max-minutes', '30', '--no-progress', '4', '--no-checkpoint', '--no-diagnosis');
+  assert.equal(init.status, 0, init.stderr);
+  assert.equal(state(dir).maxMinutes, 30);
+  assert.equal(state(dir).noProgressLimit, 4);
+  const file = path.join(dir, '.harness', 'state.json');
+  fs.writeFileSync(file, JSON.stringify({ ...state(dir), startedAt: Date.now() - 31 * 60_000 }));
+  stop(dir);
+  assert.equal(state(dir).status, 'halted-time');
+});
+
+test('init rejects a non-positive --max-minutes', () => {
+  assert.equal(cli(project(), 'init', '--verify', 'true', '--max-minutes', '0').status, 2);
+});

@@ -143,3 +143,49 @@ test('the diagnosis turn does not consume an iteration', () => {
   const d = decideStop({ ...base, iteration: 5 }, fail(failing));
   assert.equal(d.nextState.iteration, 5);
 });
+
+const T0 = 1_000_000;
+const MIN = 60_000;
+const failN = (n) => fail(Array.from({ length: n }, (_, i) => `✖ test ${i} (1ms)\n  AssertionError: boom ${i}-${'x'.repeat(i)}`).join('\n'));
+
+test('halts when the wall-clock budget is spent (diagnosis off)', () => {
+  const s = { ...base, diagnose: false, startedAt: T0, maxMinutes: 60 };
+  assert.equal(decideStop(s, fail('e'), { now: T0 + 59 * MIN }).decision, 'block');
+  const d = decideStop(s, fail('e'), { now: T0 + 61 * MIN });
+  assert.equal(d.decision, 'allow');
+  assert.equal(d.nextState.status, 'halted-time');
+  assert.match(d.reason, /60 minute/);
+});
+
+test('a passing verify wins even after the time budget', () => {
+  const s = { ...base, startedAt: T0, maxMinutes: 1 };
+  assert.equal(decideStop(s, pass, { now: T0 + 999 * MIN }).nextState.status, 'passed');
+});
+
+test('time budget halt also gets the bounded diagnosis turn', () => {
+  const d = decideStop({ ...base, startedAt: T0, maxMinutes: 1 }, fail(failing), { now: T0 + 5 * MIN });
+  assert.equal(d.decision, 'block');
+  assert.equal(d.nextState.diagnosing, 'halted-time');
+});
+
+test('no-progress halts after N failing iterations without fewer failing tests, and improvement resets it', () => {
+  let state = { ...base, diagnose: false, noProgressLimit: 3, maxIterations: 50, stallLimit: 50 };
+  const run = (n) => { const d = decideStop(state, failN(n)); state = d.nextState; return d; };
+  run(5);                                   // first observation sets the best
+  assert.equal(run(5).decision, 'block');   // 1 without improvement
+  assert.equal(run(4).decision, 'block');   // improved: counter resets
+  assert.equal(run(4).decision, 'block');   // 1
+  assert.equal(run(6).decision, 'block');   // 2
+  const d = run(5);                         // 3 -> halt
+  assert.equal(d.decision, 'allow');
+  assert.equal(d.nextState.status, 'halted-no-progress');
+});
+
+test('no-progress tracking is skipped when failures cannot be counted', () => {
+  let state = { ...base, noProgressLimit: 2, maxIterations: 50, stallLimit: 50 };
+  for (let i = 0; i < 5; i += 1) {
+    const d = decideStop(state, fail(`unparseable ${'z'.repeat(i)} failure`));
+    assert.equal(d.decision, 'block');
+    state = d.nextState;
+  }
+});

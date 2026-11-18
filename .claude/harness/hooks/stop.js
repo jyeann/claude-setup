@@ -26,7 +26,7 @@ async function main() {
   // The diagnosis turn is bounded and needs no verify run.
   const result = state.diagnosing ? null : await runVerify(state.verifyCommand, { cwd: projectDir });
   const diagnosisWritten = fs.existsSync(report) && fs.statSync(report).size > 0;
-  const { decision, reason, nextState } = decideStop(state, result, { diagnosisWritten });
+  const { decision, reason, nextState } = decideStop(state, result, { diagnosisWritten, now: Date.now() });
   // A report left over from an earlier run must not count as this run's diagnosis.
   if (nextState.diagnosing && !state.diagnosing) fs.rmSync(report, { force: true });
   writeState(projectDir, nextState);

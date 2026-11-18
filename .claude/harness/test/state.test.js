@@ -78,3 +78,13 @@ test('buildState defaults diagnosis on and normalises hidden paths (inside the p
   assert.deepEqual(s.hiddenPaths, ['/p/holdout', '/srv/secret-holdout']);
   assert.ok(s.protectedPaths.includes('holdout/'), 'a hidden path inside the project is also read-only');
 });
+
+test('buildState records the wall-clock budget and no-progress limit', () => {
+  const s = buildState({ verifyCommand: 'true', maxMinutes: 60, noProgressLimit: 3, startedAt: 123 });
+  assert.equal(s.maxMinutes, 60);
+  assert.equal(s.noProgressLimit, 3);
+  assert.equal(s.startedAt, 123);
+  const d = buildState({ verifyCommand: 'true' });
+  assert.equal(d.maxMinutes, null);
+  assert.equal(d.noProgressLimit, null);
+});

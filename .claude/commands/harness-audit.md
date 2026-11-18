@@ -16,7 +16,9 @@ Run a deterministic repository harness audit and return a prioritized scorecard.
 
 ## Deterministic Engine
 
-Always run:
+Precondition: `scripts/harness-audit.js` ships with the ECC package and is not part of every checkout. If it does not exist at that path, say so and stop; never invent a score or dimensions.
+
+Otherwise always run:
 
 ```bash
 node scripts/harness-audit.js <scope> --format <text|json> [--root <path>]

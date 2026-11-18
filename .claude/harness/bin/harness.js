@@ -8,7 +8,7 @@ const { writeCheckpoint, restoreCheckpoint } = require('../lib/checkpoint');
 
 const USAGE = `harness <command>
   init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--no-commit-gate]
-        [--no-checkpoint] [--checkpoint-push]\n        [--hide <paths>] [--no-diagnosis]
+        [--no-checkpoint] [--checkpoint-push]\n        [--hide <paths>] [--no-diagnosis]\n        [--max-minutes N] [--no-progress N]
   checkpoint    snapshot the worktree to refs/harness/wip/<branch> now (the Stop hook does this every iteration)
   restore       copy the latest checkpoint's files back into the worktree (fetches from origin if needed)
   status        show the current run
@@ -53,6 +53,8 @@ async function main([command, ...rest]) {
         checkpointPush: Boolean(f['checkpoint-push']),
         maxIterations: toInt(f.max, 'max'),
         stallLimit: toInt(f.stall, 'stall'),
+        maxMinutes: toInt(f['max-minutes'], 'max-minutes') ?? null,
+        noProgressLimit: toInt(f['no-progress'], 'no-progress') ?? null,
         protectedPaths: f.protect ? f.protect.split(',').map((p) => p.trim()).filter(Boolean) : [],
         commitGate: !f['no-commit-gate'],
         projectDir,

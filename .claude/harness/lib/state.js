@@ -45,7 +45,7 @@ function normaliseHidden(entries, projectDir) {
   });
 }
 
-function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, hiddenPaths = [], checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, projectDir }) {
+function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, hiddenPaths = [], maxMinutes = null, noProgressLimit = null, startedAt = Date.now(), checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, projectDir }) {
   if (!verifyCommand || !verifyCommand.trim()) {
     throw new Error('A non-empty verify command is required: it is the objective definition of done.');
   }
@@ -63,6 +63,11 @@ function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, 
     maxIterations: maxIterations ?? DEFAULTS.maxIterations,
     stallLimit: stallLimit ?? DEFAULTS.stallLimit,
     diagnose,
+    maxMinutes,
+    noProgressLimit,
+    startedAt,
+    bestFailing: null,
+    sinceImprovement: 0,
     hiddenPaths: hidden,
     protectedPaths: [...new Set([...normaliseProtected(protectedPaths, projectDir), ...hiddenInside])],
     commitGate,

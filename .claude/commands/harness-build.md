@@ -11,7 +11,10 @@ Parse from $ARGUMENTS:
 6. `--no-commit-gate` - allow checkpoint commits while verify is failing (default: commits are refused until verify is green)
 7. `--hide <paths>` - hidden holdout acceptance tests (keep them outside the project; agent cannot read them; wire them into `verify.config.json` as `holdout`)
 8. `--no-diagnosis` - skip the one-turn failure diagnosis when the run is stuck
-9. `--no-checkpoint` / `--checkpoint-push` - WIP snapshots to `refs/harness/wip/<branch>` run on every Stop attempt by default (no branch commits); `--checkpoint-push` also pushes that ref to origin so a lost sandbox is recoverable (`harness.js restore`)
+9. `--max-minutes N` / `--no-progress N` - wall-clock budget and a halt when the failing-test count stops dropping for N iterations
+10. `--no-checkpoint` / `--checkpoint-push` - WIP snapshots to `refs/harness/wip/<branch>` run on every Stop attempt by default (no branch commits); `--checkpoint-push` also pushes that ref to origin so a lost sandbox is recoverable (`harness.js restore`)
+
+Tip: to pick a model and effort for a spec, run `node .claude/harness/bin/tune.js` first (see harness README).
 
 ## Preconditions (stop and tell the human if any fails)
 - You are on a feature branch, not main/master.
