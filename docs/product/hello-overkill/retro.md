@@ -39,7 +39,7 @@ All six built and wired. Final gate `verify.js` PASSED: 531 tests, ~99.6% line c
 2. **Acceptance tests were written while src/ was changing.** The author could not produce a clean RED, so "tests fail for the right reason" is only partly evidenced (first run: 103 of 136 failing, mostly 404). Next time: gate the test author before any builder starts.
 3. **A review fix conflicted with an acceptance test.** M3 (SLA token >= 16 chars, hard error) broke a read-only acceptance test using a 12-char token. Resolved by limiting the hard error to `NODE_ENV=production`. Lesson: a review finding that adds a new rule should be checked against the acceptance suite before dispatch.
 4. **I relayed a wrong claim.** I told the code reviewer the "federation never links" check had `|| true`; it had not (the page builder had said so). Verify claims from agents before passing them on.
-5. **Mutation sample varies per run** (6/8, 7/8, 8/8 on the same code). The gate passes at the 60% floor, but surviving mutants differ each time (`battle.js:12`, `haiku.js:108`, `config.js:23`). `battle.js:12` and `config.js:23` now have killing tests; `haiku.js:108` (candidate scan guard) is open.
+5. **Mutation sample varies per run** (6/8, 7/8, 8/8 on the same code). The gate passes at the 60% floor, but surviving mutants differ each time (`battle.js:12`, `haiku.js:108`, `config.js:23`). `battle.js:12` (pinned by asserting which entries a given random sequence selects) and `config.js:23` now have killing tests, confirmed by one gate run; `haiku.js:108` (candidate scan guard) is open.
 6. **Background-only agents again; KPI file still shows no runs**, so cost/intervention proof is still absent.
 
 ## Accepted and open

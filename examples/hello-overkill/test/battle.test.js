@@ -68,7 +68,11 @@ test('pickPair draws exactly twice when the first two draws are already distinct
   const random = () => { calls += 1; return draws[calls - 1] ?? 0.99; };
   const pair = pickPair(random);
   assert.equal(calls, 2);
-  assert.notEqual(pair.a.id, pair.b.id);
+  const { CATALOGUE } = require('../src/greetings.js');
+  const ids = [...CATALOGUE.keys()];
+  // Draws 0 and 0.5 must select exactly entries 0 and 20: a distinct second draw is kept, never replaced by the fallback.
+  assert.equal(pair.a.id, ids[0]);
+  assert.equal(pair.b.id, ids[Math.floor(0.5 * ids.length)]);
   assert.notEqual(pair.a.greeting, pair.b.greeting);
 });
 

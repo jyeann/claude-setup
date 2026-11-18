@@ -87,7 +87,7 @@
   "id": "UC5",
   "title": "certificate view (J4)",
   "ok": true,
-  "evidence": "id 6337e3ce0d57bd3a, date, 64-char signature, copy status \"Select the text and copy it yourself.\", print hides nav+buttons"
+  "evidence": "id 66284870b080bee6, date, 64-char signature, copy status \"Select the text and copy it yourself.\", print hides nav+buttons"
  },
  {
   "id": "UC6",
@@ -123,7 +123,7 @@
   "id": "UC8.3",
   "title": "chaos=delay shows loading then greeting",
   "ok": true,
-  "evidence": "loading visible, button disabled \"Greeting...\", greeting after 2856 ms"
+  "evidence": "loading visible, button disabled \"Greeting...\", greeting after 4368 ms"
  },
  {
   "id": "UC8.3b",
@@ -213,7 +213,7 @@
   "id": "V2-federation-down",
   "title": "stopped peer is isolated, others still work",
   "ok": true,
-  "evidence": "down row \"http://127.0.0.1:43479 Down: refused the connection\"; up row \"http://127.0.0.1:35593 Up (2 ms)\"; hello: \"This peer refused the connection.\" + 1 greeting; POST /hello still exact"
+  "evidence": "down row \"http://127.0.0.1:46069 Down: refused the connection\"; up row \"http://127.0.0.1:45965 Up (2 ms)\"; hello: \"This peer refused the connection.\" + 1 greeting; POST /hello still exact"
  },
  {
   "id": "V2-keyboard",
