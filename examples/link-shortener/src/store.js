@@ -14,13 +14,24 @@ function randomSlug() {
 function createStore(file, now = Date.now) {
   const links = new Map();
 
-  try {
-    const text = fs.readFileSync(file, 'utf8');
-    if (text.trim()) {
-      const data = JSON.parse(text);
-      if (Array.isArray(data)) for (const l of data) if (l && typeof l.slug === 'string') links.set(l.slug, l);
+  const isLoadable = (l) => {
+    if (!l || typeof l.slug !== 'string' || typeof l.url !== 'string' || !Number.isInteger(l.clicks)) return false;
+    try { return ['http:', 'https:'].includes(new URL(l.url).protocol); } catch { return false; }
+  };
+
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch (err) {
+    if (err.code !== 'ENOENT') throw err;
+  }
+  if (text.trim()) {
+    let data;
+    try { data = JSON.parse(text); } catch {
+      // Never overwrite a damaged file: keep it aside and start empty.
+      fs.renameSync(file, `${file}.corrupt-${now()}`);
+      console.error(`data file was not valid JSON; moved aside as ${file}.corrupt-${now()}`);
     }
-  } catch { /* missing or unreadable file means no links */ }
+    if (Array.isArray(data)) for (const l of data) if (isLoadable(l)) links.set(l.slug, l);
+  }
 
   function persist() {
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -42,14 +53,16 @@ function createStore(file, now = Date.now) {
       else if (links.has(s)) return null;
       const link = { slug: s, url, clicks: 0, createdAt: new Date(now()).toISOString(), expiresAt: expiresAt === undefined ? null : expiresAt };
       links.set(s, link);
-      persist();
+      try { persist(); } catch (err) { links.delete(s); throw err; }
       return view(link);
     },
     get(slug) { const l = links.get(slug); return l ? view(l) : null; },
     list() { return [...links.values()].map(view).reverse(); },
     remove(slug) {
-      if (!links.delete(slug)) return false;
-      persist();
+      const old = links.get(slug);
+      if (!old) return false;
+      links.delete(slug);
+      try { persist(); } catch (err) { links.set(slug, old); throw err; }
       return true;
     },
     // Counts a click. Returns { link } / { expired: true } / null when unknown.
@@ -59,7 +72,7 @@ function createStore(file, now = Date.now) {
       const v = view(l);
       if (v.expired) return { expired: true };
       l.clicks += 1;
-      persist();
+      try { persist(); } catch (err) { l.clicks -= 1; throw err; }
       return { link: view(l) };
     },
   };

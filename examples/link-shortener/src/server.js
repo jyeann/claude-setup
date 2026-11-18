@@ -16,6 +16,9 @@ const server = http.createServer((req, res) => {
   });
 });
 
+server.headersTimeout = 5000;
+server.requestTimeout = 10000;
+server.maxConnections = 1000;
 server.listen(port, () => console.log(`listening on ${port}`));
 
 function shutdown() {

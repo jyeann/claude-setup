@@ -1,13 +1,16 @@
 'use strict';
 const { validateCreate } = require('./validation');
 const page = require('./page');
+const { securityHeaders } = require('./security');
+
+const SECURITY_HEADERS = securityHeaders(page);
 
 const MAX_BODY = 10 * 1024;
 
 function send(res, status, body, headers = {}) {
   const isObj = body !== undefined && typeof body === 'object';
   const payload = body === undefined ? '' : isObj ? JSON.stringify(body) : body;
-  res.writeHead(status, { ...(payload ? { 'content-type': isObj ? 'application/json; charset=utf-8' : 'text/html; charset=utf-8' } : {}), ...headers });
+  res.writeHead(status, { ...(payload ? { 'content-type': isObj ? 'application/json; charset=utf-8' : 'text/html; charset=utf-8' } : {}), ...SECURITY_HEADERS, ...headers });
   res.end(payload);
 }
 const error = (res, status, message, headers) => send(res, status, { error: message }, headers);

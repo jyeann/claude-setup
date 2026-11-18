@@ -79,3 +79,47 @@ test('a missing, empty or corrupt data file yields an empty store', () => {
   fs.writeFileSync(file, '{not json');
   assert.deepEqual(createStore(file).list(), []);
 });
+
+test('a damaged data file is moved aside instead of being treated as empty and overwritten', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { createStore } = require('../src/store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'store-corrupt-'));
+  const file = path.join(dir, 'links.json');
+  fs.writeFileSync(file, '[{"slug": "abc", ');
+  const store = createStore(file, () => 111);
+  assert.deepEqual(store.list(), []);
+  assert.equal(fs.existsSync(file), false);
+  assert.equal(fs.readFileSync(`${file}.corrupt-111`, 'utf8'), '[{"slug": "abc", ');
+});
+
+test('entries with an unsafe or missing url are dropped when loading', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { createStore } = require('../src/store');
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'store-load-')), 'links.json');
+  const ok = { slug: 'good', url: 'https://a.test', clicks: 0, createdAt: 'x', expiresAt: null };
+  fs.writeFileSync(file, JSON.stringify([ok, { ...ok, slug: 'evil', url: 'javascript:alert(1)' }, { ...ok, slug: 'nourl', url: 5 }, null, { ...ok, slug: 7 }, { ...ok, slug: 'badclicks', clicks: 'x' }]));
+  assert.deepEqual(createStore(file).list().map((l) => l.slug), ['good']);
+});
+
+test('memory is rolled back when the write fails, for create, remove and click', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { createStore } = require('../src/store');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'store-fail-'));
+  const file = path.join(dir, 'links.json');
+  const store = createStore(file);
+  store.create({ url: 'https://a.test', slug: 'keep' });
+  fs.rmSync(dir, { recursive: true });
+  fs.writeFileSync(dir, 'now a file, so every write fails');
+  assert.throws(() => store.create({ url: 'https://b.test', slug: 'fail' }));
+  assert.equal(store.get('fail'), null);
+  assert.throws(() => store.click('keep'));
+  assert.equal(store.get('keep').clicks, 0);
+  assert.throws(() => store.remove('keep'));
+  assert.equal(store.get('keep').slug, 'keep');
+});

@@ -46,3 +46,16 @@ test('defaults to 30 hits per minute', () => {
   for (let i = 0; i < 30; i += 1) assert.equal(rl.check('x').allowed, true);
   assert.equal(rl.check('x').allowed, false);
 });
+
+test('stale keys are evicted and the key count stays under the cap', () => {
+  const { createRateLimiter } = require('../src/rate-limiter');
+  let t = 0;
+  const limiter = createRateLimiter({ limit: 2, windowMs: 1000, maxKeys: 3, now: () => t });
+  for (const k of ['a', 'b', 'c']) limiter.check(k);
+  assert.equal(limiter.size(), 3);
+  t = 5000;
+  limiter.check('d');
+  assert.equal(limiter.size(), 1);
+  for (const k of ['e', 'f', 'g', 'h']) limiter.check(k);
+  assert.ok(limiter.size() <= 3);
+});

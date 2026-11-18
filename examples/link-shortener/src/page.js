@@ -19,6 +19,7 @@ module.exports = `<!doctype html>
   .table-wrap { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; }
   th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  caption { text-align: left; }
   th { white-space: nowrap; overflow-wrap: normal; }
   td:first-child { overflow-wrap: normal; word-break: normal; min-width: 7ch; }
   td.num, th.num { text-align: right; }
@@ -35,7 +36,7 @@ module.exports = `<!doctype html>
 <p id="message" role="alert"></p>
 <div class="table-wrap">
 <table id="links">
-  <caption class="visually-hidden" style="text-align:left">Existing links</caption>
+  <caption class="visually-hidden">Existing links</caption>
   <thead><tr><th scope="col">Slug</th><th scope="col">Target</th><th scope="col" class="num">Clicks</th></tr></thead>
   <tbody></tbody>
 </table>
