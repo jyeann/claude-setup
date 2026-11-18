@@ -1,0 +1,7 @@
+[
+  { "n": 1, "what": "Stopped after building the KPI instrumentation and view; waited for a go-ahead to start the product", "cause": "Ended the turn with a plan and a question instead of continuing", "fix": "orch-product-team: a stop to ask a human is a defect; user-prompt hook counts every prompt after the first" },
+  { "n": 2, "what": "Stopped again after the checks to ask whether to continue", "cause": "Same habit: reported state and asked, instead of acting on the standing instruction to run to completion", "fix": "Same, plus one human gate only (final acceptance)" },
+  { "n": 3, "what": "Halted on a barrier: a protected acceptance test was wrong and no agent was allowed to fix it", "cause": "Eval defect with no owner. The harness freezes acceptance tests during a run; the only route out was a human", "fix": "Plan phase makes a separate agent the test owner; an eval defect is diagnosed, amended by that owner and logged in decisions.md, no human" },
+  { "n": 4, "what": "Hard stop on the account usage limit while the code review was running", "cause": "No limit handling: a background agent died and its outcome was recorded as success", "fix": "Foreground agents, outcome-not-reported accounting, status.md plus a scheduled resume at the reset time" },
+  { "n": 5, "what": "After upgrading, asked to try again; the stopped review did not run", "cause": "The failed agent was never resumed; the session moved on", "fix": "Resume stopped agents with SendMessage after the limit resets, without waiting to be told" }
+]

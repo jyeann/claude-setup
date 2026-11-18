@@ -61,6 +61,7 @@ function logAgentRun(projectDir, event, failed, now) {
   append(projectDir, event.session_id, {
     type: 'agent', ts: now, ok: !failed,
     agent: redact(input.subagent_type ?? 'general-purpose'),
+    phase: (/^\[phase:([\w-]{1,30})\]/.exec(String(input.description ?? '')) ?? [])[1] ?? null,
     task: redact(input.description ?? ''),
     model: input.model ? redact(input.model) : null,
     effort: redact(input.effort ?? process.env.CLAUDE_CODE_EFFORT_LEVEL ?? '') || null,
@@ -72,6 +73,12 @@ function logBlocked(projectDir, event, reason, now = Date.now()) {
   const tool = event.tool_name ?? 'unknown';
   const summary = summarize(event);
   append(projectDir, event.session_id, { type: 'blocked', ts: now, tool, summary, sig: signature(tool, summary), reason: redact(reason) });
+}
+
+// One record per human prompt: only its length, never the text. After the first prompt of a session,
+// every further prompt is an intervention, which the KPI view counts as a defect of the run's autonomy.
+function logHuman(projectDir, event, now = Date.now()) {
+  append(projectDir, event.session_id, { type: 'human', ts: now, chars: String(event.prompt ?? '').length });
 }
 
 function logStop(projectDir, event, now = Date.now()) {
@@ -104,5 +111,5 @@ function readSessions(projectDir) {
 }
 
 module.exports = {
-  logToolEvent, logBlocked, logStop, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
+  logToolEvent, logBlocked, logHuman, logStop, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
 };

@@ -42,6 +42,16 @@ function buildKpi(projectDir, agentsDir) {
     };
   });
   const active = rows.filter((x) => x.runs > 0);
+  const phases = new Map();
+  for (const r of runs) {
+    const key = r.phase ?? 'untagged';
+    const g = phases.get(key) ?? { phase: key, runs: 0, unreported: 0, failed: 0, tokens: 0, durationMs: 0 };
+    const reported = r.tokens !== null || r.durationMs !== null;
+    phases.set(key, { ...g, runs: g.runs + 1, unreported: g.unreported + (reported ? 0 : 1), failed: g.failed + (r.ok ? 0 : 1), tokens: g.tokens + (r.tokens ?? 0), durationMs: g.durationMs + (r.durationMs ?? 0) });
+  }
+  const sessions = readSessions(projectDir);
+  const promptCounts = sessions.map((s) => s.events.filter((e) => e.type === 'human').length);
+  const human = { sessions: promptCounts.filter((n) => n > 0).length, prompts: sum(promptCounts), interventions: sum(promptCounts.map((n) => Math.max(0, n - 1))) };
   const groups = new Map();
   for (const r of runs) {
     const key = `${r.model ?? 'default'}|${r.effort ?? 'not recorded'}`;
@@ -52,8 +62,10 @@ function buildKpi(projectDir, agentsDir) {
     generatedAt: Date.now(),
     totals: { agents: rows.length, active: active.length, idle: rows.length - active.length, runs: sum(rows.map((x) => x.runs)), failed: sum(rows.map((x) => x.failed)), unreported: sum(rows.map((x) => x.unreported)), tokens: sum(rows.map((x) => x.tokens)), durationMs: sum(rows.map((x) => x.durationMs)) },
     rows,
+    human,
+    byPhase: [...phases.values()],
     byEffort: [...groups.values()].sort((a, b) => b.runs - a.runs),
-    recent: runs.sort((a, b) => b.ts - a.ts).slice(0, 25).map(({ ts, agent, task, ok, model, effort, tokens, durationMs }) => ({ ts, agent, task, ok, model, effort, tokens, durationMs, outcomeReported: tokens !== null || durationMs !== null })),
+    recent: runs.sort((a, b) => b.ts - a.ts).slice(0, 25).map(({ ts, agent, phase, task, ok, model, effort, tokens, durationMs }) => ({ ts, agent, phase: phase ?? null, task, ok, model, effort, tokens, durationMs, outcomeReported: tokens !== null || durationMs !== null })),
   };
 }
 

@@ -86,3 +86,33 @@ test('an agent whose runs are all unreported has no success rate', () => {
 test('roster reader returns an empty list when the agents directory is missing', () => {
   assert.deepEqual(readRoster(path.join(os.tmpdir(), 'no-such-agents-dir-xyz')), []);
 });
+
+test('a [phase:x] tag in the agent description attributes the run to that phase', () => {
+  const dir = project();
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'planner', description: '[phase:design] draft the system design' }, tool_response: { totalTokens: 100, totalDurationMs: 5 } }, 1);
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'planner', description: 'untagged work' }, tool_response: { totalTokens: 50, totalDurationMs: 5 } }, 2);
+  const { byPhase } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual(byPhase.map((p) => [p.phase, p.runs, p.tokens]), [['design', 1, 100], ['untagged', 1, 50]]);
+});
+
+test('human prompts are counted by length only and every prompt after the first in a session is an intervention', () => {
+  const dir = project();
+  trace.logHuman(dir, { session_id: 's1', prompt: 'build me a thing' }, 1);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'go on' }, 2);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'again' }, 3);
+  trace.logHuman(dir, { session_id: 's2', prompt: 'other session' }, 4);
+  const { human } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual(human, { sessions: 2, prompts: 4, interventions: 2 });
+  const stored = JSON.stringify(trace.readSessions(dir));
+  assert.ok(!stored.includes('build me a thing'));
+  assert.ok(stored.includes('"chars":16'));
+});
+
+test('the user-prompt hook records a human event from the hook payload', () => {
+  const { spawnSync } = require('node:child_process');
+  const dir = project();
+  const hook = path.join(__dirname, '..', 'hooks', 'user-prompt.js');
+  const r = spawnSync(process.execPath, [hook], { input: JSON.stringify({ session_id: 'h1', hook_event_name: 'UserPromptSubmit', prompt: 'hello there' }), env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  assert.equal(r.status, 0);
+  assert.equal(trace.readSessions(dir)[0].events[0].type, 'human');
+});
