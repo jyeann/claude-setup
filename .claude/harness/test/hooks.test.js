@@ -261,3 +261,22 @@ test('post-edit hook ignores edits when the run is not active', () => {
   cli(dir, 'off');
   assert.equal(edit(dir).status, 0);
 });
+
+test('init warns about an untrusted workspace but still starts the run', () => {
+  const dir = project();
+  const r = cli(dir, 'init', '--verify', 'true');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /WARNING.*trust/i);
+  assert.equal(state(dir).active, true);
+});
+
+test('init --require-sandbox refuses to start when settings enable a sandbox that cannot run', () => {
+  const dir = project();
+  fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.claude', 'settings.json'), JSON.stringify({ sandbox: { enabled: true } }));
+  const noTools = { ...process.env, PATH: '/nonexistent', CLAUDE_PROJECT_DIR: dir };
+  const r = spawnSync(process.execPath, [CLI, 'init', '--verify', 'true', '--require-sandbox'], { encoding: 'utf8', env: noTools });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /bwrap/);
+  assert.equal(fs.existsSync(path.join(dir, '.harness', 'state.json')), false);
+});
