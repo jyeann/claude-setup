@@ -41,12 +41,12 @@ test('POST /api/links rejects bad slugs with 400', () => withServer(async (s) =>
 }));
 
 test('GET /:slug redirects with 302 and counts the click', () => withServer(async (s) => {
-  await s.call('POST', '/api/links', { url: 'https://example.com/x', slug: 'go' });
-  const hit = await s.call('GET', '/go');
+  await s.call('POST', '/api/links', { url: 'https://example.com/x', slug: 'goo' });
+  const hit = await s.call('GET', '/goo');
   assert.equal(hit.status, 302);
   assert.equal(hit.headers.get('location'), 'https://example.com/x');
-  await s.call('GET', '/go');
-  assert.equal((await s.call('GET', '/api/links/go')).body.clicks, 2);
+  await s.call('GET', '/goo');
+  assert.equal((await s.call('GET', '/api/links/goo')).body.clicks, 2);
 }));
 
 test('GET /:slug is 404 for an unknown slug and does not create anything', () => withServer(async (s) => {
