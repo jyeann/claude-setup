@@ -5,6 +5,8 @@ const path = require('node:path');
 const STATE_DIR = '.harness';
 const STATE_FILE = 'state.json';
 const DEFAULTS = Object.freeze({ maxIterations: 20, stallLimit: 3 });
+// The gate itself: an agent that can edit these can redefine "done". Always read-only during a run.
+const GATE_PATHS = Object.freeze(['verify.config.json', 'acceptance/', 'spec.md']);
 
 const statePath = (projectDir) => path.join(projectDir, STATE_DIR, STATE_FILE);
 
@@ -37,9 +39,16 @@ function normaliseProtected(entries, projectDir) {
   });
 }
 
-function buildState({ verifyCommand, task = '', maxIterations, stallLimit, protectedPaths = [], commitGate = true, projectDir }) {
+function withGatePaths(entries) {
+  return [...entries, ...GATE_PATHS.filter((p) => !entries.includes(p))];
+}
+
+function buildState({ verifyCommand, task = '', maxIterations, stallLimit, protectedPaths = [], commitGate = true, verifyTimeoutMs, lintCommand, projectDir }) {
   if (!verifyCommand || !verifyCommand.trim()) {
     throw new Error('A non-empty verify command is required: it is the objective definition of done.');
+  }
+  if (verifyTimeoutMs !== undefined && !(Number.isInteger(verifyTimeoutMs) && verifyTimeoutMs > 0)) {
+    throw new Error('verifyTimeoutMs must be a positive integer (milliseconds).');
   }
   return {
     active: true,
@@ -48,8 +57,10 @@ function buildState({ verifyCommand, task = '', maxIterations, stallLimit, prote
     verifyCommand: verifyCommand.trim(),
     maxIterations: maxIterations ?? DEFAULTS.maxIterations,
     stallLimit: stallLimit ?? DEFAULTS.stallLimit,
-    protectedPaths: normaliseProtected(protectedPaths, projectDir),
+    protectedPaths: withGatePaths(normaliseProtected(protectedPaths, projectDir)),
     commitGate,
+    ...(verifyTimeoutMs ? { verifyTimeoutMs } : {}),
+    ...(lintCommand?.trim() ? { lintCommand: lintCommand.trim() } : {}),
     iteration: 0,
     lastSignature: null,
     stallCount: 0,

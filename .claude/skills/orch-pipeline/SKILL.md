@@ -59,7 +59,7 @@ Each phase delegates — it does not do the work inline.
 
 - **0. Intake** — restate the request. For `orch-build-mvp`, read the spec/design
   doc and extract scope, locked decisions, and a feature list.
-- **1. Research & Reuse** — per `rules/common/development-workflow.md`: `gh search repos` /
+- **1. Research & Reuse** — `gh search repos` /
   `gh search code`, then Context7 / vendor docs, then package registries, then
   Exa. Prefer adopting a proven implementation over net-new code.
 - **2. Plan** — delegate to the `planner` agent (or `architect` /
@@ -109,7 +109,7 @@ The pipeline carries no hidden state — the planning docs *are* the handoff:
 
 - `task_list` (from Plan) drives the Implement loop.
 - Larger work may also emit PRD / architecture / system_design under the repo's
-  `docs/` per `rules/common/development-workflow.md`.
+  `docs/`.
 - Review findings (CRITICAL / HIGH) must be resolved before Gate 2.
 
 ## Verification

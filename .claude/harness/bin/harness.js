@@ -6,7 +6,7 @@ const { runVerify } = require('../lib/verify');
 const { tailOutput } = require('../lib/stop-loop');
 
 const USAGE = `harness <command>
-  init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--no-commit-gate]
+  init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--verify-timeout SECONDS] [--lint "<cmd>"] [--no-commit-gate]
   status        show the current run
   verify        run the verify command once (does not change state)
   off           deactivate the run (humans only; blocked for the agent while a run is active)`;
@@ -46,6 +46,8 @@ async function main([command, ...rest]) {
         stallLimit: toInt(f.stall, 'stall'),
         protectedPaths: f.protect ? f.protect.split(',').map((p) => p.trim()).filter(Boolean) : [],
         commitGate: !f['no-commit-gate'],
+        verifyTimeoutMs: f['verify-timeout'] ? toInt(f['verify-timeout'], 'verify-timeout') * 1000 : undefined,
+        lintCommand: f.lint,
         projectDir,
       });
       writeState(projectDir, state);
@@ -60,7 +62,7 @@ async function main([command, ...rest]) {
     case 'verify': {
       const state = readState(projectDir);
       if (!state) throw new Error('No harness run; run `init` first.');
-      const result = await runVerify(state.verifyCommand, { cwd: projectDir });
+      const result = await runVerify(state.verifyCommand, { cwd: projectDir, timeoutMs: state.verifyTimeoutMs });
       console.log(result.pass ? 'PASS' : `FAIL${result.timedOut ? ' (timed out)' : ''}\n${tailOutput(result.output)}`);
       return result.pass ? 0 : 1;
     }

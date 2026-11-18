@@ -29,7 +29,7 @@ async function main() {
   // Commit gate: while a run is active, commits are refused unless the verify command passes.
   if (ctx.active && isGitCommit(command) && ctx.corrupt) block('Commit refused: harness state is corrupt; a human must repair or remove .harness/state.json.');
   if (ctx.active && isGitCommit(command) && ctx.state?.commitGate !== false) {
-    const result = await runVerify(ctx.state.verifyCommand, { cwd: projectDir });
+    const result = await runVerify(ctx.state.verifyCommand, { cwd: projectDir, timeoutMs: ctx.state.verifyTimeoutMs });
     if (!result.pass) block(`Commit refused: the verify command is failing. Commit when it is green.\n${tailOutput(result.output)}`);
   }
 }
