@@ -1,0 +1,41 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { pickPair, leaderboard } = require('../src/battle');
+const { render } = require('../src/greetings');
+
+test('pickPair uses random to choose entries from the pool', () => {
+  const p = pickPair(() => 0);
+  assert.equal(p.a.id, 'en.formal');
+  assert.equal(p.a.greeting, render('en', 'formal', 'World'));
+  assert.notEqual(p.b.id, p.a.id);
+});
+
+test('pickPair re-rolls when the second pick equals the first', () => {
+  const seq = [0, 0, 0.5];
+  const p = pickPair(() => (seq.length ? seq.shift() : 0.5));
+  assert.equal(p.a.id, 'en.formal');
+  assert.notEqual(p.b.id, 'en.formal');
+});
+
+test('pickPair is distinct in id and text even with a constant random', () => {
+  for (const v of [0, 0.5, 0.999999, 1]) {
+    const p = pickPair(() => v);
+    assert.notEqual(p.a.id, p.b.id);
+    assert.notEqual(p.a.greeting, p.b.greeting);
+  }
+});
+
+test('leaderboard sorts by votes desc then id asc, ranks from 1, omits zeros', () => {
+  const lb = leaderboard(new Map([['fr.pirate', 2], ['en.formal', 2], ['de.formal', 5], ['es.formal', 0]]));
+  assert.deepEqual(lb.map((r) => [r.rank, r.id, r.votes]), [[1, 'de.formal', 5], [2, 'en.formal', 2], [3, 'fr.pirate', 2]]);
+  assert.equal(lb[0].greeting, render('de', 'formal', 'World'));
+});
+
+test('leaderboard is empty for no votes and capped at 10', () => {
+  assert.deepEqual(leaderboard(new Map()), []);
+  const m = new Map();
+  for (const l of ['en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'sv', 'ja', 'sw']) m.set(`${l}.formal`, 1);
+  m.set('en.pirate', 1);
+  assert.equal(leaderboard(m).length, 10);
+});
