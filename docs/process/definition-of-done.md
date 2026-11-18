@@ -14,6 +14,8 @@ The testing and the product-team process are **complete for this scope**: small,
 | 5 | The process ran end to end from a one-line idea with no human prompt after the first | Done once (retro-board) | `docs/product/retro-board/retro.md`; the first product (link-shortener) had 5 interventions, which are listed and fixed |
 | 6 | Agent work is observable | Done | `agents-kpi.js` roll-up: per agent, phase, model and effort, with outcome-not-reported and completion-notice figures; human prompts classified |
 
+**CI proof:** a manual run of the new workflow on the branch (run 13, commit `b23d6ce`) passed all five jobs on GitHub runners: `gate-link-shortener`, `gate-retro-board` (both include the hidden holdout and the mutation check), `eval-kit-selftest` (installs Playwright and Chromium, then all 8 graders accept golden and reject degraded), `harness-tests` and `secret-scan`. The same gates also pass from a clean extraction of the commit with no files from the authoring session.
+
 ## What the evidence supports, and what it does not
 - **Supports:** 13 delegated agent runs produced a product that passes 149 tests, a 14-test hidden holdout, a mutation check and an independent 15-check browser walkthrough. An independent test owner wrote the tests before any code. Reviews found real defects that were fixed. A per-phase comparison (24 cells) gave measured effort defaults.
 - **Does not support:** anything about other models, larger codebases, or products that handle money, logins or personal data. One product went through the whole process. Effort results are 1 to 2 trials per cell and most graders check coverage by keyword. High-effort build failed the holdout twice, one diagnosed.
