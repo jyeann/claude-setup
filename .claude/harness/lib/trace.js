@@ -45,6 +45,27 @@ function logToolEvent(projectDir, event, now = Date.now()) {
   const summary = summarize(event);
   const failed = event.hook_event_name === 'PostToolUseFailure' || Boolean(event.tool_response?.is_error || event.tool_response?.interrupted);
   append(projectDir, event.session_id, { type: 'tool', ts: now, tool, ok: !failed, summary, sig: signature(tool, summary) });
+  if (AGENT_TOOLS.has(tool)) logAgentRun(projectDir, event, failed, now);
+}
+
+// One record per delegated agent run, for the KPI view: who ran, on which model and effort, what it cost.
+// Fields come from the hook payload only; anything the host does not send stays null (never guessed).
+const AGENT_TOOLS = new Set(['Agent', 'Task']);
+const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null);
+
+function logAgentRun(projectDir, event, failed, now) {
+  const input = event.tool_input ?? {};
+  const out = event.tool_response ?? {};
+  const usage = out.usage ?? {};
+  const tokens = num(out.totalTokens) ?? (num(usage.input_tokens) !== null || num(usage.output_tokens) !== null ? (num(usage.input_tokens) ?? 0) + (num(usage.output_tokens) ?? 0) : null);
+  append(projectDir, event.session_id, {
+    type: 'agent', ts: now, ok: !failed,
+    agent: redact(input.subagent_type ?? 'general-purpose'),
+    task: redact(input.description ?? ''),
+    model: input.model ? redact(input.model) : null,
+    effort: redact(input.effort ?? process.env.CLAUDE_CODE_EFFORT_LEVEL ?? '') || null,
+    tokens, durationMs: num(out.totalDurationMs), toolUses: num(out.totalToolUseCount),
+  });
 }
 
 function logBlocked(projectDir, event, reason, now = Date.now()) {
