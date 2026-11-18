@@ -4,9 +4,12 @@ const { readEvent, projectDirOf, failOpen } = require('../lib/hook-io');
 const { readState, writeState } = require('../lib/state');
 const { runVerify } = require('../lib/verify');
 const { decideStop } = require('../lib/stop-loop');
+const { logStop } = require('../lib/trace');
 
 async function main() {
-  const projectDir = projectDirOf(readEvent());
+  const event = readEvent();
+  const projectDir = projectDirOf(event);
+  logStop(projectDir, event);
   const state = readState(projectDir);
   if (!state?.active) return;
 
