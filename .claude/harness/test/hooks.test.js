@@ -214,3 +214,50 @@ test('--max-minutes and --no-progress are accepted and stored; an expired budget
 test('init rejects a non-positive --max-minutes', () => {
   assert.equal(cli(project(), 'init', '--verify', 'true', '--max-minutes', '0').status, 2);
 });
+
+const edit = (projectDir, event = {}) => run(path.join(HOOKS, 'post-edit.js'), projectDir, { hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: 'a.js' }, ...event });
+
+test('stop hook fails closed once when the state file is corrupt, then lets the session end', () => {
+  const dir = project();
+  cli(dir, 'init', '--verify', 'true');
+  fs.writeFileSync(path.join(dir, '.harness', 'state.json'), '{bad');
+  const first = run(path.join(HOOKS, 'stop.js'), dir, { hook_event_name: 'Stop' });
+  assert.equal(first.status, 0);
+  assert.equal(JSON.parse(first.stdout).decision, 'block');
+  assert.match(JSON.parse(first.stdout).reason, /corrupt/i);
+  const second = run(path.join(HOOKS, 'stop.js'), dir, { hook_event_name: 'Stop', stop_hook_active: true });
+  assert.equal(second.stdout, '');
+});
+
+test('init --verify-timeout bounds the verify command', () => {
+  const dir = project();
+  assert.equal(cli(dir, 'init', '--verify', 'sleep 20', '--verify-timeout', '1').status, 0);
+  const started = Date.now();
+  const r = cli(dir, 'verify');
+  assert.match(r.stdout, /timed out/);
+  assert.ok(Date.now() - started < 10_000);
+});
+
+test('post-edit hook is inert without a lint command', () => {
+  const r = edit(project());
+  assert.equal(r.status, 0);
+  assert.equal(r.stderr, '');
+});
+
+test('post-edit hook exits 2 with the lint output when lint fails, 0 when it passes', () => {
+  const dir = project();
+  cli(dir, 'init', '--verify', 'true', '--lint', 'echo "bad style" >&2; false');
+  const failed = edit(dir);
+  assert.equal(failed.status, 2);
+  assert.match(failed.stderr, /bad style/);
+  cli(dir, 'off');
+  cli(dir, 'init', '--verify', 'true', '--lint', 'true');
+  assert.equal(edit(dir).status, 0);
+});
+
+test('post-edit hook ignores edits when the run is not active', () => {
+  const dir = project();
+  cli(dir, 'init', '--verify', 'true', '--lint', 'false');
+  cli(dir, 'off');
+  assert.equal(edit(dir).status, 0);
+});

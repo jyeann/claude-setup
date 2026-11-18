@@ -55,7 +55,7 @@ test('runVerify kills grandchildren that hold the output pipe open', async () =>
 
 test('buildState normalises protected paths and defaults the commit gate on', () => {
   const s = buildState({ verifyCommand: 'true', protectedPaths: ['./tests/', 'acceptance/'] });
-  assert.deepEqual(s.protectedPaths, ['tests/', 'acceptance/']);
+  assert.deepEqual(s.protectedPaths, ['tests/', 'acceptance/', 'verify.config.json', 'spec.md']);
   assert.equal(s.commitGate, true);
   assert.equal(buildState({ verifyCommand: 'true', commitGate: false }).commitGate, false);
 });
@@ -87,4 +87,16 @@ test('buildState records the wall-clock budget and no-progress limit', () => {
   const d = buildState({ verifyCommand: 'true' });
   assert.equal(d.maxMinutes, null);
   assert.equal(d.noProgressLimit, null);
+});
+
+test('buildState always protects the gate files, without duplicating explicit entries', () => {
+  const s = buildState({ verifyCommand: 'true' });
+  assert.deepEqual(s.protectedPaths, ['verify.config.json', 'acceptance/', 'spec.md']);
+});
+
+test('buildState records the verify timeout and lint command, and rejects a bad timeout', () => {
+  const s = buildState({ verifyCommand: 'true', verifyTimeoutMs: 90_000, lintCommand: 'npm run lint' });
+  assert.equal(s.verifyTimeoutMs, 90_000);
+  assert.equal(s.lintCommand, 'npm run lint');
+  assert.throws(() => buildState({ verifyCommand: 'true', verifyTimeoutMs: 0 }), /timeout/i);
 });

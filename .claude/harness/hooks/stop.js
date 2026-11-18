@@ -18,16 +18,28 @@ function checkpoint(projectDir, state, nextState) {
   else if (r.status === 'error') process.stderr.write(`[harness] checkpoint failed: ${r.reason}\n`);
 }
 
+// A corrupt state file must not silently end enforcement: block once, then let the session end
+// (the agent cannot repair .harness/, so blocking forever would loop).
+function corruptState(event, err) {
+  if (event.stop_hook_active) return;
+  process.stdout.write(JSON.stringify({ decision: 'block', reason: `Harness state is corrupt (${err.message}). Stop and tell the human to repair or remove .harness/state.json; do not continue working.` }));
+}
+
 async function main() {
   const event = readEvent();
   const projectDir = projectDirOf(event);
   logStop(projectDir, event);
-  const state = readState(projectDir);
+  let state;
+  try {
+    state = readState(projectDir);
+  } catch (err) {
+    return corruptState(event, err);
+  }
   if (!state?.active) return;
 
   const report = path.join(projectDir, REPORT_FILE);
   // The diagnosis turn is bounded and needs no verify run.
-  const result = state.diagnosing ? null : await runVerify(state.verifyCommand, { cwd: projectDir });
+  const result = state.diagnosing ? null : await runVerify(state.verifyCommand, { cwd: projectDir, timeoutMs: state.verifyTimeoutMs });
   const diagnosisWritten = fs.existsSync(report) && fs.statSync(report).size > 0;
   const { decision, reason, nextState } = decideStop(state, result, { diagnosisWritten, now: Date.now() });
   // A report left over from an earlier run must not count as this run's diagnosis.

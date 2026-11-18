@@ -7,7 +7,7 @@ metadata:
 
 # TypeScript Development Patterns
 
-TypeScript patterns and best practices for building robust, type-safe, and maintainable applications. The compiler is most useful when it can prove your program's shape, so the guiding principle here is: push the type system to do real work instead of fighting it. This skill is the "how." For the "what" and "when" (the decisions about which pattern to reach for), see `rules/ecc-common/coding-style.md`.
+TypeScript patterns and best practices for building robust, type-safe, and maintainable applications. The compiler is most useful when it can prove your program's shape, so the guiding principle here is: push the type system to do real work instead of fighting it. This skill is the "how." For the "what" and "when" (the decisions about which pattern to reach for), see the `coding-standards` skill.
 
 ## When to Activate
 
@@ -264,7 +264,7 @@ function assertIsStringArray(value: unknown): asserts value is string[] {
 
 ### Readonly by Default
 
-Mark array and object parameters `readonly`/`ReadonlyArray` when the function does not mutate them. It prevents accidental mutation and signals intent at the signature. (Per the coding-style rules, prefer the spread operator for immutable updates.)
+Mark array and object parameters `readonly`/`ReadonlyArray` when the function does not mutate them. It prevents accidental mutation and signals intent at the signature. (Prefer the spread operator for immutable updates.)
 
 ```typescript
 export function totalAmount(items: readonly LineItem[]): number {
@@ -278,7 +278,7 @@ Runtime immutability (for example, `Object.freeze`) is for hot application bound
 
 ### Fail at the Boundary, Handle at the Edge
 
-The `try/catch` belongs where the caller can act on failure — not wrapped around every internal call in a stack of swallowed errors. Use async/await with `try/catch` and narrow `unknown` errors safely (per the coding-style rules).
+The `try/catch` belongs where the caller can act on failure — not wrapped around every internal call in a stack of swallowed errors. Use async/await with `try/catch` and narrow `unknown` errors safely.
 
 This endpoint example accepts non-empty IDs made of ASCII letters, digits, underscores, and hyphens, such as `u_1`. Validate that contract before constructing the path or making a request. Adapt the identifier grammar to the real API.
 

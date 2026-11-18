@@ -1,29 +1,5 @@
-# Security Guidelines
+# Security
 
-## Mandatory Security Checks
-
-Before ANY commit:
-- [ ] No hardcoded secrets (API keys, passwords, tokens)
-- [ ] All user inputs validated
-- [ ] SQL injection prevention (parameterized queries)
-- [ ] XSS prevention (sanitized HTML)
-- [ ] CSRF protection enabled
-- [ ] Authentication/authorization verified
-- [ ] Rate limiting on all endpoints
-- [ ] Error messages don't leak sensitive data
-
-## Secret Management
-
-- NEVER hardcode secrets in source code
-- ALWAYS use environment variables or a secret manager
-- Validate that required secrets are present at startup
-- Rotate any secrets that may have been exposed
-
-## Security Response Protocol
-
-If security issue found:
-1. STOP immediately
-2. Use **security-reviewer** agent
-3. Fix CRITICAL issues before continuing
-4. Rotate any exposed secrets
-5. Review entire codebase for similar issues
+- Secrets come from environment variables or a secret manager, never from source. Rotate anything that may have been exposed.
+- If you find a security issue mid-task, fix CRITICAL ones before continuing and use the `security-reviewer` agent for auth, user input, queries, file access and payments.
+- Hooks in `.claude/harness/` and the deny rules in `.claude/settings.json` enforce the hard limits. Do not try to route around them.

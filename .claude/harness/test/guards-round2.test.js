@@ -59,3 +59,16 @@ test('during a run, only the destination of cp/rsync/install/ln counts as a writ
   blocked('cp /tmp/evil.js acceptance/a.test.js', live);
   blocked('mv acceptance/a.test.js /tmp/', live);
 });
+
+test('irreversible git commands are blocked, their safe forms are not', () => {
+  for (const cmd of ['git clean -fdx', 'git clean -f', 'git checkout -- src/', 'git checkout -f main', 'git restore .', 'git restore src/a.js',
+    'git branch -D old', 'git stash drop', 'git stash clear']) blocked(cmd);
+  for (const cmd of ['git clean -n', 'git clean --dry-run', 'git restore --staged src/a.js', 'git branch -d merged', 'git stash', 'git stash pop',
+    'git checkout feat/x', 'git branch -a']) allowed(cmd);
+});
+
+test('more file readers are treated as secret readers', () => {
+  for (const cmd of ['sort .env', 'cut -c1- .env', 'paste .env', 'diff .env /dev/null', 'dd if=.env', 'openssl enc -in .env', 'cat ~/.aws/config', 'cat ~/.config/gh/hosts.yml'])
+    blocked(cmd);
+  allowed('sort notes.txt');
+});

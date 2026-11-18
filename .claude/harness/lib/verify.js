@@ -1,7 +1,8 @@
 'use strict';
 const { spawn } = require('node:child_process');
 
-const DEFAULT_TIMEOUT_MS = 300_000;
+// Must stay below the hook timeouts in .claude/settings.json (700s), or the hook is killed mid-verify.
+const DEFAULT_TIMEOUT_MS = 600_000;
 const MAX_OUTPUT_CHARS = 1_000_000;
 const KILL_GRACE_MS = 2_000;
 

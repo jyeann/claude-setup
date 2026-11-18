@@ -92,7 +92,11 @@ node --test .claude/harness/test/*.test.js
 - **Diagnosis relies on `node:test` output** for grouping (spec or TAP reporter); other output falls back to the raw tail.
 - **Checkpoints are local unless `--checkpoint-push`.** A local ref survives a crashed agent or lost context, not a lost container. `restore` copies files back but does not delete files created after the checkpoint. Gitignored files are not captured.
 - **The Stop feedback sends the full spec once** (first block); later blocks carry only a pointer plus the verify-output tail, so context does not grow by one spec copy per iteration.
-- **Hooks fail open** on internal crashes (exit 1) so a bug cannot brick a session (each crash is now written to `.harness/hook-errors.jsonl` and shown in the report), but a *corrupt state file* keeps guards on and refuses commits.
+- **Hooks fail open** on internal crashes (exit 1) so a bug cannot brick a session (each crash is written to `.harness/hook-errors.jsonl` and shown in the report). A *corrupt state file* is stricter: guards stay on, commits are refused, and the Stop hook blocks once (then lets the session end, since the agent cannot repair `.harness/`).
+- **Gate files are always read-only during a run**: `verify.config.json`, `acceptance/` and `spec.md` are protected by default, in addition to any `--protect` paths.
+- **Timeouts:** verify defaults to 600 s (`--verify-timeout SECONDS` to change); the Stop and commit hooks time out at 700 s in `settings.json`. Keep the verify budget (tests plus mutation samples) below that.
+- **Per-edit lint:** `init --lint "<cmd>"` runs the command after every Write/Edit (`hooks/post-edit.js`) and sends failures back to the agent with exit 2. Exit 1 would not block.
+- **Sandbox:** `settings.json` enables the OS sandbox for Bash and its child processes (credential dirs unreadable, network limited to npm and GitHub). Hooks cannot see what `npm test` reads; the sandbox can. Verify the key names against your Claude Code version.
 - **Every Stop attempt costs an iteration**, including when the agent stops to ask a human a question; with no human that is wasted budget, so tell the agent not to ask.
 - **No cost cap yet.** Time and iterations are capped (`--max`, `--max-minutes`); dollars are not. Bound spend with account/session limits, and use `tune.js` to find a cheaper model/effort.
 - **The time budget is checked at Stop attempts**, so one long agent turn can overrun it; it is not a watchdog.

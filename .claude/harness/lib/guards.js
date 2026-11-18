@@ -19,6 +19,7 @@ const SECRET_READERS = new Set([
   'cat', 'less', 'more', 'head', 'tail', 'bat', 'nl', 'tac', 'od', 'xxd', 'hexdump', 'strings', 'grep', 'rg', 'ag',
   'awk', 'sed', 'base64', 'cp', 'mv', 'scp', 'rsync', 'tar', 'zip', 'curl', 'wget', 'source', '.',
   'node', 'python', 'python3', 'perl', 'ruby',
+  'sort', 'cut', 'paste', 'diff', 'cmp', 'dd', 'openssl', 'column', 'fold', 'rev', 'uniq', 'tee',
 ]);
 const DANGEROUS_RM = new Set([
   '/', '/*', '~', '~/*', '$HOME', '${HOME}', '$PWD', '${PWD}', '.', '..', '*', './*', '.git',
@@ -52,14 +53,15 @@ function globMatchesSecret(base) {
 }
 
 function isSecretPath(arg) {
-  const value = arg.replace(/^--?[\w-]+=/, '').replace(/^@/, '');
+  const value = arg.replace(/^(--?[\w-]+|if)=/, '').replace(/^@/, '');
   const base = path.basename(value);
   if (TEMPLATE_ENV.test(base)) return false;
   return /^\.env(\.[\w.-]+)?$/.test(base)
     || /^id_(rsa|ed25519|ecdsa|dsa)$/.test(base)
     || /^\.(npmrc|netrc|pgpass|git-credentials)$/.test(base)
     || /\.(pem|p12|pfx)$/.test(base)
-    || /(^|\/)\.aws\/credentials$/.test(value)
+    || /(^|\/)\.aws\/(credentials|config)$/.test(value)
+    || /(^|\/)\.config\/gh\/hosts\.yml$/.test(value)
     || /^\/proc\/[^/]+\/environ$/.test(value)
     || globMatchesSecret(base);
 }
@@ -130,6 +132,19 @@ const BRANCH_DESTRUCTIVE = new Set(['-d', '-D', '-m', '-M', '-f', '-c', '-C', '-
 // Hook bypass by config or environment: neither shows up as a git subcommand.
 const HOOK_BYPASS = /core\.hooksPath|\bHUSKY(_SKIP_HOOKS)?\s*=\s*(0|true)\b|\bGIT_CONFIG_(COUNT|PARAMETERS|GLOBAL)\b/i;
 
+// Commands that destroy uncommitted work or history. The dry-run / staged / lowercase forms stay allowed.
+function irreversibleGit(argv) {
+  const [, sub] = argv;
+  const rest = argv.slice(2);
+  const has = (...flags) => rest.some((a) => flags.includes(a));
+  if (sub === 'clean' && !has('-n', '--dry-run')) return 'git clean deletes untracked files and is blocked.';
+  if (sub === 'checkout' && (has('--', '-f', '--force'))) return 'git checkout -- / -f discards uncommitted work and is blocked.';
+  if (sub === 'restore' && !has('--staged', '-S')) return 'git restore discards uncommitted work and is blocked.';
+  if (sub === 'branch' && has('-D')) return 'git branch -D deletes unmerged work and is blocked.';
+  if (sub === 'stash' && (rest[0] === 'drop' || rest[0] === 'clear')) return 'git stash drop/clear discards saved work and is blocked.';
+  return null;
+}
+
 function commandViolation({ argv }, ctx) {
   const [cmd, sub] = argv;
   if (cmd === 'printenv' && (argv.length === 1 || argv.slice(1).some((a) => SECRET_VAR.test(a)))) return 'Dumping the environment can leak secrets.';
@@ -145,7 +160,7 @@ function commandViolation({ argv }, ctx) {
   if (sub === 'branch' && argv.slice(2).some((a) => BRANCH_DESTRUCTIVE.has(a) || /^-[a-zA-Z]*[dDmMf]/.test(a))
     && argv.slice(2).some((a) => PROTECTED_BRANCHES.has(a))) return 'Deleting, renaming or force-moving a protected branch is blocked.';
   if (sub === 'reset' && argv.includes('--hard')) return 'git reset --hard discards work and is blocked.';
-  return null;
+  return irreversibleGit(argv);
 }
 
 function secretReadViolation({ argv, redirects }) {

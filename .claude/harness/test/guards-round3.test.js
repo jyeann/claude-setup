@@ -19,7 +19,8 @@ test('git clean that can delete ignored or untracked files is blocked; dry run i
 
 test('deleting, renaming or force-moving a protected branch is blocked', () => {
   for (const cmd of ['git branch -D main', 'git branch -d master', 'git branch -M main', 'git branch -f main HEAD~1', 'git branch --delete main']) blocked(cmd);
-  for (const cmd of ['git branch -D feat/x', 'git branch', 'git branch feat/y']) allowed(cmd);
+  blocked('git branch -D feat/x'); // any force-delete loses unmerged work, so it is blocked on every branch
+  for (const cmd of ['git branch', 'git branch feat/y', 'git branch -d feat/x']) allowed(cmd);
 });
 
 test('hook bypass by config or environment is blocked, mentioning it in text is not', () => {
