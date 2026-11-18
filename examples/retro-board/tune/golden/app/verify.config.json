@@ -1,0 +1,30 @@
+{
+  "testCommand": "node --test \"acceptance/*.test.js\" \"tests/*.test.js\"",
+  "timeoutMs": 240000,
+  "minTests": 30,
+  "srcDirs": [
+    "src"
+  ],
+  "coverage": {
+    "minLines": 80,
+    "minFileLines": 60,
+    "exclude": []
+  },
+  "testQuality": {
+    "dirs": [
+      "tests"
+    ],
+    "minAssertionsPerFile": 3
+  },
+  "mutation": {
+    "samples": 8,
+    "minKillRate": 0.6,
+    "copy": [
+      "src",
+      "public",
+      "tests",
+      "acceptance"
+    ],
+    "timeoutMs": 120000
+  }
+}

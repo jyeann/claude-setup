@@ -1,0 +1,17 @@
+[
+  "GET /",
+  "GET /b/:x",
+  "GET /b/:x/f/:x",
+  "GET /b/:x/f/:x/export",
+  "GET /assets/:x",
+  "POST /api/boards",
+  "GET /api/boards/:x",
+  "GET /api/boards/:x/f/:x",
+  "POST /api/boards/:x/cards",
+  "DELETE /api/boards/:x/cards/:x",
+  "PUT /api/boards/:x/cards/:x/vote",
+  "DELETE /api/boards/:x/cards/:x/vote",
+  "DELETE /api/boards/:x/f/:x/cards/:x",
+  "PUT /api/boards/:x/f/:x/closed",
+  "GET /api/boards/:x/f/:x/export"
+]
