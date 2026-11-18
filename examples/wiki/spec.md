@@ -191,3 +191,4 @@ Accounts, sync, multi-user, plugins, subfolders, attachments, tags, WYSIWYG, emb
 21. A note whose title and body both match: title-match rule applies (`titleMatch` true), snippet is the body window around the first body match if there is one, ranges as for a body match.
 22. A non-string `content` (including `null`) on POST or PUT is 400 `bad_request`. The BOM is kept on GET (bytes round-trip). Files over 8 MiB are not searched at all, even by title match in the body, but title matches still list them with an empty snippet and `ranges: []`.
 23. A missing Host header must give 403 `bad_host` (Node's `requireHostHeader` must be false). On 413, write the response, then destroy the request on `finish`.
+24. A title containing a lone (unpaired) UTF-16 surrogate is rejected by `validateTitle` with `title_control` and the same message as other control characters; such a title cannot be written to a file name.

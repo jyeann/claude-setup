@@ -1,8 +1,9 @@
 // Graph screen: fetches /api/graph, runs layout.js, draws SVG nodes and edges, and the text alternative list.
-import { h, clear, plural } from './dom.js';
+import { h, plural } from './dom.js';
 import { createLayout, runFor, fitToBox, truncateLabel, hitRadii, separate } from './layout.js';
 import { backLink } from './notes.js';
 import { noteUrl } from './router.js';
+import { focusEl } from './live.js';
 import { titleKey } from './titles.js';
 
 export const READY_ITERATIONS = 60;
@@ -178,12 +179,20 @@ export function createGraphView(ctx, route) {
   const timers = [];
   const later = (fn, ms = 0) => { timers.push(win.setTimeout(fn, ms)); };
 
+  // Drop everything after the heading. The heading itself never leaves the DOM, so it keeps focus.
+  function resetBody() {
+    while (section.lastChild && section.lastChild !== heading) section.removeChild(section.lastChild);
+  }
+
+  function retry() {
+    load();
+    focusEl(heading);
+  }
+
   function failure() {
-    clear(section);
-    section.appendChild(backLink(doc));
-    section.appendChild(heading);
+    resetBody();
     section.appendChild(h(doc, 'p', { role: 'alert', text: 'Could not load the graph. Try again.' }));
-    section.appendChild(h(doc, 'button', { type: 'button', testid: 'graph-retry', class: 'btn', text: 'Try again', on: { click: load } }));
+    section.appendChild(h(doc, 'button', { type: 'button', testid: 'graph-retry', class: 'btn', text: 'Try again', on: { click: retry } }));
   }
 
   function startLayout(svg, data, prep) {
@@ -236,9 +245,7 @@ export function createGraphView(ctx, route) {
   }
 
   async function load() {
-    clear(section);
-    section.appendChild(backLink(doc));
-    section.appendChild(heading);
+    resetBody();
     section.appendChild(loading);
     loading.removeAttribute('hidden');
     let data;

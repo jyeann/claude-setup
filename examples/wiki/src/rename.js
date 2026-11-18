@@ -1,8 +1,11 @@
 // Rename a note and rewrite every wikilink that pointed at it.
 import { validateTitle, titleKey, TITLE_MESSAGES } from '../public/js/titles.js';
 import { rewriteWikilinks } from '../public/js/wikilink.js';
-import { WikiError, StorageError, ExistsError } from './errors.js';
+import { WikiError, StorageError, ExistsError, storageError } from './errors.js';
 import { revisionOf } from './revision.js';
+
+// Node file system errors carry a string `code` such as EIO or EACCES.
+const isFsError = (e) => e instanceof Error && typeof e.code === 'string' && /^E[A-Z0-9]+$/.test(e.code);
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
@@ -11,8 +14,6 @@ export const notFound = () => new WikiError(404, 'note_not_found', 'Note not fou
 export const titleExists = (existing) => new WikiError(
   409, 'title_exists', TITLE_MESSAGES.title_exists.replace('{existing}', () => existing), { existing },
 );
-
-const storageError = () => new WikiError(503, 'storage_error', 'The vault could not be written. Try again.');
 
 // ctx: {index, vault}. Returns the response body. Synchronous on purpose: nothing interleaves.
 export function renameNote(ctx, oldKey, rawNewTitle) {
@@ -49,20 +50,28 @@ export function renameNote(ctx, oldKey, rawNewTitle) {
     throw e;
   }
 
-  index.scan();
+  // Candidates come from the index as it was before the move (fresh from the scan above): only notes whose
+  // indexed links include the old key. The moved note is seen under its new key, title and file name.
+  const candidates = [];
+  for (const entry of index.entries.values()) {
+    if (entry.big || !entry.links.some((l) => l.key === oldKey)) continue;
+    candidates.push(entry === old ? { key: newKey, title: newTitle, filename: newName } : entry);
+  }
+  candidates.sort((a, b) => compare(a.key, b.key));
   const updated = [];
   const failed = [];
-  for (const entry of [...index.entries.values()].sort((a, b) => compare(a.key, b.key))) {
-    if (entry.big) continue;
-    const r = vault.readFile(entry.filename);
-    if (!r) continue;
-    const { text, count } = rewriteWikilinks(r.buf.toString('utf8'), oldKey, newTitle);
-    if (count === 0) continue;
+  for (const entry of candidates) {
     try {
+      const r = vault.readFile(entry.filename); // fresh read, never the indexed copy
+      if (!r) continue;
+      const original = r.buf.toString('utf8');
+      const { text, count } = rewriteWikilinks(original, oldKey, newTitle);
+      if (count === 0) continue;
+      if (!Buffer.from(original, 'utf8').equals(r.buf)) throw new StorageError('Not valid UTF-8; left untouched.');
       vault.writeAtomic(entry.filename, Buffer.from(text, 'utf8'));
       if (entry.key !== newKey) updated.push(entry.title);
     } catch (e) {
-      if (!(e instanceof StorageError)) throw e;
+      if (!(e instanceof StorageError) && !isFsError(e)) throw e;
       failed.push({ title: entry.title, reason: 'write_failed' });
     }
   }

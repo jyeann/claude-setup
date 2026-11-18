@@ -100,7 +100,13 @@ export function buildNoteView(ctx, data, meta = {}) {
       preview.appendChild(h(doc, 'p', { class: 'muted', text: 'Nothing to preview yet.' }));
       return;
     }
-    preview.appendChild(renderMarkdown(doc, model.text, { resolve: ctx.resolve }));
+    try {
+      preview.appendChild(renderMarkdown(doc, model.text, { resolve: ctx.resolve }));
+    } catch {
+      // A pathological note must not stop the page from mounting: show the raw text instead.
+      clear(preview);
+      preview.appendChild(h(doc, 'p', { class: 'preview-plain', text: model.text }));
+    }
   }
   function schedulePreview() {
     if (previewTimer !== null) win.clearTimeout(previewTimer);
@@ -123,8 +129,9 @@ export function buildNoteView(ctx, data, meta = {}) {
     if (on && !conflictEl) {
       copyBtn = h(doc, 'button', { type: 'button', testid: 'conflict-copy', class: 'btn', text: 'Copy my text', on: { click: copyText } });
       copyNote = h(doc, 'p', { class: 'banner-note' });
-      conflictEl = bannerBox('conflict-banner', 'alert', [
-        h(doc, 'p', { text: CONFLICT_MESSAGE }),
+      // Only the message is an alert; Copy feedback inside the banner must not be re-announced as one.
+      conflictEl = bannerBox('conflict-banner', null, [
+        h(doc, 'p', { role: 'alert', text: CONFLICT_MESSAGE }),
         h(doc, 'div', { class: 'banner-actions' }, [
           h(doc, 'button', { type: 'button', testid: 'conflict-reload', class: 'btn', text: 'Reload note', on: { click: reloadNote } }),
           copyBtn,
@@ -149,12 +156,25 @@ export function buildNoteView(ctx, data, meta = {}) {
     }
   }
 
+  // While saving, or while the button holds focus, use aria-disabled so focus is not thrown to the page.
+  function syncSaveButton(state) {
+    if (model.canSave()) {
+      saveBtn.removeAttribute('disabled');
+      saveBtn.removeAttribute('aria-disabled');
+    } else if (state === 'saving' || doc.activeElement === saveBtn) {
+      saveBtn.removeAttribute('disabled');
+      saveBtn.setAttribute('aria-disabled', 'true');
+    } else {
+      saveBtn.setAttribute('disabled', '');
+      saveBtn.removeAttribute('aria-disabled');
+    }
+  }
+
   function sync() {
     const state = model.state;
     article.setAttribute('data-state', state);
     statusEl.textContent = model.statusText();
-    if (model.canSave()) saveBtn.removeAttribute('disabled');
-    else saveBtn.setAttribute('disabled', '');
+    syncSaveButton(state);
     showConflict(state === 'conflict');
     showError(saveErrorMessage(state));
     ctx.setTitle(`${title} - Wiki`, model.isDirty());
@@ -185,7 +205,9 @@ export function buildNoteView(ctx, data, meta = {}) {
       editor.value = fresh.content;
       sync();
       renderPreview();
-      focusEl(editor);
+      setTab('edit');
+      live.announce('Note reloaded');
+      focusEl(titleEl);
     } catch (e) {
       live.alert(e.status === 404 ? 'This note no longer exists. Copy your text before you leave.' : 'Could not reload the note. Try again.');
     }
@@ -201,6 +223,7 @@ export function buildNoteView(ctx, data, meta = {}) {
       copyTimer = win.setTimeout(() => { copyBtn.textContent = 'Copy my text'; copyTimer = null; }, 2000);
     } catch {
       copyNote.textContent = COPY_FAILED;
+      live.announce(COPY_FAILED);
     }
   }
 
@@ -235,7 +258,8 @@ export function buildNoteView(ctx, data, meta = {}) {
     if (result) ctx.onRenamed(result);
   });
   deleteBtn.addEventListener('click', async () => {
-    if (await dialogs.remove({ opener: deleteBtn, title })) ctx.onDeleted(title);
+    const removed = await dialogs.remove({ opener: deleteBtn, title });
+    if (removed) ctx.onDeleted(title, removed === 'gone');
   });
   preview.addEventListener('click', (ev) => {
     const a = ev.target && ev.target.closest ? ev.target.closest('a') : null;

@@ -18,24 +18,30 @@ function splitLines(text) {
 }
 
 // Inline code spans of one line: a run of N backticks is closed by the next run of exactly N.
+// Linear: split the line into maximal backtick runs, link each run to the next run of the same length.
 function inlineSpans(line, base, out) {
-  let i = 0;
-  while (i < line.length) {
-    if (line[i] !== '`') { i += 1; continue; }
-    let n = 0;
-    while (line[i + n] === '`') n += 1;
-    let j = i + n;
-    let close = -1;
-    while (j < line.length) {
-      if (line[j] !== '`') { j += 1; continue; }
-      let m = 0;
-      while (line[j + m] === '`') m += 1;
-      if (m === n) { close = j + m; break; }
-      j += m;
-    }
-    if (close === -1) { i += n; continue; }
-    out.push({ start: base + i, end: base + close });
-    i = close;
+  if (line.indexOf('`') === -1) return;
+  const starts = [];
+  const lens = [];
+  for (let i = 0; i < line.length;) {
+    if (line.charCodeAt(i) !== 96) { i += 1; continue; }
+    let n = 1;
+    while (line.charCodeAt(i + n) === 96) n += 1;
+    starts.push(i);
+    lens.push(n);
+    i += n;
+  }
+  const nextSame = new Array(starts.length);
+  const last = new Map();
+  for (let k = starts.length - 1; k >= 0; k -= 1) {
+    nextSame[k] = last.get(lens[k]);
+    last.set(lens[k], k);
+  }
+  for (let k = 0; k < starts.length;) {
+    const c = nextSame[k];
+    if (c === undefined) { k += 1; continue; }
+    out.push({ start: base + starts[k], end: base + starts[c] + lens[c] });
+    k = c + 1;
   }
 }
 

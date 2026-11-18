@@ -60,7 +60,6 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     const declared = req.headers['content-length'];
     if (declared !== undefined && Number(declared) > MAX_BODY_BYTES) { reject(new TooLarge()); return; }
-    req.on('error', () => {}); // a reset after we answered must not crash the process
     const chunks = [];
     let total = 0;
     const done = (fn, value) => {
@@ -160,6 +159,7 @@ export function createHandler({ ctx, statics, getPort, log = (m) => process.stde
   }
 
   return async function handle(req, res) {
+    req.on('error', () => {}); // a reset after we answered, or before we read, must not crash the process
     try {
       await dispatch(req, res);
     } catch (e) {

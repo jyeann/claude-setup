@@ -8,8 +8,12 @@ import { StorageError, ExistsError } from './errors.js';
 export const MAX_INDEXED_BYTES = 8 * 1024 * 1024;
 
 const LOCK_NAME = '.wiki.lock';
-const TMP_RE = /^\.wiki-.*\.tmp$/;
+const TMP_RE = /^\.wiki-\d+-[0-9a-f]{8}\.tmp$/;
+const LOCK_RETRIES = 5;
+const LOCK_RETRY_MS = 50;
 const O_NOFOLLOW = fs.constants.O_NOFOLLOW ?? 0;
+const O_NONBLOCK = fs.constants.O_NONBLOCK ?? 0;
+const DEFAULT_MODE = 0o644;
 
 export class VaultError extends Error {}
 
@@ -51,15 +55,49 @@ export class Vault {
   }
 
   // ---- lock and boot ----
-  acquireLock() {
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+  sleepMs(ms) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  }
+
+  // Create the lock with the pid already inside: tmp file, then a hard link, so it is never visible empty.
+  tryCreateLock() {
+    const tmp = this.tmpPath();
+    try {
+      fs.writeFileSync(tmp, String(process.pid), { flag: 'wx', mode: 0o644 });
       try {
-        fs.writeFileSync(this.lockPath, String(process.pid), { flag: 'wx' });
-        return;
+        fs.linkSync(tmp, this.lockPath);
+        return true;
       } catch (e) {
-        if (e.code !== 'EEXIST') throw new VaultError(`Cannot write to VAULT_DIR ${this.root}`);
+        if (e.code === 'EEXIST') return false;
+        // No hard links here: fall back to an exclusive create.
+        try {
+          fs.writeFileSync(this.lockPath, String(process.pid), { flag: 'wx' });
+          return true;
+        } catch (e2) {
+          if (e2.code === 'EEXIST') return false;
+          throw e2;
+        }
       }
-      const pid = Number.parseInt(this.readLockPid(), 10);
+    } catch {
+      throw new VaultError(`Cannot write to VAULT_DIR ${this.root}`);
+    } finally {
+      try { fs.unlinkSync(tmp); } catch { /* gone */ }
+    }
+  }
+
+  acquireLock() {
+    let retries = 0;
+    for (let attempt = 0; attempt < 3;) {
+      if (this.tryCreateLock()) return;
+      const raw = this.readLockPid();
+      if (!/^\d+$/.test(raw) && retries < LOCK_RETRIES && this.occupied(LOCK_NAME)) {
+        // Empty or unparsable: its owner may still be writing. Wait, do not call it stale yet.
+        retries += 1;
+        this.sleepMs(LOCK_RETRY_MS);
+        continue;
+      }
+      attempt += 1;
+      const pid = Number.parseInt(raw, 10);
       if (pid !== process.pid && Number.isInteger(pid) && pid > 0 && isAlive(pid)) {
         throw new VaultError(`Another wiki server is using ${this.root}`);
       }
@@ -105,7 +143,7 @@ export class Vault {
   readFile(filename) {
     let fd;
     try {
-      fd = fs.openSync(this.pathFor(filename), fs.constants.O_RDONLY | O_NOFOLLOW);
+      fd = fs.openSync(this.pathFor(filename), fs.constants.O_RDONLY | O_NOFOLLOW | O_NONBLOCK);
       const st = fs.fstatSync(fd);
       if (!st.isFile()) return null;
       const buf = fs.readFileSync(fd);
@@ -142,12 +180,12 @@ export class Vault {
     return path.join(this.root, `.wiki-${process.pid}-${randomBytes(4).toString('hex')}.tmp`);
   }
 
-  writeTmp(buf) {
+  writeTmp(buf, mode = DEFAULT_MODE) {
     const tmp = this.tmpPath();
     let fd;
     try {
-      fd = fs.openSync(tmp, 'wx', 0o644);
-      fs.fchmodSync(fd, 0o644);
+      fd = fs.openSync(tmp, 'wx', mode);
+      fs.fchmodSync(fd, mode);
       fs.writeSync(fd, buf, 0, buf.length);
       fs.fsyncSync(fd);
     } catch (e) {
@@ -166,10 +204,15 @@ export class Vault {
     } catch { /* best effort */ }
   }
 
-  // Atomic replace of an existing note file: tmp, fsync, rename. The old file survives a failure.
+  // Atomic replace of an existing note file: tmp, fsync, rename. Keeps the file's mode. The old file survives a failure.
   writeAtomic(filename, buf) {
     const target = this.pathFor(filename);
-    const tmp = this.writeTmp(buf);
+    let mode = DEFAULT_MODE;
+    try {
+      const st = fs.lstatSync(target);
+      if (st.isFile()) mode = st.mode & 0o7777;
+    } catch { /* new or unreadable: default */ }
+    const tmp = this.writeTmp(buf, mode);
     try {
       fs.renameSync(tmp, target);
     } catch (e) {

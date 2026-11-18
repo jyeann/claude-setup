@@ -7,6 +7,7 @@ const CREATE_FAILED = 'Could not create the note. Check that the server is still
 const RENAME_DIRTY = 'Save or discard your unsaved changes before renaming.';
 const RENAME_FAILED = 'Could not rename the note. Check that the server is still running and try again.';
 const DELETE_FAILED = 'Could not delete the note. Try again.';
+const RENAME_GONE = 'This note no longer exists.';
 
 // Message for a failed title request: the server's own text for title rules, a fallback otherwise.
 export function titleErrorMessage(err, fallback) {
@@ -40,7 +41,7 @@ function session(dialog, fallback) {
 
 function titleDialog(doc, { id, ids, heading, label, hint, submitText, busyText }) {
   const input = h(doc, 'input', { id: `${id}-input`, testid: ids.input, type: 'text', autocomplete: 'off', spellcheck: 'false', 'aria-describedby': `${id}-hint ${id}-error` });
-  const error = h(doc, 'p', { id: `${id}-error`, testid: ids.error, class: 'dialog-error' });
+  const error = h(doc, 'p', { id: `${id}-error`, testid: ids.error, class: 'dialog-error', role: 'alert' });
   const submit = h(doc, 'button', { type: 'submit', testid: ids.submit, class: 'btn btn-primary', text: submitText });
   const cancel = h(doc, 'button', { type: 'button', testid: ids.cancel, class: 'btn', text: 'Cancel' });
   const dialog = frame(doc, ids.dialog, id, heading, [
@@ -81,14 +82,20 @@ export function createDialogs({ doc, api, root = doc.body }) {
   const delError = h(doc, 'p', { class: 'dialog-error', role: 'alert' });
   const delCancel = h(doc, 'button', { type: 'button', testid: 'delete-cancel', class: 'btn', text: 'Cancel' });
   const delConfirm = h(doc, 'button', { type: 'submit', testid: 'delete-confirm', class: 'btn btn-danger', text: 'Delete note' });
+  const delTextId = 'dlg-delete-text';
+  delText.setAttribute('id', delTextId);
   const del = frame(doc, 'delete-dialog', 'dlg-delete', '', [delText, delError, h(doc, 'div', { class: 'dialog-actions' }, [delCancel, delConfirm])]);
+  del.setAttribute('aria-describedby', delTextId);
   const delTitle = del.querySelector('h2');
   delTitle.appendChild(delHeading);
 
   const leaveText = h(doc, 'p', { class: 'dialog-text' });
   const stay = h(doc, 'button', { type: 'button', testid: 'leave-stay', class: 'btn btn-primary', text: 'Keep editing' });
   const discard = h(doc, 'button', { type: 'button', testid: 'leave-discard', class: 'btn', text: 'Discard changes' });
+  leaveText.setAttribute('id', 'dlg-leave-text');
   const leave = frame(doc, 'leave-dialog', 'dlg-leave', 'Leave without saving?', [leaveText, h(doc, 'div', { class: 'dialog-actions' }, [stay, discard])]);
+
+  leave.setAttribute('aria-describedby', 'dlg-leave-text');
 
   for (const d of [nn.dialog, rn.dialog, del, leave]) root.appendChild(d);
 
@@ -132,7 +139,7 @@ export function createDialogs({ doc, api, root = doc.body }) {
           rn.dialog.finish(await api.renameNote(current, v.title));
         } catch (e) {
           rn.busy(false);
-          rn.fail(titleErrorMessage(e, RENAME_FAILED));
+          rn.fail(e && e.status === 404 ? RENAME_GONE : titleErrorMessage(e, RENAME_FAILED));
         }
       };
       rn.form.addEventListener('submit', onSubmit);
@@ -156,7 +163,11 @@ export function createDialogs({ doc, api, root = doc.body }) {
         try {
           await api.deleteNote(title);
           del.finish(true);
-        } catch {
+        } catch (e) {
+          if (e && e.status === 404) {
+            del.finish('gone'); // already deleted somewhere else: same outcome as a delete
+            return;
+          }
           delConfirm.removeAttribute('disabled');
           delError.textContent = DELETE_FAILED;
         }

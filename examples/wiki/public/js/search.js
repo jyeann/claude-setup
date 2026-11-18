@@ -5,6 +5,7 @@ import { isSearchShortcut } from './live.js';
 
 export const DEBOUNCE_MS = 120;
 export const SLOW_MS = 150;
+export const SEARCH_TOO_LONG = 'Search text can be at most 200 characters.';
 export const SEARCH_FAILED = 'Search failed. Check that the server is running, then try again.';
 
 export const countText = (n) => (n === 0 ? 'No notes match' : n === 1 ? '1 note matches' : `${n} notes match`);
@@ -43,7 +44,7 @@ export function createSearch({ doc, win, api, list, input, box, statusEl, onClea
   const query = () => input.value.trim();
 
   function setStatus(text, visible) {
-    statusEl.textContent = text;
+    if (statusEl.textContent !== text) statusEl.textContent = text; // same text again is not re-announced
     if (visible) statusEl.removeAttribute('class');
     else statusEl.setAttribute('class', 'sr-only');
   }
@@ -69,11 +70,11 @@ export function createSearch({ doc, win, api, list, input, box, statusEl, onClea
     controller = null;
   }
 
-  async function run(q) {
+  async function run(q, quiet = false) {
     cancel();
     const mine = seq;
     controller = new win.AbortController();
-    slowTimer = win.setTimeout(() => setStatus('Searching...', true), SLOW_MS);
+    if (!quiet) slowTimer = win.setTimeout(() => setStatus('Searching...', true), SLOW_MS);
     try {
       const res = await api.search(q, controller.signal);
       if (mine !== seq) return;
@@ -89,8 +90,9 @@ export function createSearch({ doc, win, api, list, input, box, statusEl, onClea
       if (mine !== seq || (e && e.name === 'AbortError')) return;
       win.clearTimeout(slowTimer);
       slowTimer = null;
-      list.showMessage('search-empty', SEARCH_FAILED);
-      setStatus('', false);
+      const message = e && e.status === 400 ? SEARCH_TOO_LONG : SEARCH_FAILED;
+      list.showMessage('search-empty', message);
+      setStatus(message, false);
     }
   }
 
@@ -136,7 +138,7 @@ export function createSearch({ doc, win, api, list, input, box, statusEl, onClea
   return {
     // Re-run after notes changed while a query is showing.
     refresh() {
-      if (query() !== '') run(query());
+      if (query() !== '') run(query(), true);
     },
     active: () => query() !== '',
     clear,

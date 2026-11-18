@@ -8,6 +8,8 @@ export class WikiError extends Error {
   }
 }
 
+export const storageError = () => new WikiError(503, 'storage_error', 'The vault could not be written. Try again.');
+
 // Thrown by vault.js when the filesystem refuses a write.
 export class StorageError extends Error {
   constructor(message, cause) {

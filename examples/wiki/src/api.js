@@ -1,6 +1,6 @@
 // Request handlers for the note API. Each takes a context and returns {status, body, headers} or throws.
 import { validateTitle, normalizeTitle, titleKey } from '../public/js/titles.js';
-import { WikiError, StorageError, ExistsError } from './errors.js';
+import { WikiError, StorageError, ExistsError, storageError } from './errors.js';
 import { revisionOf, parseIfMatch } from './revision.js';
 import { renameNote, notFound, titleExists } from './rename.js';
 
@@ -8,7 +8,6 @@ export const MAX_NOTE_BYTES = 2 * 1024 * 1024;
 export const MAX_QUERY_LENGTH = 200;
 
 const iso = (ms) => new Date(ms).toISOString();
-const storageError = () => new WikiError(503, 'storage_error', 'The vault could not be written. Try again.');
 const tooLarge = () => new WikiError(413, 'note_too_large', 'This note is larger than 2 MiB.');
 const conflict = (currentRevision) => new WikiError(412, 'conflict', 'This note changed since you opened it.', { currentRevision });
 

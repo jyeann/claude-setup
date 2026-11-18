@@ -17,6 +17,16 @@ export function truncateQuery(q, max = 40) {
   return chars.length > max ? `${chars.slice(0, max).join('')}...` : q;
 }
 
+// aria-current goes on the li and on its link, so it is announced whichever one has focus.
+function markCurrent(li, on) {
+  const link = li.querySelector('a');
+  for (const el of [li, link]) {
+    if (!el) continue;
+    if (on) el.setAttribute('aria-current', 'page');
+    else el.removeAttribute('aria-current');
+  }
+}
+
 // Owns the sidebar list region. Modes: loading, notes, results, message.
 export function createListView(doc, region) {
   let notes = [];
@@ -38,7 +48,7 @@ export function createListView(doc, region) {
         itemLink(n.title),
         h(doc, 'span', { class: 'note-meta', text: `Modified ${formatModified(n.modified)}` }),
       ]);
-      if (current !== null && n.title === current) li.setAttribute('aria-current', 'page');
+      if (current !== null && n.title === current) markCurrent(li, true);
       ul.appendChild(li);
     }
     region.appendChild(ul);
@@ -64,8 +74,7 @@ export function createListView(doc, region) {
       current = title;
       if (mode !== 'notes') return;
       for (const li of region.querySelectorAll('[data-testid="note-list-item"]')) {
-        if (title !== null && li.getAttribute('data-title') === title) li.setAttribute('aria-current', 'page');
-        else li.removeAttribute('aria-current');
+        markCurrent(li, title !== null && li.getAttribute('data-title') === title);
       }
     },
     // items: [{title, snippetNode}]
@@ -80,6 +89,12 @@ export function createListView(doc, region) {
         ]));
       }
       region.appendChild(ul);
+    },
+    // Any other element (the app error with its retry button).
+    showElement(el) {
+      clear(region);
+      mode = 'message';
+      region.appendChild(el);
     },
     showMessage(testid, text) {
       clear(region);

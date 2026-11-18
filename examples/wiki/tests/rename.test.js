@@ -31,8 +31,8 @@ test('rename reads only the renamed note and the notes whose indexed links inclu
   assert.deepEqual(res.failed, []);
   assert.equal(reads.includes('U1.md'), false);
   assert.equal(reads.includes('U2.md'), false);
-  // Each file is read at most twice: the fresh pre-rewrite read and the index reload of the changed file.
-  for (const n of ['New.md', 'Zed.md', 'Amy.md']) assert.ok(reads.filter((r) => r === n).length <= 2, `${n} read ${reads.filter((r) => r === n).length} times`);
+  // Each file is read a bounded number of times: fresh pre-rewrite read, index reload of the changed file, final revision read.
+  for (const n of ['New.md', 'Zed.md', 'Amy.md']) assert.ok(reads.filter((r) => r === n).length <= 3, `${n} read ${reads.filter((r) => r === n).length} times`);
 }));
 
 test('rename rewrites self-links and does not list the renamed note in updated', () => withCtx({ 'Old.md': 'self [[old]] and [[OLD|me]]' }, (ctx, root) => {

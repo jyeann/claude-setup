@@ -124,11 +124,11 @@ test('the list view switches between loading, notes, results and messages', () =
   list.showNotes([], null);
   assert.equal(byId(region, 'note-list-empty').textContent, 'No notes yet.');
   list.showNotes([{ title: 'A', modified: new Date().toISOString() }, { title: 'B', modified: new Date().toISOString() }], 'B');
-  assert.equal(region.querySelectorAll('[aria-current="page"]').length, 1);
+  assert.equal(region.querySelectorAll('li[aria-current="page"]').length, 1);
   list.setCurrent('A');
-  assert.equal(region.querySelector('[aria-current="page"]').getAttribute('data-title'), 'A');
+  assert.equal(region.querySelector('li[aria-current="page"]').getAttribute('data-title'), 'A');
   list.setCurrent(null);
-  assert.equal(region.querySelectorAll('[aria-current="page"]').length, 0);
+  assert.equal(region.querySelectorAll('li[aria-current="page"]').length, 0);
   assert.equal(list.linkFor('B').textContent, 'B');
   assert.equal(list.linkFor('Z'), null);
   list.showMessage('search-empty', 'none');
@@ -174,5 +174,8 @@ test('index.html is one shell with landmarks, a skip link first, lang en and no 
   assert.equal(byId(doc, 'alert-live').getAttribute('role'), 'alert');
   assert.equal(byId(doc, 'search-status').getAttribute('role'), 'status');
   assert.equal(doc.querySelector('label[for="search-input"]').textContent, 'Search notes');
-  assert.equal(doc.querySelectorAll('h1').length, 0, 'h1 lives in the main pane screens');
+  const h1s = doc.querySelectorAll('h1');
+  assert.equal(h1s.length, 1, 'only the phone-home sidebar heading lives in the shell; CSS hides it elsewhere');
+  assert.equal(h1s[0].getAttribute('data-testid'), 'sidebar-heading');
+  assert.equal(doc.querySelector('[data-testid="search-input"]').getAttribute('maxlength'), '200');
 });

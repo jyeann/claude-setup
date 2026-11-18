@@ -44,6 +44,16 @@ export function start(win) {
   const resolve = (target) => state.keys.get(titleKey(target)) || null;
   const setTitle = (base, dirty) => { doc.title = dirty ? `* ${base}` : base; };
   const mount = (el) => { clear(mainEl); mainEl.appendChild(el); };
+  const sideHeading = doc.querySelector('[data-testid="sidebar-heading"]');
+  // On a phone the home route hides <main>; focus and errors then have to live in the sidebar.
+  const mainHidden = () => {
+    try {
+      return win.getComputedStyle(mainEl).display === 'none';
+    } catch {
+      return false;
+    }
+  };
+  const shouldFocus = (meta) => !meta.initial || Boolean(meta.retry);
 
   async function loadList() {
     state.notes = await api.listNotes();
@@ -91,8 +101,8 @@ export function start(win) {
     await router.navigate(noteUrl(result.title), { replace: true, force: true });
   }
 
-  async function onDeleted(title) {
-    live.announce(`Deleted "${title}"`);
+  async function onDeleted(title, gone = false) {
+    live.announce(gone ? `"${title}" was already deleted` : `Deleted "${title}"`);
     await router.navigate('/', { force: true, meta: { focus: 'list-first' } });
   }
 
@@ -131,7 +141,7 @@ export function start(win) {
     if (!search.active()) list.showNotes();
     view.loadBacklinks();
     if (meta.focusEditor) view.focusEditor();
-    else if (!meta.initial) focusEl(view.heading);
+    else if (shouldFocus(meta)) focusEl(view.heading);
   }
 
   function showNotFound(meta) {
@@ -139,7 +149,7 @@ export function start(win) {
     const el = buildNotFound(doc);
     mount(el);
     list.setCurrent(null);
-    if (!meta.initial) focusEl(el.querySelector('h1'));
+    if (shouldFocus(meta)) focusEl(el.querySelector('h1'));
   }
 
   function showHome(meta) {
@@ -149,13 +159,14 @@ export function start(win) {
     mount(el);
     list.setCurrent(null);
     if (!search.active()) list.showNotes();
-    if (meta.initial) return;
+    if (!shouldFocus(meta)) return;
+    const hidden = mainHidden();
     if (meta.focus === 'list-first') {
-      focusEl(empty ? q('empty-create') : list.firstLink());
+      focusEl(empty && !hidden ? q('empty-create') : list.firstLink() || sideHeading);
     } else if (state.lastOpen && list.linkFor(state.lastOpen)) {
       focusEl(list.linkFor(state.lastOpen));
     } else {
-      focusEl(el.querySelector('h1'));
+      focusEl(hidden ? sideHeading : el.querySelector('h1'));
     }
     state.lastOpen = null;
   }
@@ -167,7 +178,7 @@ export function start(win) {
     mount(gv.el);
     list.setCurrent(null);
     if (!search.active()) list.showNotes();
-    if (!meta.initial) focusEl(gv.heading);
+    if (shouldFocus(meta)) focusEl(gv.heading);
     gv.load();
   }
 
@@ -185,8 +196,16 @@ export function start(win) {
       await loadList();
     } catch {
       if (seq !== state.seq) return;
-      list.showMessage('list-error', 'The list could not be loaded.');
-      showAppError(() => router.navigate(win.location.pathname + win.location.search, { force: true, replace: true, meta: { initial: meta.initial } }));
+      const retry = () => router.navigate(win.location.pathname + win.location.search, { force: true, replace: true, meta: { initial: meta.initial, retry: true } });
+      if (mainHidden()) {
+        const err = buildAppError(doc, retry);
+        list.showElement(err.el);
+        err.focus();
+        live.alert('Could not reach the wiki server. Check that it is still running, then try again.');
+      } else {
+        list.showMessage('list-error', 'The list could not be loaded.');
+        showAppError(retry);
+      }
       return;
     }
     if (seq !== state.seq) return;
@@ -195,6 +214,7 @@ export function start(win) {
     else if (route.name === 'graph') showGraph(route, meta);
     else if (route.name === 'note') await showNote(route, meta, seq);
     else showNotFound(meta);
+    if (seq === state.seq && search.active()) search.refresh();
   }
 
   router = createRouter({

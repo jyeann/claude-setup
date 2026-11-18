@@ -72,7 +72,7 @@ test('create on click, backlinks, rename with link rewriting, delete', async () 
     await waitFor(() => u.t('backlinks').textContent.includes('Backlinks (1)'));
     assert.equal(u.all('backlink-item')[0].getAttribute('data-title'), 'Welcome');
     assert.equal(u.text('backlink-snippet'), 'See [[Ideas]] and [[Ideas|my ideas]].');
-    assert.equal(u.t('note-list').querySelector('[aria-current="page"]').getAttribute('data-title'), 'Ideas');
+    assert.equal(u.t('note-list').querySelector('li[aria-current="page"]').getAttribute('data-title'), 'Ideas');
 
     u.t('rename-button').click();
     assert.equal(u.t('rename-input').value, 'Ideas');
@@ -204,7 +204,8 @@ test('save conflict: banner, disabled Save, copy my text, reload note', async ()
     u.t('editor').focus();
     u.save();
     await waitFor(() => u.t('conflict-banner'));
-    assert.equal(u.t('conflict-banner').getAttribute('role'), 'alert');
+    assert.equal(u.t('conflict-banner').querySelector('p').getAttribute('role'), 'alert');
+    assert.equal(u.t('conflict-banner').getAttribute('role'), null);
     assert.match(u.text('conflict-banner'), /^This note changed since you opened it\. Your edit was not saved/);
     assert.equal(u.text('save-status'), 'Not saved');
     assert.equal(u.t('save-button').disabled, true);
@@ -221,7 +222,9 @@ test('save conflict: banner, disabled Save, copy my text, reload note', async ()
     await waitFor(() => u.t('conflict-banner') === null);
     assert.equal(u.t('editor').value, 'Hello\nexternal');
     assert.equal(u.text('save-status'), 'Saved');
-    assert.equal(u.focused(), 'editor');
+    assert.equal(u.focused(), 'note-title');
+    assert.equal(u.t('tab-edit').getAttribute('aria-selected'), 'true');
+    await waitFor(() => u.text('status-live') === 'Note reloaded');
     assert.equal(u.t('note-view').getAttribute('data-state'), 'clean');
   }, { 'Welcome.md': 'Hello' });
 });

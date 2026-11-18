@@ -19,6 +19,7 @@ export const TITLE_MESSAGES = Object.freeze({
 
 const encoder = new TextEncoder();
 const CONTROL = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const SEPARATOR = /[/\\]/;
 const BAD_CHAR = /[:*?"<>|[\]#]/;
 const RESERVED = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
@@ -43,7 +44,7 @@ export function validateTitle(raw) {
   const length = [...title].length;
   if (length > MAX_TITLE_LENGTH) return fail('title_too_long', { n: length });
   if (encoder.encode(title).length > MAX_TITLE_BYTES) return fail('title_too_long_bytes');
-  if (CONTROL.test(title)) return fail('title_control');
+  if (CONTROL.test(title) || LONE_SURROGATE.test(title)) return fail('title_control');
   if (SEPARATOR.test(title)) return fail('title_separator');
   if (title.includes('..')) return fail('title_dotdot');
   if (title.startsWith('.')) return fail('title_leading_dot');

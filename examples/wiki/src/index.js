@@ -28,7 +28,7 @@ export class Index {
     const stem = filename.slice(0, -3).normalize('NFC');
     const v = validateTitle(stem);
     if (!v.ok) {
-      this.logOnce(`invalid:${filename}`, `Skipping ${filename}: ${v.message}`);
+      this.logOnce(`invalid:${filename}`, `Skipping ${JSON.stringify(filename)}: ${v.message}`);
       return null;
     }
     return { title: v.title, key: titleKey(v.title) };
@@ -73,7 +73,7 @@ export class Index {
       if (!ident) continue;
       const first = winners.get(ident.key);
       if (first) {
-        this.logOnce(`dup:${f.filename}`, `Skipping ${f.filename}: same title as ${first.file.filename}`);
+        this.logOnce(`dup:${f.filename}`, `Skipping ${JSON.stringify(f.filename)}: same title as ${JSON.stringify(first.file.filename)}`);
         continue;
       }
       winners.set(ident.key, { file: f, ident });
