@@ -1,0 +1,12 @@
+{
+  "name": "wiki",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first Markdown wiki: wikilinks, backlinks, rename with link rewriting, search, graph. No dependencies.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"acceptance/*.test.js\" \"tests/*.test.js\""
+  },
+  "engines": { "node": ">=22" }
+}

@@ -188,3 +188,6 @@ Accounts, sync, multi-user, plugins, subfolders, attachments, tags, WYSIWYG, emb
 18. `TITLE_MESSAGES`, `MAX_TITLE_LENGTH` and `MAX_TITLE_BYTES` are new exports so tests can import the messages.
 19. Server-side perf budgets (300 ms search, 1 s graph) are new; they support SC8 and SC9, and the browser checks still apply.
 20. `title_exists` is included in `TITLE_MESSAGES` so the client and server share it.
+21. A note whose title and body both match: title-match rule applies (`titleMatch` true), snippet is the body window around the first body match if there is one, ranges as for a body match.
+22. A non-string `content` (including `null`) on POST or PUT is 400 `bad_request`. The BOM is kept on GET (bytes round-trip). Files over 8 MiB are not searched at all, even by title match in the body, but title matches still list them with an empty snippet and `ranges: []`.
+23. A missing Host header must give 403 `bad_host` (Node's `requireHostHeader` must be false). On 413, write the response, then destroy the request on `finish`.

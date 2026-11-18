@@ -22,3 +22,5 @@ Format: decision | options | chosen | why | decided by. Only spend, legal or rea
 | 16 | Plan | see TASKS.md | 12 build slices in builder groups S (src and shared modules, green over HTTP) then P (UI) | Same split as retro-board decisions 12-13 | planner |
 | 17 | Who writes acceptance tests and holdout | builder; test-owner agent | Separate test-owner agent, before the build; holdout kept apart in `examples/wiki/holdout` and hidden during the run | Builder must not grade its own work | orchestrator |
 | 18 | Server-side perf budgets (search 300 ms at 5,000 notes, graph 1 s at 1,000) | none; add | Added to acceptance | Gives SC8/SC9 an objective check before the browser walkthrough | planner |
+| 19 | Spec rulings after test-owner questions (null content, BOM, both-match search, over 8 MiB titles) | leave open; rule | Ruled in spec.md items 21-23 | Tests must not depend on builder guesses | orchestrator |
+| 20 | Skips count as failures in verify (`::1` test, case-insensitive FS) | remove tests; accept | Accept: environmental, rare | Keeps the coverage of the loopback and duplicate-key rules | test-owner, orchestrator |
