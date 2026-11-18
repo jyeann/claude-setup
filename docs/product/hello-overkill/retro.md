@@ -23,3 +23,8 @@ Make the orchestrator hand architect output to a writer agent verbatim instead o
 
 ## Wild ideas still open (from the brief)
 Hello Weather, live SSE hello wall, SLA dashboard, greeting time machine, haiku compiler, federation of two services.
+
+## Follow-ups found during release (not fixed)
+- A `chaos=1` test failed once with `fetch failed` while other servers were running, then passed on a clean rerun: likely timing-sensitive under load. Needs a deterministic seed or a longer timeout; the gate's replicate check did not catch it.
+- `node src/server.js | head` crashes with an unhandled EPIPE on stdout (src/server.js). Harmless for normal use; add a stdout `error` handler.
+- Two mutants survived in one run (`battle.js:12`, `greetings.js:92`): add dedicated tests.
