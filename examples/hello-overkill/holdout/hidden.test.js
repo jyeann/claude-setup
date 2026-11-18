@@ -143,12 +143,12 @@ test('certificate with quotes, backslashes and unicode in the name round-trips a
   assert.equal(perma.json.signature, cert.signature);
 }));
 
-test('whitespace outside the certificate JSON is still Authentic', () => withServer(async (s) => {
+test('whitespace added outside the certificate JSON is Forged (any edit is Forged)', () => withServer(async (s) => {
   const r = await s.hello({ name: 'Ada' });
   const text = r.json.certificate.text;
   for (const wrapped of [' \n' + text + '\t\r\n', '\n\n' + text, text + '   ']) {
     const v = await s.call('POST', '/api/verify', { text: wrapped });
-    assert.deepEqual(v.json, { verdict: 'Authentic' }, JSON.stringify(wrapped.slice(0, 6)));
+    assert.deepEqual(v.json, { verdict: 'Forged', reason: 'mismatch' }, JSON.stringify(wrapped.slice(0, 6)));
   }
 }));
 

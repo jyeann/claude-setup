@@ -16,3 +16,9 @@
 - **Why:** no extra server routes beyond the API, which fits the one-process, no-framework constraint, and stable test ids keep the Playwright walkthrough independent of styling. Certificate text is a pasteable string so the verify journey works without a server-side session.
 - **Consequences for the architect:** the server needs forced chaos values (`chaos=418`, `chaos=delay`) besides `chaos=1`, and a configurable rate limit (for example `HELLO_RATE_LIMIT`) so tests can sample all language and tone combinations in the browser.
 - **Decided by:** ux-designer
+
+## Decision: certificate verification is strict about whitespace
+- Decision: should whitespace added outside the certificate JSON still verify as Authentic?
+- Options: (a) tolerate outer whitespace (architect's draft caveat); (b) strict: any edit, including added whitespace, is Forged.
+- Chosen: (b). Brief criterion says any single-character edit is Forged; the visible acceptance test (`inserting or deleting one character`, adds a trailing space) and design.md section 4 already say so. The architect's caveat was dropped when design.md was saved, but it had been passed to the holdout author, so the holdout contradicted the visible acceptance test (TEST_AMBIGUOUS). The holdout test was corrected to expect Forged/mismatch.
+- Decided by: orchestrator.

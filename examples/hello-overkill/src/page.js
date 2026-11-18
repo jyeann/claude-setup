@@ -319,9 +319,9 @@ function loadBattle() {
       return;
     }
     var note = el('p', null, null, 'err');
-    [['a', 'A'], ['b', 'B']].forEach(function (p) {
+    [['a', 'A', 'battle-option-a'], ['b', 'B', 'battle-option-b']].forEach(function (p) {
       var o = res.json[p[0]];
-      var b = el('button', 'battle-option-' + p[0], 'Vote for ' + p[1] + ': ' + o.greeting, 'opt');
+      var b = el('button', p[2], 'Vote for ' + p[1] + ': ' + o.greeting, 'opt');
       b.type = 'button';
       b.addEventListener('click', function () { vote(o, note); });
       bBox.appendChild(b);
