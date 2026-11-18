@@ -16,9 +16,9 @@ const consoleErrors = []; // unexpected console / page errors
 const expectedNoise = []; // browser "Failed to load resource" for forced 418/429
 let procs = [];
 
-function startServer(file, limit) {
+function startServer(file, limit, extra) {
   return new Promise((resolve, reject) => {
-    const env = { ...process.env, PORT: '0', DATA_FILE: file, HELLO_SIGNING_SECRET: SECRET };
+    const env = { ...process.env, PORT: '0', DATA_FILE: file, HELLO_SIGNING_SECRET: SECRET, ...(extra || {}) };
     if (limit) env.HELLO_RATE_LIMIT = String(limit); else delete env.HELLO_RATE_LIMIT;
     const p = spawn('node', ['src/server.js'], { cwd: ROOT, env });
     procs.push(p);
@@ -26,7 +26,7 @@ function startServer(file, limit) {
     p.stdout.on('data', (d) => {
       buf += d;
       const m = buf.match(/listening on (\d+)/);
-      if (m) resolve({ p, url: `http://localhost:${m[1]}`, file, limit });
+      if (m) resolve({ p, url: `http://localhost:${m[1]}`, origin: `http://127.0.0.1:${m[1]}`, file, limit });
     });
     p.on('exit', (c) => reject(new Error('server exited ' + c)));
     setTimeout(() => reject(new Error('server start timeout')), 8000);
@@ -612,6 +612,7 @@ const noOverflow = (page) => page.evaluate(() => document.documentElement.scroll
   await check('J8', 'rate limit journey', async () => 'covered by UC9');
   await stop(s);
 
+@@V2@@
   // ---------- Console errors ----------
   await check('CONSOLE', 'console errors = none (excluding browser resource-load lines for forced 4xx/5xx)', async () => {
     assert(consoleErrors.length === 0, `${consoleErrors.length} errors: ${consoleErrors.slice(0, 3).join(' | ')}`);
