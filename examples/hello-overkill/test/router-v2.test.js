@@ -16,6 +16,14 @@ const CORE = '{"message":"Hello World! Welcome to the API."}';
 const NOW = Date.parse('2026-11-18T10:00:00Z');
 const noop = () => {};
 
+// Polls until check() is truthy or the deadline passes; resolves to the last check() result.
+async function waitFor(check, { timeoutMs = 2000, stepMs = 5 } = {}) {
+  const end = Date.now() + timeoutMs;
+  let v = check();
+  while (!v && Date.now() < end) { await new Promise((r) => setTimeout(r, stepMs)); v = check(); }
+  return v;
+}
+
 async function boot(over = {}) {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ho-r2-')), 'd.json');
   const deps = {
@@ -226,7 +234,7 @@ test('stream sends security headers, replays published events and never carries 
     assert.ok(text.startsWith('retry: 3000\n\n: connected\n\n'));
     assert.match(text, /"language":"es","tone":"pirate","milestone":"first-visit"/);
     assert.ok(!text.includes('Zelda'));
-    await new Promise((r) => setTimeout(r, 50));
+    assert.ok(await waitFor(() => deps.hub.size() === 0), 'client dropped before the deadline');
     assert.equal(deps.hub.size(), 0);
   }, { hub: createHub({ now: () => NOW }) });
 });
@@ -297,8 +305,51 @@ test('requests are recorded in the sla under fixed labels', async () => {
   await withApp(async ({ req }) => {
     await req('GET', '/api/certificates/0123456789abcdef');
     await req('GET', '/nope?x=1');
-    await new Promise((r) => setTimeout(r, 30));
+    await waitFor(() => sla.snapshot().routes.length >= 2);
     const labels = sla.snapshot().routes.map((r) => r.route).sort();
     assert.deepEqual(labels, ['GET /api/certificates/:id', 'other']);
   }, { sla });
+});
+
+test('federation hello answers 429 with retry-after from the global limiter before contacting peers', async () => {
+  let calls = 0;
+  const federation = { health: async () => ({}), hello: async () => { calls++; return { configured: true }; } };
+  await withApp(async ({ req }) => {
+    assert.equal((await req('GET', '/api/federation/hello?name=Ada')).status, 200);
+    assert.equal((await req('GET', '/api/federation/hello?name=Ada')).status, 200);
+    const r = await req('GET', '/api/federation/hello?name=Ada');
+    assert.equal(r.status, 429);
+    assert.match(r.headers['retry-after'], /^[1-9]\d*$/);
+    assert.equal(r.json.error, "You've been greeted enough.");
+    assert.equal(calls, 2);
+    assert.equal((await req('GET', '/api/federation/hello')).status, 400, 'validation errors do not spend the global budget');
+    assert.equal((await req('GET', '/api/federation')).status, 200, 'health is not covered by the global limiter');
+  }, { federation, fedGlobalLimiter: createRateLimiter({ limit: 2, windowMs: 60000 }) });
+});
+
+test('/api/stream is read-limited: connects beyond the budget get 429 with retry-after', () => withApp(async ({ req, port }) => {
+  const opened = await new Promise((resolve, reject) => {
+    const r = http.get({ host: '127.0.0.1', port, path: '/api/stream', agent: false }, (res) => { res.destroy(); resolve(res.statusCode); });
+    r.on('error', (e) => (e.code === 'ECONNRESET' ? undefined : reject(e)));
+  });
+  assert.equal(opened, 200);
+  const r = await req('GET', '/api/stream');
+  assert.equal(r.status, 429);
+  assert.match(r.headers['retry-after'], /^[1-9]\d*$/);
+  assert.equal((await req('GET', '/healthz')).status, 200, 'other routes are untouched');
+}, { hub: createHub({ now: () => NOW }), readLimiter: createRateLimiter({ limit: 1, windowMs: 60000 }) }));
+
+test('/api/sla: unset token is open outside production and locked (401) in production', async () => {
+  await withApp(async ({ req }) => { assert.equal((await req('GET', '/api/sla')).status, 200); });
+  await withApp(async ({ req }) => {
+    const r = await req('GET', '/api/sla');
+    assert.equal(r.status, 401);
+    assert.equal(r.headers['www-authenticate'], 'Bearer');
+    assert.equal((await req('GET', '/api/sla', { headers: { authorization: 'Bearer undefined' } })).status, 401);
+  }, { production: true });
+  const slaToken = 'a-sixteen-char-token';
+  await withApp(async ({ req }) => {
+    assert.equal((await req('GET', '/api/sla', { headers: { authorization: `Bearer ${slaToken}` } })).status, 200);
+    assert.equal((await req('GET', '/api/sla')).status, 401);
+  }, { production: true, slaToken });
 });

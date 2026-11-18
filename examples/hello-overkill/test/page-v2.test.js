@@ -119,6 +119,13 @@ test('untrusted data: textContent only, no unsafe sinks, no inline handlers or s
   assert.ok(!/<(?:a|link|img|iframe)\b[^>]*\b(?:href|src)\s*=\s*["']https?:/i.test(html));
 });
 
+test('federation never links: no .href assignment, every setAttribute href starts with #/', () => {
+  assert.ok(!/\.href\s*=(?!=)/.test(script), 'no .href = assignment');
+  assert.ok(!/\[\s*['"]href['"]\s*\]\s*=/.test(script), 'no ["href"] = assignment');
+  const calls = [...script.matchAll(/setAttribute\(\s*(['"])href\1\s*,\s*([^;]*)\)/g)];
+  for (const m of calls) assert.match(m[2].trim(), /^(['"])#\//, `href argument: ${m[2]}`);
+});
+
 test('peer data goes through cleanText and is never used as a link', () => {
   const fed = script.slice(script.indexOf('/* ---------- federation'), script.indexOf("window.addEventListener('hashchange'"));
   assert.match(fed, /cleanText\(p\.origin/);

@@ -28,3 +28,21 @@ Hello Weather, live SSE hello wall, SLA dashboard, greeting time machine, haiku 
 - A `chaos=1` test failed once with `fetch failed` while other servers were running, then passed on a clean rerun: likely timing-sensitive under load. Needs a deterministic seed or a longer timeout; the gate's replicate check did not catch it.
 - `node src/server.js | head` crashes with an unhandled EPIPE on stdout (src/server.js). Harmless for normal use; add a stdout `error` handler.
 - Two mutants survived in one run (`battle.js:12`, `greetings.js:92`): add dedicated tests.
+
+# v2 retro: six wild ideas (weather, wall, SLA, time machine, haiku, federation)
+
+## Outcome
+All six built and wired. Final gate `verify.js` PASSED: 531 tests, ~99.6% line coverage, both holdouts 40/40, mutation 6-8/8 across runs. Browser QA 42/42 (30 v1 + 12 v2), no app defects. Reviews (security, code): no CRITICAL/HIGH; 4 MEDIUM security findings, of which 3 fixed and 1 accepted with a documented switch. The three v1 follow-ups are done: EPIPE handler, deterministic `chaos=1` tests, mutant-killing tests.
+
+## What went wrong, with evidence
+1. **Holdout vs spec, again (3 of 40 failed at first gate).** Two were real implementation bugs found only by the hidden tests (`Date.UTC` year 0-99 quirk; whitespace collapse before control-char check) and two were wrong holdout assertions (unescaped spaces in a request path; era name "social era" for 2024). The retro-1 proposal (hand architect output verbatim) was applied this time: the spec agent had Write, so no lossy re-typing step. The remaining source of error is hidden tests written without running them (author "did not run the suite" twice).
+2. **Acceptance tests were written while src/ was changing.** The author could not produce a clean RED, so "tests fail for the right reason" is only partly evidenced (first run: 103 of 136 failing, mostly 404). Next time: gate the test author before any builder starts.
+3. **A review fix conflicted with an acceptance test.** M3 (SLA token >= 16 chars, hard error) broke a read-only acceptance test using a 12-char token. Resolved by limiting the hard error to `NODE_ENV=production`. Lesson: a review finding that adds a new rule should be checked against the acceptance suite before dispatch.
+4. **I relayed a wrong claim.** I told the code reviewer the "federation never links" check had `|| true`; it had not (the page builder had said so). Verify claims from agents before passing them on.
+5. **Mutation sample varies per run** (6/8, 7/8, 8/8 on the same code). The gate passes at the 60% floor, but surviving mutants differ each time (`battle.js:12`, `haiku.js:108`, `config.js:23`). `battle.js:12` and `config.js:23` now have killing tests; `haiku.js:108` (candidate scan guard) is open.
+6. **Background-only agents again; KPI file still shows no runs**, so cost/intervention proof is still absent.
+
+## Accepted and open
+- M2 enumeration via `/api/time-machine?name=` accepted (switch: `HELLO_TIME_MACHINE_STREAKS=0`). `ts` timing side channel on the stream, proxy-trust for rate limits: logged.
+- `haiku.js:108` mutant needs a test where the first candidate fails the scan.
+- UC11 in the QA script needed `visible=true` after new views added hidden inputs: label-based selectors are brittle when views add same-named fields; use testids.

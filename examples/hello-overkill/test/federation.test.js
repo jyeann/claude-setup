@@ -54,11 +54,14 @@ test('isPrivateAddress table', () => {
     '::1', '::', 'fc00::1', 'fdff::1', 'fe80::1', 'febf::1', 'ff02::1', '::ffff:127.0.0.1', '::ffff:10.0.0.1', '::ffff:7f00:1',
     '::ffff:a9fe:a9fe', '::127.0.0.1', '64:ff9b::7f00:1', '2002:7f00:1::1', 'fe80::1%eth0', '0:0:0:0:0:0:0:1',
     'garbage', '', '1.2.3', '999.1.1.1', null, undefined, 42, '::ffff:999.1.1.1',
+    '192.0.0.1', '192.0.0.255', '192.0.2.1', '198.18.0.1', '198.19.255.255', '198.51.100.7', '203.0.113.9',
+    '64:ff9b:1::1', '64:ff9b:1:ffff::1', 'fec0::1', 'feff::1', '2001::1', '2001:0:4136:e378:8000:63bf:3fff:fdd2',
+    '::ffff:0:7f00:1', '::ffff:0:a00:1', '::ffff:192.0.2.1', '::ffff:c000:201', '::ffff:198.18.0.1', '64:ff9b::c633:6401', '2002:c000:201::1', '2002:cb00:7109::1',
   ];
   for (const ip of priv) assert.equal(isPrivateAddress(ip), true, String(ip));
   const pub = [
     '8.8.8.8', '1.1.1.1', '172.15.255.255', '172.32.0.1', '100.63.255.255', '100.128.0.1', '169.253.0.1', '223.255.255.255',
-    '192.169.0.1', '11.0.0.1', '2001:4860:4860::8888', '2606:4700::1111', '::ffff:8.8.8.8', '::ffff:808:808', '2002:808:808::1', 'fbff::1', 'fec0::1',
+    '192.169.0.1', '11.0.0.1', '2001:4860:4860::8888', '2606:4700::1111', '::ffff:8.8.8.8', '::ffff:808:808', '2002:808:808::1', 'fbff::1', '191.255.255.255', '192.0.1.1', '192.0.3.1', '198.17.255.255', '198.20.0.1', '198.51.99.1', '198.51.101.1', '203.0.112.1', '203.0.114.1', '2001:1::1', '::ffff:0:808:808', '64:ff9b:2::1',
   ];
   for (const ip of pub) assert.equal(isPrivateAddress(ip), false, ip);
 });
@@ -386,4 +389,16 @@ test('defaultFetchPeer maps a connection dropped mid-response to network', async
   try {
     await assert.rejects(defaultFetchPeer({ allowPrivate: true })({ url: `${origin}/healthz` }), { code: 'network' });
   } finally { await close(server); }
+});
+
+test('parsePeers warns once per non-loopback http peer and never for https or loopback', () => {
+  const w = [];
+  const out = parsePeers('http://example.com,https://secure.example.com,http://localhost:3000,http://127.0.0.1:4000,http://[::1]:5000,http://10.1.2.3', { warn: (m) => w.push(m) });
+  assert.equal(out.length, 6);
+  assert.equal(w.length, 2);
+  assert.ok(w[0].includes('http://example.com') && /plain http/.test(w[0]));
+  assert.ok(w[1].includes('http://10.1.2.3'));
+  const none = [];
+  parsePeers('https://a.example.com,http://localhost:1', { warn: (m) => none.push(m) });
+  assert.deepEqual(none, []);
 });

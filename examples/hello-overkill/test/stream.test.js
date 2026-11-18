@@ -250,3 +250,18 @@ test('works with the real timers and defaults', () => {
   hub.closeAll();
   assert.equal(hub.size(), 0);
 });
+
+test('milestone priority is streak-100, visit-100, streak-30, visit-10, streak-7, first-visit', () => {
+  const order = [
+    [{ streak: 100, visit: 100 }, 'streak-100'], [{ streak: 30, visit: 100 }, 'visit-100'], [{ streak: 30, visit: 10 }, 'streak-30'],
+    [{ streak: 7, visit: 10 }, 'visit-10'], [{ streak: 7, visit: 1 }, 'streak-7'], [{ streak: 1, visit: 1 }, 'first-visit'],
+    [{ streak: 2, visit: 2 }, null],
+  ];
+  for (const [info, want] of order) assert.equal(anonymise(info).milestone, want, JSON.stringify(info));
+  // Each milestone beats every one that follows it in the list.
+  const hits = [{ streak: 100 }, { visit: 100 }, { streak: 30 }, { visit: 10 }, { streak: 7 }, { visit: 1 }];
+  const names = ['streak-100', 'visit-100', 'streak-30', 'visit-10', 'streak-7', 'first-visit'];
+  for (let i = 0; i < hits.length; i++) for (let j = i + 1; j < hits.length; j++) {
+    assert.equal(anonymise({ ...hits[j], ...hits[i] }).milestone, names[i], `${names[i]} over ${names[j]}`);
+  }
+});

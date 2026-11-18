@@ -60,3 +60,24 @@ test('pickPair fallback also works for the last index and never returns equal gr
   assert.notEqual(p.a.id, p.b.id);
   assert.notEqual(p.a.greeting, p.b.greeting);
 });
+
+test('pickPair draws exactly twice when the first two draws are already distinct (no needless re-rolls)', () => {
+  const { pickPair } = require('../src/battle.js');
+  const draws = [0, 0.5];
+  let calls = 0;
+  const random = () => { calls += 1; return draws[calls - 1] ?? 0.99; };
+  const pair = pickPair(random);
+  assert.equal(calls, 2);
+  assert.notEqual(pair.a.id, pair.b.id);
+  assert.notEqual(pair.a.greeting, pair.b.greeting);
+});
+
+test('pickPair re-rolls only while the second pick collides with the first', () => {
+  const { pickPair } = require('../src/battle.js');
+  const draws = [0.3, 0.3, 0.3, 0.8];
+  let calls = 0;
+  const random = () => { calls += 1; return draws[calls - 1] ?? 0.99; };
+  const pair = pickPair(random);
+  assert.equal(calls, 4);
+  assert.notEqual(pair.a.id, pair.b.id);
+});

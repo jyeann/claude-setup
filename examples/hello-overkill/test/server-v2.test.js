@@ -49,10 +49,10 @@ test('stdout and stderr have error handlers that swallow only EPIPE', () => {
 });
 
 test('server wires peers, the sla token and the read limit from the environment', async () => {
-  const s = await startServer(tmpFile(), { env: { HELLO_SLA_TOKEN: 'tok', HELLO_READ_LIMIT: '2' } });
+  const s = await startServer(tmpFile(), { env: { HELLO_SLA_TOKEN: 'tok-tok-tok-tok-tok', HELLO_READ_LIMIT: '2' } });
   try {
     assert.equal((await s.call('GET', '/api/sla')).status, 401);
-    assert.equal((await s.call('GET', '/api/sla', undefined, undefined, { authorization: 'Bearer tok' })).status, 200);
+    assert.equal((await s.call('GET', '/api/sla', undefined, undefined, { authorization: 'Bearer tok-tok-tok-tok-tok' })).status, 200);
     assert.equal((await s.call('GET', '/api/weather')).status, 429);
     assert.equal((await s.call('GET', '/healthz')).status, 200);
   } finally { await s.stop(); }
@@ -93,4 +93,11 @@ test('invalid HELLO_STREAM_HEARTBEAT_MS warns on stderr and the server still sta
   try {
     assert.match(s.stderr(), /invalid HELLO_STREAM_HEARTBEAT_MS, using 15000/);
   } finally { await s.stop(); }
+});
+
+test('server exits 1 with a message when HELLO_SLA_TOKEN is shorter than 16 characters in production', async () => {
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync(process.execPath, [SERVER], { env: { ...process.env, NODE_ENV: 'production', PORT: '0', HELLO_SLA_TOKEN: 'short', HELLO_SIGNING_SECRET: 'x'.repeat(32), DATA_FILE: tmpFile() }, encoding: 'utf8', timeout: 5000 });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /HELLO_SLA_TOKEN must be at least 16 characters/);
 });

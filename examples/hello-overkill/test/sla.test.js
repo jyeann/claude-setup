@@ -19,9 +19,16 @@ test('routeLabel maps known routes to fixed labels', () => {
   for (const [m, p, want] of cases) assert.equal(routeLabel(m, p), want, `${m} ${p}`);
 });
 
+test('routeLabel strips one trailing slash so /hello/, /api/stream/ and /api/sla/ keep their labels', () => {
+  const cases = [['POST', '/hello/', 'POST /hello'], ['GET', '/hello/', 'GET /hello'], ['GET', '/api/stream/', 'GET /api/stream'],
+    ['GET', '/api/sla/', 'GET /api/sla'], ['GET', '/api/sla/?x=1', 'GET /api/sla'], ['GET', '/', 'GET /'],
+    ['GET', '/api/certificates/0123456789abcdef/', 'GET /api/certificates/:id'], ['GET', '/hello//', 'other']];
+  for (const [m, p, want] of cases) assert.equal(routeLabel(m, p), want, `${m} ${p}`);
+});
+
 test('routeLabel sends unknown paths, methods and bad input to other', () => {
   for (const [m, p] of [['GET', '/nope'], ['DELETE', '/hello'], ['GET', '/api/certificates/'], ['GET', '/api/certificates/a/b'],
-    ['GET', '/hello/'], [undefined, '/hello'], ['GET', undefined], ['GET', '/other'], ['GET', 'other']]) {
+    ['GET', '/nope/'], [undefined, '/hello'], ['GET', undefined], ['GET', '/other'], ['GET', 'other']]) {
     assert.equal(routeLabel(m, p), 'other', `${m} ${p}`);
   }
 });

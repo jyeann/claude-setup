@@ -3,7 +3,7 @@ const { randomBytes } = require('node:crypto');
 
 const SECRET_WARNING = 'WARNING: HELLO_SIGNING_SECRET not set; using a random per-process dev secret. Certificates will read as Forged after restart.';
 
-// Parses env into a config object. Throws Error('invalid PORT') for a bad port, or when NODE_ENV=production without a >= 32 char secret; warns via `warn` otherwise.
+// Parses env into a config object. Throws Error('invalid PORT') for a bad port, a HELLO_SLA_TOKEN shorter than 16 chars in production, or when NODE_ENV=production without a >= 32 char secret; warns via `warn` otherwise.
 function loadConfig(env = process.env, warn = (m) => process.stderr.write(`${m}\n`)) {
   let port = 3000;
   if (env.PORT !== undefined && env.PORT !== '') {
@@ -26,9 +26,15 @@ function loadConfig(env = process.env, warn = (m) => process.stderr.write(`${m}\
   };
   const readLimit = limitEnv('HELLO_READ_LIMIT', 120);
   const fedLimit = limitEnv('HELLO_FED_LIMIT', 10);
+  const fedGlobalLimit = limitEnv('HELLO_FED_GLOBAL_LIMIT', 30);
   const peers = typeof env.HELLO_PEERS === 'string' ? env.HELLO_PEERS : '';
   const allowPrivatePeers = env.HELLO_PEERS_ALLOW_PRIVATE === '1';
   const slaToken = env.HELLO_SLA_TOKEN ? env.HELLO_SLA_TOKEN : undefined;
+  const production = env.NODE_ENV === 'production';
+  if (slaToken !== undefined && slaToken.length < 16) {
+    if (production) throw new Error('HELLO_SLA_TOKEN must be at least 16 characters');
+    warn('HELLO_SLA_TOKEN is shorter than 16 characters; production requires at least 16');
+  }
   const timeMachineStreaks = env.HELLO_TIME_MACHINE_STREAKS !== '0';
   let streamHeartbeatMs = 15000;
   if (env.HELLO_STREAM_HEARTBEAT_MS !== undefined) {
@@ -51,7 +57,7 @@ function loadConfig(env = process.env, warn = (m) => process.stderr.write(`${m}\
     secretIsDev = true;
     warn(SECRET_WARNING);
   }
-  return { port, dataFile, rateLimit, signingSecret, secretIsDev, peers, allowPrivatePeers, readLimit, fedLimit, slaToken, timeMachineStreaks, chaosSeed, streamHeartbeatMs };
+  return { port, dataFile, rateLimit, signingSecret, secretIsDev, peers, allowPrivatePeers, readLimit, fedLimit, fedGlobalLimit, slaToken, production, timeMachineStreaks, chaosSeed, streamHeartbeatMs };
 }
 
 module.exports = { loadConfig, SECRET_WARNING };

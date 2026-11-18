@@ -51,7 +51,9 @@ function createRouter({
   federation = createFederation({ peers: [], fetchPeer: async () => { throw new Error('no peers'); }, now }),
   readLimiter = createRateLimiter({ limit: 120, windowMs: 60000 }),
   fedLimiter = createRateLimiter({ limit: 10, windowMs: 60000 }),
+  fedGlobalLimiter = createRateLimiter({ limit: 30, windowMs: 60000 }),
   slaToken,
+  production = false,
   timeMachineStreaks = true,
 }) {
   const hello = createHello({ store, signer, now });
@@ -229,6 +231,7 @@ function createRouter({
     if (path === '/api/weather') return weatherRoute(req, res, query, only);
     if (path === '/api/stream') {
       if (!only('GET')) return undefined;
+      if (limited(res, readLimiter, req)) return undefined;
       const r = hub.subscribe(res, { ip: clientKey(req.socket.remoteAddress), lastEventId: req.headers['last-event-id'], headers: SEC });
       if (r === 'ok') return undefined;
       return err(res, 503, 'too many streams', { 'retry-after': '5' });
@@ -236,7 +239,7 @@ function createRouter({
     if (path === '/api/sla') {
       if (!only('GET')) return undefined;
       if (limited(res, readLimiter, req)) return undefined;
-      if (slaToken && !bearerOk(req)) return err(res, 401, 'unauthorized', { 'www-authenticate': 'Bearer' });
+      if ((slaToken || production) && !(slaToken && bearerOk(req))) return err(res, 401, 'unauthorized', { 'www-authenticate': 'Bearer' });
       return json(res, 200, sla.snapshot({ streamsOpen: hub.size() }));
     }
     if (path === '/api/time-machine') return timeMachineRoute(req, res, query, only);
@@ -253,6 +256,9 @@ function createRouter({
       if (nameErr) return err(res, 400, nameErr);
       const lt = langTone(query);
       if (lt.error) return err(res, 400, lt.error);
+      // Shared across all clients: peers rate-limit by our single IP. Checked before any peer is contacted.
+      const g = fedGlobalLimiter.check('global');
+      if (!g.allowed) return tooMany(res, g.retryAfter);
       return json(res, 200, await federation.hello({ name: normalizeName(query.get('name')), language: lt.language, tone: lt.tone }));
     }
     return notFound(res);

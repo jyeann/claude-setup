@@ -12,7 +12,8 @@ const STREAM = 'GET /api/stream';
 // Fixed label set: ids, query strings and unknown paths never become labels.
 function routeLabel(method, path) {
   if (typeof method !== 'string' || typeof path !== 'string') return 'other';
-  const p = path.split('?')[0].split('#')[0];
+  let p = path.split('?')[0].split('#')[0];
+  if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
   const label = /^\/api\/certificates\/[^/]+$/.test(p) ? 'GET /api/certificates/:id' : `${method.toUpperCase()} ${p}`;
   return KNOWN.has(label) && label !== 'other' ? label : 'other';
 }

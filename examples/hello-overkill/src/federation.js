@@ -35,14 +35,31 @@ function parsePeers(envValue, { allowPrivate = false, warn = console.warn } = {}
     warn(`HELLO_PEERS: only the first ${MAX_PEERS} peers are used`);
     out.length = MAX_PEERS;
   }
+  for (const o of out) {
+    const h = new URL(o);
+    if (h.protocol === 'http:' && !isLoopbackHost(h.hostname)) warn(`HELLO_PEERS: ${o} uses plain http; visitor names are sent unencrypted`);
+  }
   if (allowPrivate && out.length) warn('HELLO_PEERS_ALLOW_PRIVATE is on: private and loopback peers are allowed');
   return out;
 }
 
-function v4Private(a, b) {
+function isLoopbackHost(h) {
+  const host = h.replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost') return true;
+  const o = parseV4(host);
+  if (o) return o[0] === 127;
+  const g = net.isIP(host) === 6 ? parseV6(host) : null;
+  return !!g && g.slice(0, 7).every((x) => x === 0) && g[7] === 1;
+}
+
+function v4Private(a, b, c) {
   return a === 0 || a === 10 || a === 127 || a >= 224 ||
     (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
-    (a === 100 && b >= 64 && b <= 127);
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) || // 192.0.0.0/24, 192.0.2.0/24
+    (a === 198 && (b === 18 || b === 19)) || // 198.18.0.0/15
+    (a === 198 && b === 51 && c === 100) || // 198.51.100.0/24
+    (a === 203 && b === 0 && c === 113); // 203.0.113.0/24
 }
 
 function parseV4(s) {
@@ -76,14 +93,18 @@ function isPrivateAddress(ip) {
   if (typeof ip !== 'string') return true;
   const s = ip.split('%')[0];
   const kind = net.isIP(s);
-  if (kind === 4) { const o = parseV4(s); return o ? v4Private(o[0], o[1]) : true; }
+  if (kind === 4) { const o = parseV4(s); return o ? v4Private(o[0], o[1], o[2]) : true; }
   if (kind !== 6) return true;
   const g = parseV6(s);
   if (!g) return true;
-  const embedded = () => v4Private(g[6] >> 8, g[6] & 255);
+  const embedded = () => v4Private(g[6] >> 8, g[6] & 255, g[7] >> 8);
   if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) return embedded(); // mapped, compatible, ::, ::1
+  if (g.slice(0, 4).every((x) => x === 0) && g[4] === 0xffff && g[5] === 0) return embedded(); // SIIT ::ffff:0:a.b.c.d
   if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return embedded(); // NAT64
-  if (g[0] === 0x2002) return v4Private(g[1] >> 8, g[1] & 255); // 6to4
+  if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return true; // 64:ff9b:1::/48 local-use NAT64
+  if (g[0] === 0x2001 && g[1] === 0) return true; // Teredo 2001::/32
+  if (g[0] === 0x2002) return v4Private(g[1] >> 8, g[1] & 255, g[2] >> 8); // 6to4
+  if ((g[0] & 0xffc0) === 0xfec0) return true; // fec0::/10 site-local
   if ((g[0] & 0xfe00) === 0xfc00) return true; // fc00::/7
   if ((g[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
   if ((g[0] & 0xff00) === 0xff00) return true; // ff00::/8

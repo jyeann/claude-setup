@@ -41,6 +41,11 @@ curl -s -X POST http://localhost:3000/hello \
 | `DATA_FILE` | `./data/hello.json` | JSON state file (visitors, certificates, votes). The parent directory is created on the first write. |
 | `HELLO_RATE_LIMIT` | `10` | Hits per 60 seconds per client on `/hello`, 1-100000. An invalid value prints `invalid HELLO_RATE_LIMIT, using 10` to stderr and uses 10. |
 | `HELLO_SIGNING_SECRET` | random per process | HMAC key for certificates. If unset, the server generates a random secret, prints a warning to stderr, and certificates read as Forged after a restart. |
+| `HELLO_READ_LIMIT` | `120` | Per-client reads per minute for the v2 read routes and `/api/stream` connects, 1-100000. Invalid values warn and use the default. |
+| `HELLO_FED_LIMIT` | `10` | Per-client calls per minute to `/api/federation/hello`, 1-100000. |
+| `HELLO_FED_GLOBAL_LIMIT` | `30` | Calls per minute, shared by all clients, that may fan out to peers; beyond it `/api/federation/hello` answers 429 with `Retry-After` before any peer is contacted. 1-100000. |
+| `HELLO_SLA_TOKEN` | unset | Bearer token for `/api/sla`. Shorter than 16 characters only warns, except with `NODE_ENV=production` where the server exits with code 1. With `NODE_ENV=production` and no token, `/api/sla` answers 401. |
+| `HELLO_PEERS` | unset | Comma-separated peer origins. Names are sent to peers; `http://` peers that are not loopback trigger a startup warning because names travel unencrypted. |
 | `NODE_ENV` | unset | When set to `production`, `HELLO_SIGNING_SECRET` is required and must be at least 32 characters, or the server exits with code 1. |
 
 Example with settings:
