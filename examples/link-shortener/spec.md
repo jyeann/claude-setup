@@ -30,7 +30,8 @@ Validation for `POST /api/links`:
 
 Persistence: every mutation, including a click, is written to `DATA_FILE` before the response is sent. A restarted server serves the same links and counts. Missing or empty file means no links; the directory is created if needed.
 
-Web page (`GET /`): contains a form `id="create-form"` with inputs named `url` and `slug`, and a table `id="links"` whose body lists each link's slug, target and click count, loaded from the API with `fetch`. Link text is inserted with `textContent`, never `innerHTML`. Responsive, keyboard usable, labels on inputs, readable in light and dark.
+Web page (`GET /`): contains a form `id="create-form"` with inputs named `url` and `slug`, and a table `id="links"` whose body lists each link's full short URL (origin + `/` + slug, shown as a link that opens it), target and click count, loaded from the API with `fetch`.
+After a successful create the page shows the new full short URL in `id="short-link-result"` (an `id="short-link"` link) with a Copy button `id="copy-link"` that copies it; a failed copy shows a message instead of failing silently. The result is announced to screen readers (`role="status"`). Link text is inserted with `textContent`, never `innerHTML`. Responsive, keyboard usable, labels on inputs, readable in light and dark.
 
 ## Acceptance criteria
 Visible: `acceptance/shortener.acceptance.test.js`. A hidden holdout set also grades the final result.

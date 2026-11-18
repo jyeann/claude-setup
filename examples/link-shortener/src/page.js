@@ -24,6 +24,11 @@ module.exports = `<!doctype html>
   th { white-space: nowrap; overflow-wrap: normal; }
   td:first-child { overflow-wrap: normal; word-break: normal; min-width: 7ch; }
   td.num, th.num { text-align: right; }
+  .result { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin: 1rem 0; padding: .75rem 1rem; border: 1px solid var(--accent); border-radius: 4px; }
+  .result[hidden] { display: none; }
+  .result a { font-weight: 600; overflow-wrap: anywhere; color: var(--accent); }
+  .result button { width: auto; }
+  td a { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -35,10 +40,15 @@ module.exports = `<!doctype html>
   <div><button type="submit">Create link</button></div>
 </form>
 <p id="message" role="alert"></p>
+<section id="short-link-result" class="result" role="status" aria-live="polite" hidden>
+  <span>Your short link:</span>
+  <a id="short-link" href="#" target="_blank" rel="noopener"></a>
+  <button id="copy-link" type="button">Copy</button>
+</section>
 <div class="table-wrap">
 <table id="links">
   <caption class="visually-hidden">Existing links</caption>
-  <thead><tr><th scope="col">Slug</th><th scope="col">Target</th><th scope="col" class="num">Clicks</th></tr></thead>
+  <thead><tr><th scope="col">Short link</th><th scope="col">Target</th><th scope="col" class="num">Clicks</th></tr></thead>
   <tbody></tbody>
 </table>
 </div>
@@ -48,6 +58,9 @@ module.exports = `<!doctype html>
   var form = document.getElementById('create-form');
   var message = document.getElementById('message');
   var body = document.querySelector('#links tbody');
+  var result = document.getElementById('short-link-result');
+  var shortLink = document.getElementById('short-link');
+  var copyButton = document.getElementById('copy-link');
 
   function cell(text, cls) {
     var td = document.createElement('td');
@@ -56,11 +69,24 @@ module.exports = `<!doctype html>
     return td;
   }
 
+  function shortUrl(slug) { return location.origin + '/' + encodeURIComponent(slug); }
+
+  function linkCell(slug) {
+    var td = document.createElement('td');
+    var a = document.createElement('a');
+    a.href = shortUrl(slug);
+    a.textContent = shortUrl(slug);
+    a.target = '_blank';
+    a.rel = 'noopener';
+    td.appendChild(a);
+    return td;
+  }
+
   function render(links) {
     body.textContent = '';
     links.forEach(function (l) {
       var tr = document.createElement('tr');
-      tr.appendChild(cell(l.slug));
+      tr.appendChild(linkCell(l.slug));
       tr.appendChild(cell(l.url));
       tr.appendChild(cell(String(l.clicks), 'num'));
       body.appendChild(tr);
@@ -82,9 +108,21 @@ module.exports = `<!doctype html>
       .then(function (res) {
         if (!res.ok) { message.textContent = res.body.error || 'Request failed.'; return; }
         form.reset();
+        shortLink.href = shortUrl(res.body.slug);
+        shortLink.textContent = shortUrl(res.body.slug);
+        result.hidden = false;
         return load();
       })
       .catch(function () { message.textContent = 'Request failed.'; });
+  });
+
+  copyButton.addEventListener('click', function () {
+    var text = shortLink.textContent;
+    var done = navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject(new Error('no clipboard'));
+    done.then(function () {
+      copyButton.textContent = 'Copied';
+      setTimeout(function () { copyButton.textContent = 'Copy'; }, 1500);
+    }).catch(function () { message.textContent = 'Copy failed. Select the link and copy it manually.'; });
   });
 
   load();
