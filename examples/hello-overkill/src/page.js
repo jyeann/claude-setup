@@ -434,7 +434,7 @@ function apiMsg(res, generic) {
 }
 function cleanText(v, max) {
   var s = typeof v === 'string' ? v : '';
-  return s.replace(/[\u0000-\u001f\u007f-\u009f​-‏ -‮⁦-⁩﻿]/g, '').slice(0, max || 300);
+  return s.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, '').slice(0, max || 300);
 }
 function normText(v) { return v.normalize('NFC').trim().replace(/\s+/g, ' '); }
 function fmtMs(v) { return typeof v === 'number' ? v.toFixed(1) + ' ms' : 'n/a'; }
