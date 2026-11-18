@@ -170,4 +170,3 @@ The agent will stop and report if:
 ## Related
 
 - Agent: `agents/cpp-build-resolver.md`
-- Skill: `skills/cpp-coding-standards/`

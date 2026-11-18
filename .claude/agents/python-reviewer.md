@@ -100,7 +100,6 @@ Fix: What to change
 
 ## Reference
 
-For detailed Python patterns, security examples, and code samples, see skill: `python-patterns`.
 
 ---
 

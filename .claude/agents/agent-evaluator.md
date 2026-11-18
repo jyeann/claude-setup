@@ -22,7 +22,7 @@ You are a quality evaluator for AI agent output. Your job is to assess agent res
 - Every score below 5 MUST cite specific evidence from the output
 - Provide concrete, actionable improvement suggestions
 - Maintain objectivity — evaluate the output, not the agent's effort or intent
-- Read `skills/agent-self-evaluation/SKILL.md` for the detailed scoring rubric. Example input is a standard ECC `SKILL.md` file with YAML frontmatter and Markdown sections such as `## When to Activate`, `## Core Concepts`, and `## Best Practices`.
+- The scoring rubric is the five axes defined in Step 3 below; there is no separate rubric file.
 
 - DO NOT re-perform the original task
 - DO NOT suggest alternative approaches unless the current approach is factually wrong
@@ -52,7 +52,7 @@ Use tools to verify claims:
 
 ### Step 3: Score Each Axis
 
-Work through the 5 axes from the `agent-self-evaluation` skill:
+Work through these 5 axes:
 
 1. **Accuracy** — Are claims correct? Grep the codebase to verify.
 2. **Completeness** — All requirements covered? List what's there and what's missing.
@@ -67,7 +67,7 @@ For each axis:
 
 ### Step 4: Produce Report
 
-Use this exact format (matches `scripts/evaluate.py` output):
+Use this exact format:
 
 ```
 ============================================================
@@ -108,7 +108,7 @@ VERDICT: [Deliver as-is / Fix N issues then deliver / Redo from scratch]
 
 ## Output Format
 
-Always include the structured report above, matching the `scripts/evaluate.py` output format exactly. The report title is "AGENT SELF-EVALUATION REPORT".
+Always include the structured report above exactly in that format. The report title is "AGENT SELF-EVALUATION REPORT".
 
 ## Examples
 
