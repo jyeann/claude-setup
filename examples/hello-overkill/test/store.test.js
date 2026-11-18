@@ -118,10 +118,10 @@ test('MAX_VISITORS is 10000 and evicts the oldest visitor first', () => {
   fs.writeFileSync(file, JSON.stringify({ version: 1, visitors, certificates: [], votes: [] }));
   const s = createStore(file, () => T0, quiet);
   assert.equal(s.stats().visitors, MAX_VISITORS);
-  assert.deepEqual(s.recordHello('v0', cert(1)), { visit: 2, streak: 1 });
+  assert.deepEqual(s.recordHello('v1', cert(1)), { visit: 2, streak: 1 }, 'updating does not evict');
   s.recordHello('newcomer', cert(2));
   assert.equal(s.stats().visitors, MAX_VISITORS);
-  assert.deepEqual(s.recordHello('v1', cert(3)), { visit: 1, streak: 1 }, 'v1 was oldest and evicted');
+  assert.deepEqual(s.recordHello('v0', cert(3)), { visit: 1, streak: 1 }, 'v0 was oldest and evicted');
 });
 
 test('rollback restores evicted visitors in order and leaves no tmp file', () => {
@@ -145,7 +145,7 @@ test('persist failure throws PersistError and leaves no tmp file behind', () => 
   const file = path.join(d, 'p.json');
   const s = createStore(file, () => T0, quiet);
   fs.mkdirSync(file); // rename onto a directory fails
-  assert.throws(() => s.vote('en.formal'), (e) => e.name === 'PersistError' && e.cause);
+  assert.throws(() => s.vote('en.formal'), (e) => e.name === 'PersistError' && Boolean(e.cause));
   assert.deepEqual(fs.readdirSync(d), ['p.json']);
   assert.equal(s.votes().size, 0);
 });

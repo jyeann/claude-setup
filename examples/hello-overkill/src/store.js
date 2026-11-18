@@ -96,10 +96,9 @@ function createStore(file, now = Date.now, log = (m) => process.stderr.write(`${
     undo.push(() => { if (had) map.set(key, old); else map.delete(key); });
   }
   // Evicts oldest beyond max and records a restore that keeps the original order.
-  function capped(undo, getMap, setMap, max) {
-    const map = getMap();
+  function capped(undo, map, max) {
     const gone = evict(map, max);
-    if (gone.length) undo.push(() => setMap(new Map([...gone, ...getMap()])));
+    if (gone.length) undo.push(() => { const rest = [...map]; map.clear(); for (const [k, v] of [...gone, ...rest]) map.set(k, v); });
   }
 
   load();
@@ -116,8 +115,8 @@ function createStore(file, now = Date.now, log = (m) => process.stderr.write(`${
         const rec = { key, displayName: name, visits: prev ? prev.visits + 1 : 1, streak, firstDay: prev ? prev.firstDay : t, lastDay: t };
         put(undo, visitors, key, rec);
         put(undo, certificates, cert.id, { id: cert.id, name: cert.name, greeting: cert.greeting, language: cert.language, date: cert.date, signature: cert.signature });
-        capped(undo, () => certificates, (m) => { certificates = m; }, MAX_CERTS);
-        capped(undo, () => visitors, (m) => { visitors = m; }, MAX_VISITORS);
+        capped(undo, certificates, MAX_CERTS);
+        capped(undo, visitors, MAX_VISITORS);
         return { visit: rec.visits, streak: rec.streak };
       });
     },
