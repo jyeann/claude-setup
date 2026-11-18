@@ -18,7 +18,9 @@ module.exports = `<!doctype html>
   #message { color: var(--err); min-height: 1.5em; }
   .table-wrap { overflow-x: auto; }
   table { border-collapse: collapse; width: 100%; }
-  th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--border); word-break: break-all; }
+  th, td { text-align: left; padding: .5rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+  th { white-space: nowrap; overflow-wrap: normal; }
+  td:first-child { overflow-wrap: normal; word-break: normal; min-width: 7ch; }
   td.num, th.num { text-align: right; }
 </style>
 </head>
