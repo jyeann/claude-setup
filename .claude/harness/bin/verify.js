@@ -3,7 +3,7 @@
 const path = require('node:path');
 const { strongVerify, loadConfig, cleanupTempDirs } = require('../lib/strong-verify');
 
-const USAGE = 'verify [--config verify.config.json] [--fast]   (--fast skips mutation; for quick iteration only)';
+const USAGE = 'verify [--config verify.config.json] [--fast]   (--fast skips replicates, holdout and mutation, not the type check; for quick iteration only)';
 
 async function main(argv) {
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
