@@ -93,7 +93,7 @@ Done when: code-reviewer and security-reviewer pass over T2-T9; fix all CRITICAL
 ## T11: QA
 - type: AFK
 - blocked-by: T10
-- status: todo
+- status: done
 
 Done when: run the full verify gate (tests, coverage of 80% or more, test quality, holdout, journeys, mutation spot-check) and write the QA report.
 

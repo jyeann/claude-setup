@@ -217,6 +217,7 @@
       return;
     }
     updateProgress();
+    clearStatusIf(MSG_SAVE); // the failure is shown once, in #form-error
     if (input.value === '') input.value = text;
     showFormError(A.errorMessage(res, MSG_SAVE));
   });
@@ -254,6 +255,7 @@
       showName(res.body);
       if (fresh) applyView(res.body);
       clearStatusIf(MSG_LOST);
+      clearStatusIf(MSG_SAVE);
       return;
     }
     if (res && A.errorCode(res) === 'list_not_found') { showNotFound(); return; }

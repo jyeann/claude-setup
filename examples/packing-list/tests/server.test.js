@@ -113,3 +113,70 @@ test('server enforces timeouts on time and caps connections', () => {
   assert.equal(server.connectionsCheckingInterval, 1000);
   assert.equal(server.maxConnections, 1000);
 });
+
+function listen(server) { return new Promise((r) => server.listen(0, '127.0.0.1', () => r(server.address().port))); }
+
+function collect(sock) {
+  const chunks = [];
+  const state = { closed: false };
+  sock.on('data', (c) => chunks.push(c));
+  sock.on('close', () => { state.closed = true; });
+  sock.on('error', () => {});
+  return { text: () => Buffer.concat(chunks).toString('utf8'), state, reset: () => { chunks.length = 0; } };
+}
+
+test('sends no bytes on an idle kept-alive connection, only closes it; later requests still succeed', async () => {
+  const { createApp } = require('../src/server');
+  const { server } = createApp({ dataFile: path.join(tmp(), 'l.json') });
+  const port = await listen(server);
+  try {
+    const sock = net.connect(port, '127.0.0.1');
+    const got = collect(sock);
+    await new Promise((r) => sock.on('connect', r));
+    sock.write('GET /healthz-not-needed HTTP/1.1\r\nHost: x\r\nConnection: keep-alive\r\n\r\n');
+    await new Promise((r) => setTimeout(r, 300));
+    assert.match(got.text(), /^HTTP\/1\.1 \d{3} /);
+    got.reset();
+    await new Promise((r) => setTimeout(r, 7000));
+    assert.equal(got.text(), '', 'server must not write anything on an idle connection');
+    sock.destroy();
+    const res = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(res.status, 200);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('idle timeout destroys the socket without a response (unit)', () => {
+  const { createApp } = require('../src/server');
+  const { server } = createApp({ dataFile: path.join(tmp(), 'l.json') });
+  let destroyed = false; let written = '';
+  const sock = { writable: true, destroy() { destroyed = true; }, end(x) { written += x; } };
+  server.emit('clientError', Object.assign(new Error('timeout'), { code: 'ERR_HTTP_REQUEST_TIMEOUT' }), sock);
+  assert.equal(destroyed, true);
+  assert.equal(written, '');
+  assert.ok(server.keepAliveTimeout < server.headersTimeout);
+  assert.equal(server.headersTimeout, 5000);
+  assert.equal(server.requestTimeout, 10000);
+});
+
+test('a malformed request line still gets the 400 JSON with security headers', async () => {
+  const { createApp } = require('../src/server');
+  const { server } = createApp({ dataFile: path.join(tmp(), 'l.json') });
+  const port = await listen(server);
+  try {
+    const sock = net.connect(port, '127.0.0.1');
+    const got = collect(sock);
+    await new Promise((r) => sock.on('connect', r));
+    sock.write('NOT A VALID\x00 REQUEST\r\n\r\n');
+    await new Promise((r) => sock.on('close', r));
+    const text = got.text();
+    assert.match(text, /^HTTP\/1\.1 400 Bad Request\r\n/);
+    assert.match(text, /content-type: application\/json/i);
+    assert.match(text, /x-content-type-options: nosniff/i);
+    assert.match(text, /"code":"invalid_body"/);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});

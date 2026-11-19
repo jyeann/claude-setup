@@ -17,8 +17,13 @@ function createApp({ dataFile, host = '127.0.0.1', maxLists } = {}) {
   server.maxConnections = 1000;
   server.headersTimeout = 5000;
   server.requestTimeout = 10000;
+  // Close idle keep-alive sockets before the 5 s headers timer can fire on them.
+  server.keepAliveTimeout = 3000;
   server.on('clientError', (err, socket) => {
-    if (!socket.writable) { socket.destroy(); return; }
+    // Timeouts and resets are not answers to any request: close without writing a byte.
+    // Only a genuine parse error (HPE_*) gets a 400.
+    const parseError = typeof err.code === 'string' && err.code.startsWith('HPE_');
+    if (!parseError || !socket.writable) { socket.destroy(); return; }
     const body = JSON.stringify({ error: { code: 'invalid_body', message: 'Request body is not valid.' } });
     const lines = ['HTTP/1.1 400 Bad Request', 'Content-Type: application/json; charset=utf-8',
       `Content-Length: ${Buffer.byteLength(body)}`, 'Connection: close'];
