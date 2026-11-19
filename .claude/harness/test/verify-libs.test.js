@@ -199,3 +199,90 @@ test('extractFailures is bounded, reports how many were omitted, and returns emp
   assert.match(out, /25 more failing test/);
   assert.ok(extractFailures(many, { maxFailures: 30, maxChars: 300 }).length <= 400);
 });
+
+// ---------- TypeScript ----------
+const { stripTypes, canStripTypes, DECLARATION_FILE } = require('../lib/typescript');
+
+const TS_SRC = [
+  'export interface Limits { min: number; strict: true }',
+  'type Check<T>= T extends true ? false : never;',
+  'const history: Array<number>= [];',
+  'export type Sign = "neg" | "pos";',
+  'let flag: false = false as false;',
+  'export function isAdult(age: number, l: Limits = { min: 18, strict: true }): boolean {',
+  '  return age >= l.min && l.strict === true;',
+  '}',
+].join('\n');
+
+test('type stripping blanks types but keeps every offset and line', { skip: !canStripTypes() }, () => {
+  const erased = stripTypes(TS_SRC);
+  assert.equal(erased.length, TS_SRC.length);
+  assert.equal(erased.split('\n').length, TS_SRC.split('\n').length);
+  assert.equal(erased.indexOf('isAdult'), TS_SRC.indexOf('isAdult'));
+  assert.throws(() => stripTypes('const = ;'));
+});
+
+test('listMutations on TypeScript only mutates runtime code, never type positions', { skip: !canStripTypes() }, () => {
+  const sites = listMutations(TS_SRC, { typescript: true }).map((m) => `${m.line}:${m.from}`);
+  // line 1 `strict: true`, line 2 `>=`/`true`/`false`, line 3 `Array<number>=`, line 5 `: false` are types
+  assert.deepEqual(sites, ['5:false', '6:true', '7:>=', '7:&&', '7:===', '7:true']);
+});
+
+test('listMutations without the TypeScript option would hit type positions (why the option exists)', () => {
+  const lines = new Set(listMutations(TS_SRC).map((m) => m.line));
+  assert.ok(lines.has(1) && lines.has(2) && lines.has(3), 'plain-JS mode mutates types');
+});
+
+test('every TypeScript mutant still parses as TypeScript, and applying it changes exactly one site', { skip: !canStripTypes() }, () => {
+  const muts = listMutations(TS_SRC, { typescript: true });
+  assert.ok(muts.length > 0);
+  for (const m of muts) {
+    const mutated = applyMutation(TS_SRC, m);
+    assert.doesNotThrow(() => stripTypes(mutated));
+    assert.equal(TS_SRC.slice(m.index, m.index + m.from.length), m.from);
+  }
+});
+
+test('listMutations on TypeScript fails loudly when the file is not erasable TypeScript', { skip: !canStripTypes() }, () => {
+  assert.throws(() => listMutations('enum Color { Red }\nconst a = 1 === 1;', { typescript: true }));
+});
+
+test('mutants in TypeScript generics and unions stay out: `|` and `&` types, `a<b>=c` shapes', { skip: !canStripTypes() }, () => {
+  const src = 'type U = A | B & C;\nconst m = new Map<string, number>();\nfunction g<T>(x: T): T { return x; }\nexport const ok = g<boolean>(true);\n';
+  assert.deepEqual(listMutations(src, { typescript: true }).map((m) => `${m.line}:${m.from}`), ['4:true']);
+});
+
+test('lineCoverage with the type-erased text does not count type-only lines as executable', { skip: !canStripTypes() }, () => {
+  const src = ['import type { X } from "./x.ts";', 'export interface Opt {', '  a: number;', '}', 'export type Id = string;', 'export function f(o: Opt): number {', '  return o.a;', '}'].join('\n');
+  const whole = [[{ ranges: [{ startOffset: 0, endOffset: src.length, count: 1 }] }]];
+  assert.equal(lineCoverage(src, whole).executable, 8, 'without erasure every line looks executable');
+  const r = lineCoverage(src, whole, { erasedSource: stripTypes(src) });
+  assert.equal(r.executable, 3);
+  assert.equal(r.pct, 100);
+  const fnStart = src.indexOf('export function');
+  const uncovered = [[{ ranges: [{ startOffset: 0, endOffset: src.length, count: 1 }, { startOffset: fnStart, endOffset: src.length, count: 0 }] }]];
+  assert.deepEqual(lineCoverage(src, uncovered, { erasedSource: stripTypes(src) }).uncoveredLines, [6, 7, 8]);
+});
+
+test('declaration files are recognised so they never count as source', () => {
+  for (const f of ['types.d.ts', 'x.d.mts', 'y.d.cts']) assert.ok(DECLARATION_FILE.test(f), f);
+  assert.ok(!DECLARATION_FILE.test('data.ts'));
+});
+
+const TS_TEST = "import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport type { Todo } from '../src/types.ts';\nimport { add } from '../src/math.ts';\n";
+
+test('analyzeTestFile counts assertions that carry type arguments or casts', () => {
+  const body = `${TS_TEST}test('a', () => { assert.deepStrictEqual<number[]>([add(1, 2)], [3]); assert.equal<number>(add(0, 0), 0); assert.equal(add(1, 1) as number, 2); });`;
+  const r = analyzeTestFile(body, { srcDirs: ['src'], minAssertions: 3 });
+  assert.equal(r.assertions, 3);
+  assert.deepEqual(r.issues, []);
+});
+
+test('analyzeTestFile still flags tautologies written with type arguments or casts', () => {
+  const opts = { srcDirs: ['src'], minAssertions: 3 };
+  const filler = "assert.equal(add(0, 0), 0); assert.equal(add(1, 1), 2);";
+  for (const tautology of ['assert.equal<number>(1, 1);', 'assert.ok(true as boolean);', "assert.equal('a' as string, 'a');"]) {
+    const body = `${TS_TEST}test('a', () => { ${tautology} ${filler} });`;
+    assert.match(analyzeTestFile(body, opts).issues.join(), /tautolog/i, tautology);
+  }
+});

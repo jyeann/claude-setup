@@ -3,6 +3,7 @@
 // A surviving mutant points at behaviour the tests do not pin down.
 const crypto = require('node:crypto');
 const vm = require('node:vm');
+const { stripTypes, strips } = require('./typescript');
 
 const RULES = [
   [/(?<!!)===/g, '!=='],
@@ -81,8 +82,10 @@ function applyMutation(source, { index, from, to }) {
   return source.slice(0, index) + to + source.slice(index + from.length);
 }
 
-function listMutations(source) {
-  const masked = maskNonCode(source);
+// typescript: true -> find sites in the type-erased text only (types are blanked, same offsets), so a mutant can
+// never land in a type annotation, and drop mutants that no longer parse (the vm check below cannot see ESM).
+function listMutations(source, { typescript = false } = {}) {
+  const masked = maskNonCode(typescript ? stripTypes(source) : source);
   const found = [];
   for (const [re, to] of RULES) {
     for (const m of masked.matchAll(re)) {
@@ -90,6 +93,7 @@ function listMutations(source) {
     }
   }
   found.sort((a, b) => a.index - b.index);
+  if (typescript) return found.filter((m) => strips(applyMutation(source, m)));
   return isModuleSyntax(source) ? found : found.filter((m) => compiles(applyMutation(source, m)));
 }
 

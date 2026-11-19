@@ -103,7 +103,7 @@ const PHASES = [
   ['build', async (ctx) => {
     const gate = await ctx.runGate(ctx.product);
     ctx.gateOutput = gate.output;
-    return gate.pass ? [] : ['the product gate (verify.js: tests, coverage, test quality, holdout, browser journeys, mutation) fails; its output is below'];
+    return gate.pass ? [] : ['the product gate (verify.js: tests, type check, coverage, test quality, holdout, browser journeys, mutation) fails; its output is below'];
   }],
   ['review', ({ docs }) => doc(docs, 'reviews.md', 'review record', (t) => {
     const m = OPEN_FINDINGS.exec(t);
