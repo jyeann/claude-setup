@@ -101,7 +101,7 @@ test('the signing secret never appears in any response', () => withServer(async 
   const perma = await s.call('GET', `/api/certificates/${r.body.certificate.id}`);
   assert.ok(!r.text.includes('"test"') && !perma.text.includes('"test"'));
   assert.ok(!/secret/i.test(r.text + perma.text));
-}, { env: { HELLO_SIGNING_SECRET: 'zq-very-unlikely-secret-9931' } }));
+}, { env: { HELLO_SIGNING_SECRET: 'zq-very-unlikely-secret-9931' } })); // harness:allow-secret
 
 test('GET /api/certificates/:id returns the stored certificate and its text verifies', () => withServer(async (s) => {
   const r = await hello(s, { name: 'Ada', language: 'sw', tone: 'corporate' });

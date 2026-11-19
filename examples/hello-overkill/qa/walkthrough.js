@@ -11,7 +11,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SHOTS = path.resolve(ROOT, '../../docs/product/hello-overkill/qa');
 fs.mkdirSync(SHOTS, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'hello-qa-'));
-const SECRET = 'qa-test-secret-qa-test-secret-123';
+const SECRET = 'qa-test-secret-qa-test-secret-123'; // harness:allow-secret
 const results = [];
 const consoleErrors = []; // unexpected console / page errors
 const expectedNoise = []; // browser "Failed to load resource" for forced 418/429

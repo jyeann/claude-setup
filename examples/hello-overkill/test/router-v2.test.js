@@ -347,7 +347,7 @@ test('/api/sla: unset token is open outside production and locked (401) in produ
     assert.equal(r.headers['www-authenticate'], 'Bearer');
     assert.equal((await req('GET', '/api/sla', { headers: { authorization: 'Bearer undefined' } })).status, 401);
   }, { production: true });
-  const slaToken = 'a-sixteen-char-token';
+  const slaToken = 'a-sixteen-char-token'; // harness:allow-secret
   await withApp(async ({ req }) => {
     assert.equal((await req('GET', '/api/sla', { headers: { authorization: `Bearer ${slaToken}` } })).status, 200);
     assert.equal((await req('GET', '/api/sla')).status, 401);

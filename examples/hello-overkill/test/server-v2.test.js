@@ -49,7 +49,7 @@ test('stdout and stderr have error handlers that swallow only EPIPE', () => {
 });
 
 test('server wires peers, the sla token and the read limit from the environment', async () => {
-  const s = await startServer(tmpFile(), { env: { HELLO_SLA_TOKEN: 'tok-tok-tok-tok-tok', HELLO_READ_LIMIT: '2' } });
+  const s = await startServer(tmpFile(), { env: { HELLO_SLA_TOKEN: 'tok-tok-tok-tok-tok', HELLO_READ_LIMIT: '2' } }); // harness:allow-secret
   try {
     assert.equal((await s.call('GET', '/api/sla')).status, 401);
     assert.equal((await s.call('GET', '/api/sla', undefined, undefined, { authorization: 'Bearer tok-tok-tok-tok-tok' })).status, 200);

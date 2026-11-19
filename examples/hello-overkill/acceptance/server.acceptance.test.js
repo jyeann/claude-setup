@@ -39,7 +39,7 @@ test('without HELLO_SIGNING_SECRET the server warns on stderr and still serves',
 });
 
 test('with HELLO_SIGNING_SECRET set there is no dev-secret warning and the secret is never logged', async () => {
-  const s = await startServer(tmpFile(), { env: { HELLO_SIGNING_SECRET: 'zq-very-unlikely-secret-9931' } });
+  const s = await startServer(tmpFile(), { env: { HELLO_SIGNING_SECRET: 'zq-very-unlikely-secret-9931' } }); // harness:allow-secret
   try {
     await s.call('POST', '/hello', { name: 'Ada' });
     assert.ok(!/WARNING/.test(s.stderr()));
