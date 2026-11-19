@@ -3,7 +3,9 @@
 //   1. tests pass, none skipped/todo, at least minTests ran
 //   2. line coverage of the SOURCE files (all processes, V8) meets a total and a per-file floor
 //   3. the agent's own tests are not placeholders (reference src, real assertions)
-//   4. mutation spot-check: flipping one operator in src must make the suite fail
+//   4. hidden holdout tests pass (optional)
+//   5. user journeys pass in a browser, one passing test per journey id in ux.md (optional)
+//   6. mutation spot-check: flipping one operator in src must make the suite fail
 // Config lives in verify.config.json; protect it (and this file) so the agent cannot weaken the gate.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -32,17 +34,21 @@ function loadConfig(file) {
     testQuality: { dirs: ['tests'], minAssertionsPerFile: 3, ...raw.testQuality },
     replicates: raw.replicates ?? 2,
     holdout: raw.holdout ? { minTests: 1, ...raw.holdout } : null,
+    journeys: raw.journeys ? { minTests: 1, ...raw.journeys } : null,
     mutation: { samples: 6, minKillRate: 0.6, copy: ['acceptance', 'package.json'], timeoutMs: 120_000, timeoutFactor: 3, minTimeoutMs: 10_000, ...raw.mutation },
   };
   validate(config);
   return config;
 }
 
-function validate({ coverage, mutation, replicates, holdout }) {
+function validate({ coverage, mutation, replicates, holdout, journeys }) {
   const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
   if (!Number.isInteger(replicates) || replicates < 1 || replicates > 5) throw new Error('replicates must be an integer between 1 and 5');
   if (holdout && (typeof holdout.command !== 'string' || !holdout.command.trim())) throw new Error('holdout.command (string) is required when holdout is set');
   if (holdout && (!Number.isInteger(holdout.minTests) || holdout.minTests < 1)) throw new Error('holdout.minTests must be an integer >= 1');
+  if (journeys && (typeof journeys.command !== 'string' || !journeys.command.trim())) throw new Error('journeys.command (string) is required when journeys is set');
+  if (journeys && (!Number.isInteger(journeys.minTests) || journeys.minTests < 1)) throw new Error('journeys.minTests must be an integer >= 1');
+  if (journeys && journeys.uxFile !== undefined && (typeof journeys.uxFile !== 'string' || !journeys.uxFile.trim())) throw new Error('journeys.uxFile must be a path string');
   if (!Number.isInteger(mutation.samples) || mutation.samples < 1) throw new Error('mutation.samples must be an integer >= 1');
   if (!inRange(mutation.minKillRate, 0.01, 1)) throw new Error('mutation.minKillRate must be a number in (0, 1]');
   if (!inRange(coverage.minLines, 0, 100)) throw new Error('coverage.minLines must be between 0 and 100');
@@ -173,6 +179,37 @@ async function checkHoldout(root, config, out) {
   return [];
 }
 
+// Journey and UI-check ids as ux.md writes them: J1, J12, UC3.
+const journeyIds = (text) => [...new Set(text.match(/\b(?:J|UC)\d+\b/g) ?? [])];
+const PASSED_TEST = /^\s*(?:ok \d+ - |✔ )(.+)$/gm;
+const passedTestNames = (output) => [...output.matchAll(PASSED_TEST)].map((m) => m[1]).filter((name) => !/#\s*(?:SKIP|TODO)/i.test(name));
+
+// "Done means a person can use it": the user journeys run in a real browser as part of the gate, and every
+// journey or UI check that ux.md names must have a passing test named after it. Unlike the holdout, failures
+// are shown in full, because the journeys are the visible requirement.
+async function checkJourneys(root, config, out) {
+  const { command, minTests, uxFile } = config.journeys;
+  const result = await runVerify(command, { cwd: root, timeoutMs: config.timeoutMs });
+  const s = parseTestSummary(result.output);
+  out(`  journeys: ${s.pass}/${s.tests} passing`);
+  const failures = [];
+  if (result.timedOut) failures.push(`journeys: the browser walkthrough timed out after ${config.timeoutMs} ms`);
+  else if (!result.pass || s.fail > 0) failures.push(`journeys: ${s.fail || 'some'} browser journey test(s) fail; the product does not work for a user yet`);
+  if (s.skipped > 0 || s.todo > 0) failures.push('journeys: skipped or todo journey tests are not passing');
+  if (s.tests < minTests) failures.push(`journeys: only ${s.tests} journey test(s) ran; at least ${minTests} expected`);
+  if (failures.length > 0) out(extractFailures(result.output) || tailOutput(result.output, 25, 2500));
+  if (uxFile) {
+    const file = path.resolve(root, uxFile);
+    if (!fs.existsSync(file)) return [...failures, `journeys: ${uxFile} not found; it lists the journeys the walkthrough must cover`];
+    const ids = journeyIds(fs.readFileSync(file, 'utf8'));
+    if (ids.length === 0) failures.push(`journeys: ${uxFile} names no journey (J1, J2, ...) or UI check (UC1, ...) ids`);
+    const names = passedTestNames(result.output);
+    const missing = ids.filter((id) => !names.some((n) => new RegExp(`\\b${id}\\b`).test(n)));
+    if (missing.length > 0) failures.push(`journeys: no passing browser test is named for ${missing.join(', ')} (${uxFile}); start each test name with the id it walks, e.g. "J1: ..."`);
+  }
+  return failures;
+}
+
 // A mutant that hangs the suite counts as killed, so wait only a few multiples of the healthy run time.
 function mutationTimeoutMs(baselineMs, { timeoutMs, timeoutFactor, minTimeoutMs }) {
   return Math.min(timeoutMs, Math.max(minTimeoutMs, Math.round(baselineMs * timeoutFactor)));
@@ -231,7 +268,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
   const failures = [];
   let failingTests = '';
   try {
-    out('[1/5] tests');
+    out('[1/6] tests');
     const startedAt = Date.now();
     const result = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env: { NODE_V8_COVERAGE: covDir } });
     const baselineMs = Date.now() - startedAt;
@@ -247,20 +284,26 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
       else failures.push(...await checkReplicates(root, config, result, out));
     }
 
-    out('[2/5] source coverage');
+    out('[2/6] source coverage');
     failures.push(...checkCoverage(root, config, covDir, out));
-    out('[3/5] test quality');
+    out('[3/6] test quality');
     const quality = checkTestQuality(root, config);
     failures.push(...quality);
     out(quality.length === 0 ? '  ok' : quality.map((q) => `  ${q}`).join('\n'));
 
-    out('[4/5] hidden holdout set');
+    out('[4/6] hidden holdout set');
     if (!config.holdout) out('  holdout: not configured');
     else if (fast) out('  holdout: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  holdout: skipped until the checks above pass');
     else failures.push(...await checkHoldout(root, config, out));
 
-    out('[5/5] mutation spot-check');
+    out('[5/6] user journeys in a browser');
+    if (!config.journeys) out('  journeys: not configured');
+    else if (fast) out('  journeys: skipped (--fast); the full run is the definition of done');
+    else if (failures.length > 0) out('  journeys: skipped until the checks above pass');
+    else failures.push(...await checkJourneys(root, config, out));
+
+    out('[6/6] mutation spot-check');
     if (fast) out('  mutation: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  mutation: skipped until the checks above pass');
     else failures.push(...await checkMutation(root, config, baselineMs, out));
