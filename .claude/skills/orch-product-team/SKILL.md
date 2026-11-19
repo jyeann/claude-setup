@@ -21,7 +21,7 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 
 ## Starting the build run
 
-`node .claude/harness/bin/harness.js init --verify "cd examples/<p> && CLAUDE_PROJECT_DIR=$PWD node ../../.claude/harness/bin/verify.js" --task-file examples/<p>/spec.md --protect examples/<p>/acceptance/,examples/<p>/verify.config.json,docs/product/<p>/ --hide examples/<p>/holdout --max 14 --stall 3`. The holdout lives in the repo so every gate and CI can run it; `--hide` keeps it from the agent while the run is active. Stay in the turn while a builder works: ending it makes the Stop hook re-run verify and count identical red results toward the stall breaker.
+`node .claude/harness/bin/harness.js init --verify 'cd examples/<p> && CLAUDE_PROJECT_DIR="$PWD" node ../../.claude/harness/bin/verify.js' --task-file examples/<p>/spec.md --protect examples/<p>/acceptance/,examples/<p>/verify.config.json,docs/product/<p>/ --hide examples/<p>/holdout --max 14 --stall 3`. Keep the single quotes: in double quotes the shell expands `$PWD` when you type the command, verify then looks for `verify.config.json` in the repo root and every gate run exits 2. The holdout lives in the repo so every gate and CI can run it; `--hide` keeps it from the agent while the run is active. Stay in the turn while a builder works: ending it makes the Stop hook re-run verify and count identical red results toward the stall breaker.
 
 ## Phases, roles, artifacts
 
@@ -30,7 +30,7 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 | 1 | `discover` | `product-scoper` | `brief.md` | build/adopt/extend decided; success criteria are user-visible and testable |
 | 2 | `ux` | `ux-designer` (+ `a11y-architect` for review) | `ux.md` | every success criterion has a journey and a UI acceptance check |
 | 3 | `design` | `architect`, `api-design` skill; record choices with `architecture-decision-records` | `design.md`, `adr/` | interfaces, data, failure modes, security notes written; ADR per real choice; `architect` is read-only, so save its text verbatim (a writer agent given the exact text, a diff-free check, or give it Write). Never retype or shorten it: a dropped caveat reached the holdout author and failed a gate |
-| 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec and acceptance tests | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder |
+| 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec and acceptance tests | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder; the author of the visible and the hidden tests has run every file (see Test author rules) |
 | 5 | `build` | `tdd-guide` / `gan-generator` under `/harness-build` | code, unit tests | `verify.js` exits 0 (tests, coverage, mutation, holdout) |
 | 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer` in parallel, foreground | `reviews.md` | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason; every reviewer is given `ux.md` as a hard requirement list, and a finding that contradicts it is escalated, not applied |
 | 7 | `qa` | `e2e-runner` (Playwright) or `gan-evaluator` | `qa.md`, screenshots | every journey and UI acceptance check in `ux.md` passes in a browser |
@@ -38,6 +38,16 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 | 9 | `retro` | `harness-improver` + the KPI roll-up | `retro.md` | one evidence-backed change proposed; KPI file refreshed |
 
 Phases 1-4 run before the harness run starts; 5 runs inside it; 6-9 run after verify is green. A failing phase 6 or 7 sends the work back to 5 with the failing journey or finding as the task. Cap the loop at 3 round trips, then halt and report.
+
+## Test author rules (phase 4)
+
+Wrong hidden tests failed the gate in two runs because their author never ran them. Before any builder starts, the test author must:
+
+- **Run every visible and hidden test file once** and paste the summary line into `decisions.md`. Each test must fail because the behaviour is missing (404, missing export, wrong value), never because the test itself is broken (syntax error, bad import path, malformed URL, wrong port). Fix a broken test before handing over.
+- **Cite the source of every expected value in a hidden test**: a comment with the line of `spec.md` or `design.md` it comes from. A value with no line to cite is a guess; remove the test or get the rule written into the spec first.
+- **Check the two suites against each other**: no hidden test may contradict a visible one on the same input.
+
+When the gate reports a holdout failure while the visible tests pass, do not send it straight to the builder. The test author (not the builder, who must not see the holdout) first checks each failing hidden test against its cited line, fixes any that are wrong, logs that in `decisions.md`, and only then passes "N hidden tests still fail" to the builder.
 
 ## Right-sizing
 

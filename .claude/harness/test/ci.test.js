@@ -195,7 +195,7 @@ test('protect.sh keeps the admin bypass by default and --no-bypass removes it', 
   assert.equal(strict.status, 0, strict.stderr);
   assert.equal(parse(withBypass).bypass_actors.length, 1);
   assert.deepEqual(parse(strict).bypass_actors, []);
-  assert.equal(parse(strict).rules.find((x) => x.type === 'required_status_checks').parameters.required_status_checks.length, 5, 'the checks must be untouched');
+  assert.equal(parse(strict).rules.find((x) => x.type === 'required_status_checks').parameters.required_status_checks.length, 6, 'the checks must be untouched');
 });
 
 test('protect.sh --apply --no-bypass sends an empty bypass list to GitHub', () => {
