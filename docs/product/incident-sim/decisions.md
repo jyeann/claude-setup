@@ -1,0 +1,11 @@
+# Decision log: incident-sim
+
+| # | Decision | Options | Chosen | Why | By |
+|---|----------|---------|--------|-----|----|
+| 1 | Which app and concept | habit tracker, redo an example, wiki, system-design-101; boss-fight incident game, architecture playground, metro map | system-design-101 reimagined as an Incident Simulator game | Owner answered the up-front question | human |
+| 2 | Design bar | direction only; direction plus design loop | Direction brief + design system first, then a screenshot-scored gan-design loop after the build | Owner asked for a superb design | human |
+| 3 | Where it lives | system-design-101 repo; claude-setup/examples | claude-setup/examples/incident-sim, self-contained, linking to the guides | Same CI/gate as other examples; keeps the upstream guide repo untouched | orchestrator |
+| 4 | Licence of the source guides | brief said CC BY-NC-SA 4.0; LICENSE.md says CC BY-NC-ND 4.0 | CC BY-NC-ND 4.0 (the source repo's own wording). No guide text or images are copied or adapted (ND forbids derivatives); only original scenario text, links and attribution. Non-commercial only | Scoper's note was wrong; read from LICENSE.md and README | orchestrator |
+| 5 | Build, adopt or extend | build; extend | Build | Nothing else is a solo offline incident game | product-scoper |
+| 6 | Harness run | start a Stop-hook run; call verify.js directly | Call verify.js directly | The earlier wiki run is still marked active; two products cannot share a run | orchestrator |
+| 7 | Test-only dependency `@axe-core/playwright` | allow in test tooling; inject axe-core like the wiki QA | Inject axe-core into the page from a scratch install outside the repo, as in the wiki QA; no dependency added | Zero npm dependencies stays true, including dev | orchestrator |
