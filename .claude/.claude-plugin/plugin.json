@@ -1,6 +1,6 @@
 {
-  "name": "web-harness",
-  "description": "Web-app agents, commands and skills (trimmed ECC) plus an installer for the verify-gated unattended build harness.",
+  "name": "product-team",
+  "description": "A product team for Claude Code: nine phases from idea to working product, 15 agents, and an installer for the verify-gated harness that keeps the run going until the product works.",
   "author": {
     "name": "jyeann"
   },
@@ -9,10 +9,9 @@
   "license": "MIT",
   "keywords": [
     "agents",
-    "skills",
     "harness",
-    "web",
-    "react",
-    "typescript"
+    "product",
+    "autonomous",
+    "verify"
   ]
 }

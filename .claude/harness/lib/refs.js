@@ -32,12 +32,15 @@ function sources(claudeDir) {
   return out.filter((f) => fs.existsSync(path.join(claudeDir, f)));
 }
 
-function checkRefs(claudeDir) {
+// also: other component roots whose skills, agents and commands count as existing targets, so a second
+// plugin can be checked for references into the core (and the other way round).
+function checkRefs(claudeDir, { also = [] } = {}) {
+  const roots = [claudeDir, ...also];
   // `learned` is the on-demand output folder of /learn, not a shipped skill.
-  const skills = new Set([...dirs(path.join(claudeDir, 'skills')), 'learned']);
-  const agents = new Set(list(path.join(claudeDir, 'agents'), '.md').map((f) => f.slice(0, -3)));
-  const commands = new Set(list(path.join(claudeDir, 'commands'), '.md').map((f) => f.slice(0, -3)));
-  const ruleDirs = new Set(dirs(path.join(claudeDir, 'rules')));
+  const skills = new Set([...roots.flatMap((r) => dirs(path.join(r, 'skills'))), 'learned']);
+  const agents = new Set(roots.flatMap((r) => list(path.join(r, 'agents'), '.md')).map((f) => f.slice(0, -3)));
+  const commands = new Set(roots.flatMap((r) => list(path.join(r, 'commands'), '.md')).map((f) => f.slice(0, -3)));
+  const ruleDirs = new Set(roots.flatMap((r) => dirs(path.join(r, 'rules'))));
   const problems = [];
   for (const file of sources(claudeDir)) {
     fs.readFileSync(path.join(claudeDir, file), 'utf8').split('\n').forEach((line, i) => {

@@ -17,6 +17,13 @@ function fixture(files) {
   return dir;
 }
 
+test('the ecc-web plugin has no dangling references once the core supplies its targets', () => {
+  const core = path.join(__dirname, '..', '..');
+  const extras = path.join(core, '..', 'plugins', 'ecc-web');
+  assert.deepEqual(checkRefs(extras, { also: [core] }), []);
+  assert.notDeepEqual(checkRefs(extras), [], 'on its own it points at core agents, so the also option is doing the work');
+});
+
 test('this repository has no dangling references (CI guard after upstream syncs)', () => {
   assert.deepEqual(checkRefs(path.join(__dirname, '..', '..')), []);
 });

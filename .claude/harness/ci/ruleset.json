@@ -56,10 +56,6 @@
             "integration_id": 15368
           },
           {
-            "context": "gate-hello-overkill",
-            "integration_id": 15368
-          },
-          {
             "context": "eval-kit-selftest",
             "integration_id": 15368
           }

@@ -3,19 +3,19 @@
   "owner": {
     "name": "jyeann"
   },
-  "description": "Web-app agents, commands and skills (trimmed ECC) plus an unattended build harness for Claude Code.",
+  "description": "A product team with a verify-gated harness for Claude Code, plus an optional web-app catalogue trimmed from Everything Claude Code.",
   "plugins": [
     {
-      "name": "web-harness",
+      "name": "product-team",
       "source": "./.claude",
-      "description": "Agents, commands and skills for web apps (JS/TS, React/Next.js), with an installer for the verify-gated build harness.",
-      "category": "development",
-      "tags": [
-        "agents",
-        "skills",
-        "harness",
-        "web"
-      ]
+      "description": "Nine-phase product team (idea to working product), 15 agents, and an installer for the verify-gated harness.",
+      "category": "development"
+    },
+    {
+      "name": "ecc-web",
+      "source": "./plugins/ecc-web",
+      "description": "Optional: web-app skills, reviewer agents, commands and the orch-* workflows, trimmed from Everything Claude Code.",
+      "category": "development"
     }
   ]
 }

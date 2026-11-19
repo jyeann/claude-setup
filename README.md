@@ -1,71 +1,78 @@
 # claude-setup
 
-My Claude Code configuration, built on **ECC (Everything Claude Code)**
-v2.2.3 (upstream commit b38be6a), MIT licensed.
+A product team for Claude Code. One idea goes in; a team of agents scopes it, designs it, builds it under an
+objective gate, reviews it, walks it in a browser and documents it. The harness decides when it is done.
 
-Included under `.claude/`:
-- `agents/`: 34 specialist subagents for web apps (planner, code-reviewer, security-reviewer, ...)
-- `commands/`: 46 slash commands
-- `skills/`: 55 skills, trimmed for web apps (JS/TS, React/Next.js, frontend, testing, general workflow)
-  plus the `orch-*` feature/bugfix/refactor workflows. Re-add any others from upstream `skills/`.
-- `rules/ecc-common/`: five short always-loaded rules (agents, git, performance/model, security, testing), rewritten for the harness. The generic upstream ones were removed or moved to the on-demand `skills/engineering-reference` (patterns, hooks, development-workflow, code-review) to keep the base context small.
+Two parts, kept apart on purpose:
 
-Not included: ECC hooks. This repo ships its own `.claude/harness/` hooks instead (pre-bash and pre-write guards, a post-edit lint hook, and a Stop-time verify loop).
+| Part | Where | What it is |
+|---|---|---|
+| **Team + harness** (core) | `.claude/` | The `orch-product-team` workflow, the 15 agents it calls, 10 skills, 2 commands, five always-loaded rules, and the harness (`.claude/harness/`: guard hooks, verify gate, whole-pipeline gate, tracing). This is what the repo is for. |
+| **`ecc-web`** (optional catalogue) | `plugins/ecc-web/` | 21 more agents, 48 skills and 43 commands for web apps, trimmed from **ECC (Everything Claude Code)** v2.2.3 (upstream commit b38be6a, MIT), plus the `orch-*` feature, fix and refactor workflows. Not needed to run the team. |
 
-## Workflow additions (local, not from ECC)
-- `skills/grill-me`: interview-until-aligned step before planning (`orch-pipeline` phase 1.5, standard and large tasks).
-- `skills/plan-to-tasks` + `harness/templates/tasks.md`: backlog of vertical slices with `blocked-by` and `AFK`/`HITL`.
-  `node .claude/harness/bin/next-task.js TASKS.md` picks the next ready AFK task; the loop runbook uses it.
-- Status line (`harness/bin/statusline.js`): exact context token count, warns past ~100K ("dumb zone").
-- Pruned: non-web language agents/commands, and commands that need ECC scripts this repo does not ship
-  (`continuous-learning-v2`, instincts, sessions). Restore any of them from upstream if needed.
+Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/README.md`.
 
-## Use it in another project
-Install it as a plugin (Claude Code 2.1.275 or later):
+## Install in another project
+Claude Code 2.1.275 or later:
 ```
-/plugin install web-harness --marketplace jyeann/claude-setup
+/plugin install product-team --marketplace jyeann/claude-setup
 ```
-or from a shell: `claude plugin marketplace add jyeann/claude-setup && claude plugin install web-harness@jyeann`.
+or from a shell: `claude plugin marketplace add jyeann/claude-setup && claude plugin install product-team@jyeann`.
+Add the catalogue only if you want it: `claude plugin install ecc-web@jyeann`.
 
-That gives the project the agents, commands and skills, namespaced as `/web-harness:<name>`. To share it with a team,
-declare it in the project's `.claude/settings.json` instead:
+To share with a team, declare it in the project's `.claude/settings.json`:
 ```json
 {
   "extraKnownMarketplaces": { "jyeann": { "source": { "source": "github", "repo": "jyeann/claude-setup" } } },
-  "enabledPlugins": { "web-harness@jyeann": true }
+  "enabledPlugins": { "product-team@jyeann": true }
 }
 ```
 
 The plugin does **not** activate the harness: a plugin cannot ship deny rules, sandbox settings, a status line or
-always-loaded rules, and the guards expect to live in the project. Add them with `/web-harness:harness-install`, or directly:
+always-loaded rules, and the guards expect to live in the project. Add them with `/product-team:harness-install`, or:
 ```bash
 node .claude/harness/bin/install.js /path/to/project --dry-run   # from a clone of this repo; drop --dry-run to write
 ```
 It copies `.claude/harness/` (without this repo's own test suite), `.claude/rules/` and `.claude/plans/`, merges hooks,
 permissions, sandbox and status line into the project's `.claude/settings.json` without removing anything already there,
-and adds `.harness/` to `.gitignore`. Re-run it to update. Commands that call `node .claude/harness/bin/...`
-(`/harness-build`, `/harness-improve`, the loop runbook) need this step.
+and adds `.harness/` to `.gitignore`. Re-run it to update. `/harness-build`, `/harness-improve` and the team's run need it.
 
-The manifests are `.claude-plugin/marketplace.json` (marketplace `jyeann`) and `.claude/.claude-plugin/plugin.json`
-(plugin `web-harness`; names starting with `claude-` are reserved, so it cannot be called `claude-setup`). No `version` is
-set on purpose: installs track the latest commit on `main`, and a pinned version would hold users on a stale copy until
-someone remembered to bump it. Check a change with `claude plugin validate .`.
+Opening a Claude Code session on this repo gives you the core directly; the catalogue is not loaded here unless you
+install `ecc-web`.
 
-Copying the `.claude/` folder into a repo, or opening a Claude Code session on this repo, still works.
+## How ECC is used
+ECC is a catalogue, not a base to edit in place. The rules this repo follows:
+- **Core holds only what the team calls.** Twelve of the 15 core agents and six of the core skills come from ECC; the
+  rest are local (`product-scoper`, `ux-designer`, `harness-improver`, `orch-product-team`, `plan-to-tasks`,
+  `harness-install`, `engineering-reference`, the rules, the whole harness).
+- **Everything else from ECC is optional** and lives in `plugins/ecc-web/`, so it costs no context unless installed.
+- **Pinned, not tracked.** The measured results (effort defaults, the definition of done) hold for these exact agent
+  files. An upstream change to an agent the team uses is a change to the team: re-run the checks in
+  `docs/process/definition-of-done.md` before taking it.
+- **ECC hooks are not used.** The harness ships its own.
 
 ## Update from upstream
 ```bash
 git clone --depth 1 https://github.com/affaan-m/everything-claude-code /tmp/ecc
-# Do NOT use --delete: it would restore everything pruned above and drop the local skills.
-rsync -a /tmp/ecc/{agents,commands,skills} .claude/   # then re-run the prune, or copy only what you want
+# Catalogue: copy only what you want into plugins/ecc-web/{agents,commands,skills}. Do NOT use --delete.
+# Core: take a changed agent or skill into .claude/ one file at a time, and read the diff first.
 # Do NOT sync rules/common/ over .claude/rules/ecc-common/: those five files are customised.
+node .claude/harness/bin/check-refs.js                                   # core must stand on its own
+node .claude/harness/bin/check-refs.js plugins/ecc-web --also .claude    # catalogue may point into the core
+claude plugin validate .
 ```
+Items that need upstream ECC scripts, MCP servers or skills this repo does not ship stay out, because an agent that
+picks them fails and wastes tool calls: the instinct/learning stack, `/epic-*`, `/multi-*`, `/sessions`,
+`/quality-gate`, `/harness-audit`, `/cost-report`, the `docs-lookup` agent (needs a Context7 MCP server) and the
+non-web language agents. The reference check lists the removed commands and fails if one comes back.
 
-## Pruned for being unrunnable here
-Commands, skills and agents that need upstream ECC scripts, MCP servers or skills this repo does not ship were removed, because
-an agent that picks them fails and wastes tool calls (the `efficiency` scorer would flag it). Removed: the instinct/learning stack
-(`/evolve`, `/instinct-*`, `/projects`, `/promote`, `/prune`, `/skill-health`; replaced by `/harness-improve`), `/epic-*`,
-`/multi-*`, `/astra-review`, `/santa-loop`, `/plan-canvas`, `/sessions`, `/quality-gate`, `/harness-audit` (the `harness-optimizer` agent stays; it runs the harness tests and `tune.js` instead),
-`/auto-update`, `/project-init`, `/setup-pm`, `/skill-host-compat`, `/issue-review`, `/jira`, `/token-card`, `/cost-report` (its metrics log is never written here), the `ecc-guide`,
-`plan-canvas` and `documentation-lookup` skills, and the `docs-lookup` agent (needs a Context7 MCP server). Re-add from upstream
-only together with the scripts they call. Rule: after any upstream sync, run the reference check in `.claude/harness/README.md`.
+## Examples and products
+`examples/` holds the specs and products used to test the harness and the team (`link-shortener` and `retro-board`
+are gated in CI; `retro-board/tune/` is the per-phase effort comparison). Product documents are in `docs/product/`.
+`hello-overkill` moved to https://github.com/jyeann/HW-PIRPLE-1 (branch `claude/hello-overkill`).
+
+## Manifests
+`.claude-plugin/marketplace.json` (marketplace `jyeann`), `.claude/.claude-plugin/plugin.json` (`product-team`) and
+`plugins/ecc-web/.claude-plugin/plugin.json` (`ecc-web`). Plugin names starting with `claude-` are reserved. No
+`version` is set on purpose: installs track the latest commit on `main`, and a pinned version would hold users on a
+stale copy until someone remembered to bump it.

@@ -63,7 +63,7 @@ When the gate reports a holdout failure while the visible tests pass, do not sen
 
 ## Right-sizing
 
-Small fixes and single-file changes do not need phases 1-4: use `orch-fix-defect` or `orch-change-feature`. Run this skill for a new product or a feature with a user-facing surface. A change that touches a screen always runs 2 and 7.
+Small fixes and single-file changes do not need phases 1-4: give the fix to `tdd-guide` under `/harness-build` (or use `orch-fix-defect` / `orch-change-feature` when the optional `ecc-web` plugin is installed). Run this skill for a new product or a feature with a user-facing surface. A change that touches a screen always runs 2 and 7.
 
 ## Effort (measured defaults, sonnet, one product)
 

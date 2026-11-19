@@ -145,11 +145,14 @@ test('CLI installs into the given directory, exits 2 on refusal, and honours --d
   assert.match(bad.stderr, /not a directory/);
 });
 
-test('the plugin and marketplace manifests agree and point at .claude', () => {
+test('every marketplace entry matches its plugin manifest and the core plugin is .claude', () => {
   const market = readJson(path.join(CLAUDE_DIR, '..', '.claude-plugin', 'marketplace.json'));
   const plugin = readJson(path.join(CLAUDE_DIR, '.claude-plugin', 'plugin.json'));
-  assert.equal(market.plugins.length, 1);
   assert.equal(market.plugins[0].name, plugin.name);
   assert.equal(market.plugins[0].source, './.claude');
-  assert.doesNotMatch(plugin.name, /^(claude|anthropic)/);
+  for (const entry of market.plugins) {
+    const manifest = readJson(path.join(CLAUDE_DIR, '..', entry.source, '.claude-plugin', 'plugin.json'));
+    assert.equal(manifest.name, entry.name);
+    assert.doesNotMatch(entry.name, /^(claude|anthropic)/);
+  }
 });
