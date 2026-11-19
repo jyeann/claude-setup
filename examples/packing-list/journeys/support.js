@@ -25,7 +25,7 @@ function freePort() {
 }
 
 // Start the product as documented: node src/server.js with PORT and DATA_FILE. Fails fast, never hangs.
-async function startServer({ port, dataFile }) {
+async function startServerOnce({ port, dataFile }) {
   if (!fs.existsSync(SERVER_FILE)) {
     throw new Error(`Product missing: ${SERVER_FILE} does not exist, cannot start the server`);
   }
@@ -67,6 +67,22 @@ async function startServer({ port, dataFile }) {
   throw new Error(`Server not ready within 10 s. stdout: ${srv.stdout} stderr: ${srv.stderr}`);
 }
 
+// Without a port, pick a free one and retry (up to 5 attempts) if another process grabs it first.
+// With a port (the J9 restart), start exactly once on that port.
+async function startServer({ port, dataFile }) {
+  if (port) return startServerOnce({ port, dataFile });
+  let lastErr;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      return await startServerOnce({ port: await freePort(), dataFile });
+    } catch (err) {
+      lastErr = err;
+      if (!/is in use|EADDRINUSE/i.test(String(err && err.message))) throw err;
+    }
+  }
+  throw lastErr;
+}
+
 // SIGTERM only (never SIGKILL); waits for exit. Returns the exit code.
 async function stopServer(srv) {
   if (!srv || srv.exited) return srv ? srv.exitCode : null;
@@ -83,11 +99,12 @@ async function stopServer(srv) {
 async function withApp(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'packing-journey-'));
   const dataFile = path.join(dir, 'lists.json');
-  const port = await freePort();
-  const app = { dir, dataFile, port, url: `http://127.0.0.1:${port}`, contexts: [] };
+  const app = { dir, dataFile, contexts: [] };
   let browser;
   try {
-    app.server = await startServer({ port, dataFile });
+    app.server = await startServer({ dataFile });
+    app.port = app.server.port;
+    app.url = app.server.url;
     browser = await chromium.launch();
     app.browser = browser;
     app.newContext = async (opts = {}) => {

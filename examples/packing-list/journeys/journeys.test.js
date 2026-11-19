@@ -211,12 +211,13 @@ test('J8: markup shows literally', T, () => S.withApp(async (app) => {
 test('J9: a list survives a server restart', T, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'packing-restart-'));
   const dataFile = path.join(dir, 'lists.json');
-  const port = await S.freePort();
+  let port;
   const { chromium } = require('playwright');
   let srv;
   let browser;
   try {
-    srv = await S.startServer({ port, dataFile });
+    srv = await S.startServer({ dataFile });
+    port = srv.port;
     browser = await chromium.launch();
     const ctx = await browser.newContext();
     ctx.setDefaultTimeout(8000);

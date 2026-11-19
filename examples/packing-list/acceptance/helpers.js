@@ -50,7 +50,7 @@ function makeCall(port) {
 
 // Start the server. opts: {dataDir, dataFile, env, port}. Resolves once the ready line is printed.
 // Fails fast with a clear message when src/server.js is missing or the process exits early.
-async function startServer(opts = {}) {
+async function startOnce(opts = {}) {
   if (!fs.existsSync(SERVER)) throw new Error('src/server.js not found');
   const dataDir = opts.dataDir || tmpDataDir();
   const dataFile = opts.dataFile || path.join(dataDir, 'lists.json');
@@ -87,6 +87,19 @@ async function startServer(opts = {}) {
     call: makeCall(port), stop, stopped, base: `http://127.0.0.1:${port}`, port, dataDir, dataFile,
     child, logs: () => ({ stdout, stderr }),
   };
+}
+
+// Picking a free port and binding it are two steps, so a parallel process can take the port in between.
+// Without an explicit port, retry with a new port (up to 5 attempts) when the server reports "is in use".
+async function startServer(opts = {}) {
+  if (opts.port) return startOnce(opts);
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await startOnce(opts);
+    } catch (err) {
+      if (attempt >= 5 || !/is in use/.test(String(err && err.message))) throw err;
+    }
+  }
 }
 
 // Stop `server` and start a new one on the same data file (new port).
