@@ -1,0 +1,18 @@
+{
+  "name": "web-harness",
+  "description": "Web-app agents, commands and skills (trimmed ECC) plus an installer for the verify-gated unattended build harness.",
+  "author": {
+    "name": "jyeann"
+  },
+  "homepage": "https://github.com/jyeann/claude-setup",
+  "repository": "https://github.com/jyeann/claude-setup",
+  "license": "MIT",
+  "keywords": [
+    "agents",
+    "skills",
+    "harness",
+    "web",
+    "react",
+    "typescript"
+  ]
+}

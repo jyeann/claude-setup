@@ -1,0 +1,21 @@
+{
+  "name": "jyeann",
+  "owner": {
+    "name": "jyeann"
+  },
+  "description": "Web-app agents, commands and skills (trimmed ECC) plus an unattended build harness for Claude Code.",
+  "plugins": [
+    {
+      "name": "web-harness",
+      "source": "./.claude",
+      "description": "Agents, commands and skills for web apps (JS/TS, React/Next.js), with an installer for the verify-gated build harness.",
+      "category": "development",
+      "tags": [
+        "agents",
+        "skills",
+        "harness",
+        "web"
+      ]
+    }
+  ]
+}

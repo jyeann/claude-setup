@@ -21,7 +21,37 @@ Not included: ECC hooks. This repo ships its own `.claude/harness/` hooks instea
   (`continuous-learning-v2`, instincts, sessions). Restore any of them from upstream if needed.
 
 ## Use it in another project
-Copy the `.claude/` folder into that repo, or open a Claude Code session on this repo.
+Install it as a plugin (Claude Code 2.1.275 or later):
+```
+/plugin install web-harness --marketplace jyeann/claude-setup
+```
+or from a shell: `claude plugin marketplace add jyeann/claude-setup && claude plugin install web-harness@jyeann`.
+
+That gives the project the agents, commands and skills, namespaced as `/web-harness:<name>`. To share it with a team,
+declare it in the project's `.claude/settings.json` instead:
+```json
+{
+  "extraKnownMarketplaces": { "jyeann": { "source": { "source": "github", "repo": "jyeann/claude-setup" } } },
+  "enabledPlugins": { "web-harness@jyeann": true }
+}
+```
+
+The plugin does **not** activate the harness: a plugin cannot ship deny rules, sandbox settings, a status line or
+always-loaded rules, and the guards expect to live in the project. Add them with `/web-harness:harness-install`, or directly:
+```bash
+node .claude/harness/bin/install.js /path/to/project --dry-run   # from a clone of this repo; drop --dry-run to write
+```
+It copies `.claude/harness/` (without this repo's own test suite), `.claude/rules/` and `.claude/plans/`, merges hooks,
+permissions, sandbox and status line into the project's `.claude/settings.json` without removing anything already there,
+and adds `.harness/` to `.gitignore`. Re-run it to update. Commands that call `node .claude/harness/bin/...`
+(`/harness-build`, `/harness-improve`, the loop runbook) need this step.
+
+The manifests are `.claude-plugin/marketplace.json` (marketplace `jyeann`) and `.claude/.claude-plugin/plugin.json`
+(plugin `web-harness`; names starting with `claude-` are reserved, so it cannot be called `claude-setup`). No `version` is
+set on purpose: installs track the latest commit on `main`, and a pinned version would hold users on a stale copy until
+someone remembered to bump it. Check a change with `claude plugin validate .`.
+
+Copying the `.claude/` folder into a repo, or opening a Claude Code session on this repo, still works.
 
 ## Update from upstream
 ```bash
