@@ -8,7 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
-const SHOTS = path.resolve(ROOT, '../../docs/product/hello-overkill/qa');
+const SHOTS = path.resolve(ROOT, process.env.QA_SHOTS || '../../docs/product/hello-overkill/qa');
 fs.mkdirSync(SHOTS, { recursive: true });
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'hello-qa-'));
 const SECRET = 'qa-test-secret-qa-test-secret-123'; // harness:allow-secret
