@@ -13,8 +13,8 @@
     },
     {
       "name": "ecc-web",
-      "source": "./plugins/ecc-web",
-      "description": "Optional: web-app skills, reviewer agents, commands and the orch-* workflows, trimmed from Everything Claude Code.",
+      "source": "./.claude/hub",
+      "description": "Optional: loads the whole resource hub into every session (web-app skills, reviewer agents, commands, orch-* workflows). product-team already reads the hub on demand.",
       "category": "development"
     }
   ]

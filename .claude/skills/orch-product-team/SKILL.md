@@ -20,6 +20,10 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 - **Done means a person can use it.** Every journey and UI check in `ux.md` is a browser test inside the verify gate (`journeys` in `verify.config.json`), so the build cannot go green while a journey fails. Phase 7 is a second, independent walkthrough on top of that.
 - **The run cannot end early.** The whole pipeline is the harness's definition of done (`pipeline.js`), so the Stop hook returns the next unfinished phase instead of letting the turn end.
 
+## Specialists on demand
+
+The team's agents are generalists. When a phase needs specific know-how (React, Postgres, Prisma, Docker, SEO, motion, i18n, a TypeScript or database reviewer), the agent doing that phase loads the `resource-hub` skill, reads its index and takes the one or two items it needs. Tell delegated agents this in their brief. Nothing from the hub is loaded otherwise.
+
 ## Starting the run
 
 Start the harness **before phase 1**, with the whole pipeline as the definition of done:
@@ -63,7 +67,7 @@ When the gate reports a holdout failure while the visible tests pass, do not sen
 
 ## Right-sizing
 
-Small fixes and single-file changes do not need phases 1-4: give the fix to `tdd-guide` under `/harness-build` (or use `orch-fix-defect` / `orch-change-feature` when the optional `ecc-web` plugin is installed). Run this skill for a new product or a feature with a user-facing surface. A change that touches a screen always runs 2 and 7.
+Small fixes and single-file changes do not need phases 1-4: give the fix to `tdd-guide` under `/harness-build` (or load `orch-fix-defect` / `orch-change-feature` through the `resource-hub` skill). Run this skill for a new product or a feature with a user-facing surface. A change that touches a screen always runs 2 and 7.
 
 ## Effort (measured defaults, sonnet, one product)
 

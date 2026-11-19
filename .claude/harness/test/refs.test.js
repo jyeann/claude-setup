@@ -17,11 +17,17 @@ function fixture(files) {
   return dir;
 }
 
-test('the ecc-web plugin has no dangling references once the core supplies its targets', () => {
+test('the resource hub has no dangling references once the core supplies its targets', () => {
   const core = path.join(__dirname, '..', '..');
-  const extras = path.join(core, '..', 'plugins', 'ecc-web');
+  const extras = path.join(core, 'hub');
   assert.deepEqual(checkRefs(extras, { also: [core] }), []);
   assert.notDeepEqual(checkRefs(extras), [], 'on its own it points at core agents, so the also option is doing the work');
+});
+
+test('the hub index lists exactly what is in the hub', () => {
+  const hub = path.join(__dirname, '..', '..', 'hub');
+  const { buildIndex } = require(path.join(hub, 'build-index.js'));
+  assert.equal(fs.readFileSync(path.join(hub, 'INDEX.md'), 'utf8'), buildIndex(), 'run: node .claude/hub/build-index.js');
 });
 
 test('this repository has no dangling references (CI guard after upstream syncs)', () => {

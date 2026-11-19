@@ -7,8 +7,8 @@ Two parts, kept apart on purpose:
 
 | Part | Where | What it is |
 |---|---|---|
-| **Team + harness** (core) | `.claude/` | The `orch-product-team` workflow, the 15 agents it calls, 10 skills, 2 commands, five always-loaded rules, and the harness (`.claude/harness/`: guard hooks, verify gate, whole-pipeline gate, tracing). This is what the repo is for. |
-| **`ecc-web`** (optional catalogue) | `plugins/ecc-web/` | 21 more agents, 48 skills and 43 commands for web apps, trimmed from **ECC (Everything Claude Code)** v2.2.3 (upstream commit b38be6a, MIT), plus the `orch-*` feature, fix and refactor workflows. Not needed to run the team. |
+| **Team + harness** (core) | `.claude/` | The `orch-product-team` workflow, the 15 agents it calls, 11 skills, 2 commands, five always-loaded rules, and the harness (`.claude/harness/`: guard hooks, verify gate, whole-pipeline gate, tracing). This is what the repo is for. |
+| **Resource hub** (on demand) | `.claude/hub/` | 21 more agents, 48 skills and 43 commands for web apps, trimmed from **ECC (Everything Claude Code)** v2.2.3 (upstream commit b38be6a, MIT), plus the `orch-*` feature, fix and refactor workflows. Nothing in it is loaded into a session. The `resource-hub` skill (about 100 tokens) points an agent at `hub/INDEX.md`, and the agent reads only the item it needs. |
 
 Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/README.md`.
 
@@ -18,7 +18,7 @@ Claude Code 2.1.275 or later:
 /plugin install product-team --marketplace jyeann/claude-setup
 ```
 or from a shell: `claude plugin marketplace add jyeann/claude-setup && claude plugin install product-team@jyeann`.
-Add the catalogue only if you want it: `claude plugin install ecc-web@jyeann`.
+The hub ships inside `product-team` and is read on demand. To load the whole hub into every session instead (about 9,600 tokens), also run `claude plugin install ecc-web@jyeann`.
 
 To share with a team, declare it in the project's `.claude/settings.json`:
 ```json
@@ -37,15 +37,15 @@ It copies `.claude/harness/` (without this repo's own test suite), `.claude/rule
 permissions, sandbox and status line into the project's `.claude/settings.json` without removing anything already there,
 and adds `.harness/` to `.gitignore`. Re-run it to update. `/harness-build`, `/harness-improve` and the team's run need it.
 
-Opening a Claude Code session on this repo gives you the core directly; the catalogue is not loaded here unless you
-install `ecc-web`.
+Opening a Claude Code session on this repo gives you the core directly, with the hub available on demand.
 
 ## How ECC is used
 ECC is a catalogue, not a base to edit in place. The rules this repo follows:
 - **Core holds only what the team calls.** Twelve of the 15 core agents and six of the core skills come from ECC; the
   rest are local (`product-scoper`, `ux-designer`, `harness-improver`, `orch-product-team`, `plan-to-tasks`,
   `harness-install`, `engineering-reference`, the rules, the whole harness).
-- **Everything else from ECC is optional** and lives in `plugins/ecc-web/`, so it costs no context unless installed.
+- **Everything else from ECC is a resource hub** in `.claude/hub/`: available to any agent at any time, loaded only
+  when one is needed, so it costs no context until then.
 - **Pinned, not tracked.** The measured results (effort defaults, the definition of done) hold for these exact agent
   files. An upstream change to an agent the team uses is a change to the team: re-run the checks in
   `docs/process/definition-of-done.md` before taking it.
@@ -54,11 +54,12 @@ ECC is a catalogue, not a base to edit in place. The rules this repo follows:
 ## Update from upstream
 ```bash
 git clone --depth 1 https://github.com/affaan-m/everything-claude-code /tmp/ecc
-# Catalogue: copy only what you want into plugins/ecc-web/{agents,commands,skills}. Do NOT use --delete.
+# Hub: copy only what you want into .claude/hub/{agents,commands,skills}. Do NOT use --delete.
+# Then: node .claude/hub/build-index.js
 # Core: take a changed agent or skill into .claude/ one file at a time, and read the diff first.
 # Do NOT sync rules/common/ over .claude/rules/ecc-common/: those five files are customised.
 node .claude/harness/bin/check-refs.js                                   # core must stand on its own
-node .claude/harness/bin/check-refs.js plugins/ecc-web --also .claude    # catalogue may point into the core
+node .claude/harness/bin/check-refs.js .claude/hub --also .claude        # the hub may point into the core
 claude plugin validate .
 ```
 Items that need upstream ECC scripts, MCP servers or skills this repo does not ship stay out, because an agent that
@@ -73,6 +74,6 @@ are gated in CI; `retro-board/tune/` is the per-phase effort comparison). Produc
 
 ## Manifests
 `.claude-plugin/marketplace.json` (marketplace `jyeann`), `.claude/.claude-plugin/plugin.json` (`product-team`) and
-`plugins/ecc-web/.claude-plugin/plugin.json` (`ecc-web`). Plugin names starting with `claude-` are reserved. No
+`.claude/hub/.claude-plugin/plugin.json` (`ecc-web`). Plugin names starting with `claude-` are reserved. No
 `version` is set on purpose: installs track the latest commit on `main`, and a pinned version would hold users on a
 stale copy until someone remembered to bump it.
