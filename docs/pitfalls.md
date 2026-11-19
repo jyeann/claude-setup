@@ -4,8 +4,8 @@ Mistakes this team has already made, each with the rule that prevents a repeat. 
 
 ## Specs and tests
 
-- **A test and a spec contradicted each other, in all three products so far.** (link-shortener: a 2-character slug had to work and be rejected; hello-overkill: trailing whitespace verified in one test and forged in another, then two wrong hidden assertions in v2.) Before any builder starts, read every acceptance and holdout test against the spec for contradictions, and run them once against a reference implementation or the spec's own examples. A hidden test nobody has run is a guess.
-- **Acceptance tests written while `src/` is changing cannot prove they fail for the right reason.** Gate the test author before any builder starts: record a clean RED first.
+- **A test and a spec contradicted each other, in all three products so far.** (link-shortener: a 2-character slug had to work and be rejected; hello-overkill: trailing whitespace verified in one test and forged in another, then two wrong hidden assertions in v2.) Before any builder starts, run `ref-check` (enforced by `job.js`): red against a stub always, green against a reference whenever one exists. Only green catches two tests that contradict each other; red catches tests that pass with no implementation and tests that fail for a wrong reason. A hidden test nobody has run is a guess.
+- **Acceptance tests written while `src/` is changing cannot prove they fail for the right reason.** `ref-check --expect red` records a clean RED against a stub before any builder starts.
 - **A review fix can contradict a read-only acceptance test.** Check each finding that adds a rule against the acceptance suite before dispatching the fix.
 - **A reviewer told only "WCAG" can contradict the UX spec** (it asked to remove `aria-busy`, which `ux.md` required). Give reviewers `ux.md` as a hard requirement list.
 

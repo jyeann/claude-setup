@@ -16,6 +16,7 @@ const throwsMsg = (fn, re) => assert.throws(fn, (e) => re.test(e.message));
 function accepted(root, id = 'j1', extra = {}) {
   job.create(root, { id, title: 'Add dark mode' });
   job.intake(root, id, { decision: 'accept', risk: 'low', ...extra });
+  job.recordRefCheck(root, id, { expect: 'red', passed: true });
   return id;
 }
 
@@ -162,6 +163,7 @@ test('medium risk work, and anything touching money, logins or personal data, ne
   const root = tmp();
   job.create(root, { id: 'm', title: 't' });
   job.intake(root, 'm', { decision: 'accept', risk: 'medium' });
+  job.recordRefCheck(root, 'm', { expect: 'red', passed: true });
   toApprove(root, 'm');
   throwsMsg(() => job.merge(root, 'm', {}), /needs a human to merge \(risk is medium\)/);
   assert.equal(job.merge(root, 'm', { human: true, by: 'human' }).merge.human, true);
@@ -257,6 +259,11 @@ test('the CLI drives a whole job and prints JSON', () => {
   const ok = (...a) => { const r = cli(dir, ...a); assert.equal(r.status, 0, r.stderr); return r.stdout ? JSON.parse(r.stdout) : null; };
   ok('create', '--id', 'x', '--title', 'Dark mode', '--surface', 'ui');
   assert.equal(ok('intake', 'x', '--decision', 'accept', '--risk', 'low').stage, 'spec');
+  const blocked = cli(dir, 'advance', 'x', 'build');
+  assert.equal(blocked.status, 1);
+  assert.match(blocked.stderr, /not been checked against a stub/);
+  assert.match(cli(dir, 'waive-ref-check', 'x', '--reason', ' ').stderr, /needs a reason/);
+  assert.equal(ok('waive-ref-check', 'x', '--reason', 'no stub exists for a one-file change').refCheckWaiver.by, 'orchestrator');
   ok('advance', 'x', 'build');
   ok('agent', 'x', '--agent', 'tdd-guide', '--phase', 'build', '--tokens', '120', '--duration-ms', '800', '--ok', 'true', '--effort', 'medium');
   ok('advance', 'x', 'gate');
@@ -276,6 +283,7 @@ test('the CLI covers feedback, needs-human, a human merge, and bad input', () =>
   const run = (...a) => cli(dir, ...a);
   assert.equal(run('create', '--id', 'y', '--title', 't').status, 0);
   assert.equal(run('intake', 'y', '--decision', 'accept', '--risk', 'medium').status, 0);
+  assert.equal(run('waive-ref-check', 'y', '--reason', 'covered by a manual check').status, 0);
   assert.equal(run('needs-human', 'y', '--reason', 'spend-legal-scope', '--detail', 'paid plan?').status, 0);
   assert.match(JSON.parse(run('queue').stdout)[0].needsHuman.detail, /paid plan/);
   assert.equal(run('feedback', 'y', '--text', 'no').status, 0);
@@ -302,4 +310,44 @@ test('the write guard blocks hand-editing a job record but not other files', () 
   assert.match(checkWrite(ev('docs/jobs/x/job.json'), {}, '/p').reason, /job\.js/);
   assert.equal(checkWrite(ev('/p/docs/jobs/x/notes.md'), {}, '/p').block, false);
   assert.equal(checkWrite(ev('/p/docs/job.json'), {}, '/p').block, false);
+});
+
+test('build cannot start until the tests passed a red check against a stub, or the check is waived with a reason', () => {
+  const root = tmp();
+  job.create(root, { id: 'a', title: 't' });
+  job.intake(root, 'a', { decision: 'accept', risk: 'low' });
+  throwsMsg(() => job.advance(root, 'a', 'build'), /not been checked against a stub/);
+  job.recordRefCheck(root, 'a', { expect: 'red', passed: false, summary: '3 pass against a stub' });
+  throwsMsg(() => job.advance(root, 'a', 'build'), /red check failed/);
+  job.recordRefCheck(root, 'a', { expect: 'red', passed: true });
+  assert.equal(job.advance(root, 'a', 'build').stage, 'build');
+});
+
+test('a failed green reference check blocks the build even when the red check passed, and a later pass clears it', () => {
+  const root = tmp();
+  accepted(root);
+  job.recordRefCheck(root, 'j1', { expect: 'green', passed: false, summary: '2 fail against the reference' });
+  throwsMsg(() => job.advance(root, 'j1', 'build'), /green reference check failed/);
+  job.recordRefCheck(root, 'j1', { expect: 'green', passed: true });
+  assert.equal(job.advance(root, 'j1', 'build').stage, 'build');
+  throwsMsg(() => job.recordRefCheck(root, 'j1', { expect: 'blue', passed: true }), /red or green/);
+});
+
+test('a waiver is recorded with who and why, needs a reason, and lets the build start', () => {
+  const root = tmp();
+  job.create(root, { id: 'a', title: 't' });
+  job.intake(root, 'a', { decision: 'accept', risk: 'low' });
+  throwsMsg(() => job.waiveRefCheck(root, 'a', { reason: '' }), /needs a reason/);
+  const j = job.waiveRefCheck(root, 'a', { reason: 'one-line config change' });
+  assert.equal(j.refCheckWaiver.reason, 'one-line config change');
+  assert.ok(j.history.some((h) => h.event === 'ref-check:waived'));
+  assert.equal(job.advance(root, 'a', 'build').stage, 'build');
+});
+
+test('going back to build after a failed gate does not repeat the ref-check requirement', () => {
+  const root = tmp();
+  accepted(root);
+  job.advance(root, 'j1', 'build');
+  job.advance(root, 'j1', 'gate');
+  assert.equal(job.advance(root, 'j1', 'build').stage, 'build');
 });

@@ -30,6 +30,16 @@ Every piece of work has one record, `docs/jobs/<id>/job.json`, written only by `
 - `job.js merge <id>` succeeds only for low risk with the gate and every assigned reviewer passed, and never for money, logins or personal data. Anything else needs `--human`.
 - `job.js summary <id>` gives cost and time per phase; `job.js queue` lists what is active or waiting.
 
+## Checking the tests before the build (`ref-check`)
+
+A test nobody has run is a guess; three products had a test that contradicted the spec or another test. Before `job.js advance <id> build`, run the suites against something real:
+
+- **Red, always:** write a stub (right file names and exports, no behaviour; a function that throws is enough) in a folder such as `stub/`, then `node .claude/harness/bin/ref-check.js --impl stub --expect red --job <id>`. It fails if any test passes against the stub (it proves nothing), if a test file crashes on load, or if a test fails for a wrong reason such as "module not found" or "connection refused". `job.js` refuses to move to build without a passing red check.
+- **Green, when a reference exists:** `--impl reference --expect green --job <id>` runs acceptance and holdout against an implementation of the spec; every test must pass. It is the only check that catches two tests contradicting each other. A failing green check blocks the build until the wrong test or the wrong reference is fixed.
+- **Waiver:** `job.js waive-ref-check <id> --reason "..."` for work with no stub to write (a one-line change). The reason is recorded in the job history.
+
+The check copies everything to a temp folder and never touches the project. A hidden holdout outside the project works through `--holdout-dir` or `HARNESS_HIDDEN_DIR`.
+
 ## Starting the build run
 
 `node .claude/harness/bin/harness.js init --verify "cd examples/<p> && CLAUDE_PROJECT_DIR=$PWD node ../../.claude/harness/bin/verify.js" --task-file examples/<p>/spec.md --protect examples/<p>/acceptance/,examples/<p>/verify.config.json,docs/product/<p>/ --hide examples/<p>/holdout --max 14 --stall 3`. The holdout lives in the repo so every gate and CI can run it; `--hide` keeps it from the agent while the run is active. Stay in the turn while a builder works: ending it makes the Stop hook re-run verify and count identical red results toward the stall breaker.
@@ -41,7 +51,7 @@ Every piece of work has one record, `docs/jobs/<id>/job.json`, written only by `
 | 1 | `discover` | `product-scoper` | `brief.md` | build/adopt/extend decided; success criteria are user-visible and testable |
 | 2 | `ux` | `ux-designer` (+ `a11y-architect` for review) | `ux.md` | every success criterion has a journey and a UI acceptance check |
 | 3 | `design` | `architect`, `api-design` skill; record choices with `architecture-decision-records` | `design.md`, `adr/` | interfaces, data, failure modes, security notes written; ADR per real choice |
-| 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec and acceptance tests | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder |
+| 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec and acceptance tests | acceptance tests exist, written by an agent other than the builder, and `ref-check --expect red` passes against a stub (see below) |
 | 5 | `build` | `tdd-guide` / `gan-generator` under `/harness-build` | code, unit tests | `verify.js` exits 0 (tests, coverage, mutation, holdout) |
 | 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer` in parallel, foreground | `reviews.md` | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason |
 | 7 | `qa` | `e2e-runner` (Playwright) or `gan-evaluator` | `qa.md`, screenshots | every journey and UI acceptance check in `ux.md` passes in a browser |

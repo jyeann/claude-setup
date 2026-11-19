@@ -94,7 +94,7 @@ function create(root, { id, title, kind = 'build', source = '', surfaces = [], b
     version: VERSION, id, title: String(title).trim(), kind, source, builder, surfaces: [...new Set(surfaces)],
     stage: 'intake', status: 'active', risk: null, reviewers: [], decision: null, needsHuman: null,
     requestedBy: requestedBy || null, acknowledgement: acknowledgement || null,
-    gate: null, agents: [], feedback: [], reviews: [], merge: null,
+    gate: null, refChecks: [], refCheckWaiver: null, agents: [], feedback: [], reviews: [], merge: null,
     createdAt: now, updatedAt: now, history: [{ ts: now, event: 'created', by: 'orchestrator' }],
   };
   withLock(root, id, () => writeAtomic(root, job));
@@ -128,9 +128,40 @@ function advance(root, id, to, { by = 'orchestrator' } = {}) {
     // Forward one step, or back to build after a failed gate or review. Never skip, never jump back further.
     const back = to === 'build' && ['gate', 'review', 'approve'].includes(job.stage);
     if (!(target === from + 1 || back)) throw new Error(`Job ${id}: cannot go from ${job.stage} to ${to}.`);
+    if (job.stage === 'spec' && to === 'build') {
+      const why = refCheckBlock(job);
+      if (why) throw new Error(`Job ${id}: ${why}`);
+    }
     if (job.stage === 'gate' && to === 'review' && !(job.gate && job.gate.passed)) throw new Error(`Job ${id}: the gate has not passed, so it cannot go to review.`);
     job.stage = to;
   }, { event: `advance:${to}`, by });
+}
+
+// The tests are checked before anyone builds against them (lib/ref-check.js). Build needs a passing RED check against a
+// stub; a GREEN check against a reference is optional but, once run, must pass. A waiver is a logged decision, not a skip.
+function refCheckBlock(job) {
+  if (job.refCheckWaiver) return null;
+  const latest = (expect) => [...job.refChecks].reverse().find((c) => c.expect === expect);
+  const red = latest('red');
+  const green = latest('green');
+  if (green && !green.passed) return 'the green reference check failed; fix the wrong test or the wrong reference first.';
+  if (!red) return 'the tests have not been checked against a stub. Run ref-check --expect red --job <id>, or waive it with a reason.';
+  if (!red.passed) return 'the red check failed: some tests pass against a stub or fail for the wrong reason.';
+  return null;
+}
+
+function recordRefCheck(root, id, { expect, passed, summary = '', suites = [] }) {
+  if (!['red', 'green'].includes(expect)) throw new Error('expect must be red or green.');
+  return mutate(root, id, (job) => {
+    job.refChecks.push({ expect, passed: Boolean(passed), summary, suites, ts: Date.now() });
+  }, { event: `ref-check:${expect}:${passed ? 'pass' : 'fail'}`, by: 'ref-check', note: summary });
+}
+
+function waiveRefCheck(root, id, { reason, by = 'orchestrator' }) {
+  if (!reason || !reason.trim()) throw new Error('A waiver needs a reason (it is recorded).');
+  return mutate(root, id, (job) => {
+    job.refCheckWaiver = { reason, by, ts: Date.now() };
+  }, { event: 'ref-check:waived', by, note: reason });
 }
 
 function recordGate(root, id, { passed, summary = '', by = 'gate' }) {
@@ -227,6 +258,6 @@ function summary(job) {
 
 module.exports = {
   VERSION, STAGES, RISKS, KINDS, BUILDERS, HUMAN_REASONS, REVIEWERS, HUMAN_MERGE_SURFACES,
-  rootOf, fileOf, read, create, intake, advance, recordGate, recordAgent, recordReview, needsHuman, feedback,
+  rootOf, fileOf, read, create, intake, advance, recordRefCheck, waiveRefCheck, recordGate, recordAgent, recordReview, needsHuman, feedback,
   mergeVerdict, merge, list, queue, summary,
 };

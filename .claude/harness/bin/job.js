@@ -30,6 +30,7 @@ function run() {
     case 'create': return out(job.create(root, { id, title: flag('title'), kind: flag('kind'), builder: flag('builder'), source: flag('source') ?? '', surfaces: list('surface'), requestedBy: flag('requested-by') ?? '', acknowledgement: flag('ack') ?? '' }));
     case 'intake': return out(job.intake(root, id, { decision: flag('decision'), risk: flag('risk'), surfaces: list('surface'), reason: flag('reason') ?? '' }));
     case 'advance': return out(job.advance(root, id, positional[1]));
+    case 'waive-ref-check': return out(job.waiveRefCheck(root, id, { reason: flag('reason') }));
     case 'gate': return out(job.recordGate(root, id, { passed: bool('passed') === true, summary: flag('summary') ?? '' }));
     case 'agent': return out(job.recordAgent(root, id, { agent: flag('agent'), phase: flag('phase'), effort: flag('effort') ?? null, model: flag('model') ?? null, tokens: num('tokens'), durationMs: num('duration-ms'), ok: bool('ok'), task: flag('task') ?? '' }));
     case 'review': return out(job.recordReview(root, id, { reviewer: flag('reviewer'), verdict: flag('verdict'), summary: flag('summary') ?? '' }));
