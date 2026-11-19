@@ -100,7 +100,7 @@ Done when: run the full verify gate (tests, coverage of 80% or more, test qualit
 ## T12: Release
 - type: AFK
 - blocked-by: T11
-- status: todo
+- status: done
 
 Done when: final README check, CHANGELOG entry, commit on the feature branch (no pull request in this run: orchestrator decision D12).
 
