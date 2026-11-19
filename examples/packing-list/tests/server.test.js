@@ -105,3 +105,11 @@ test('list ids are never written to the logs', async () => {
   await p.exited;
   assert.ok(!(p.out.stdout + p.out.stderr).includes(id));
 });
+
+test('server enforces timeouts on time and caps connections', () => {
+  const { createApp } = require('../src/server');
+  const dir = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'srv-'));
+  const { server } = createApp({ dataFile: require('node:path').join(dir, 'l.json') });
+  assert.equal(server.connectionsCheckingInterval, 1000);
+  assert.equal(server.maxConnections, 1000);
+});

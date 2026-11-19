@@ -37,6 +37,9 @@
   // Returns {remove: [ids], upsert: [{id, text, ticked}], order: [ids]}.
   function mergeItems(current, incoming, pending) {
     const byId = new Map(current.map((c) => [c.id, c]));
+    // While an add is in flight its response applies new items, so a poll must not insert them too.
+    let adding = false;
+    for (const kind of pending.values()) if (kind === 'add') adding = true;
     const seen = new Set();
     const order = [];
     const upsert = [];
@@ -44,9 +47,10 @@
     for (const item of incoming) {
       const kind = pending.get(item.id);
       if (kind === 'remove') continue;
+      const cur = byId.get(item.id);
+      if (adding && !cur) continue;
       seen.add(item.id);
       order.push(item.id);
-      const cur = byId.get(item.id);
       const ticked = kind === 'tick' && cur ? cur.ticked : item.ticked;
       if (!cur || cur.text !== item.text || cur.ticked !== ticked) upsert.push({ id: item.id, text: item.text, ticked });
     }
@@ -58,7 +62,12 @@
     return { remove, upsert, order };
   }
 
-  const api = { progressText, codePointLength, percent, checkName, checkItem, mergeItems, MAX_NAME, MAX_ITEM, MAX_ITEMS };
+  // A write settles only its own marker: a later write of another kind on the same item keeps its own.
+  function settlePending(pending, id, kind) {
+    if (pending.get(id) === kind) pending.delete(id);
+  }
+
+  const api = { settlePending, progressText, codePointLength, percent, checkName, checkItem, mergeItems, MAX_NAME, MAX_ITEM, MAX_ITEMS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.PackingLogic = api;
 }(typeof window !== 'undefined' ? window : globalThis));

@@ -80,7 +80,7 @@ test('mergeItems does not bring back an item with a remove in flight', () => {
 test('mergeItems keeps rows with a write in flight that the server does not list yet', () => {
   const plan = L.mergeItems([item('1', 'A'), item('tmp-1', 'New')], [item('1', 'A'), item('2', 'Other')], new Map([['tmp-1', 'add']]));
   assert.deepEqual(plan.remove, []);
-  assert.deepEqual(plan.order, ['1', '2', 'tmp-1']);
+  assert.deepEqual(plan.order, ['1', 'tmp-1']); // items not on screen wait for the add response
   const gone = L.mergeItems([item('tmp-1', 'New')], [], new Map());
   assert.deepEqual(gone.remove, ['tmp-1']);
 });
@@ -95,4 +95,24 @@ test('client checks give the same message as the server validation for the same 
     assert.equal(L.checkItem(input, 0).message || null, message(V.validateItemText, input), JSON.stringify(input));
   }
   assert.equal(L.codePointLength('\u{1F600}a'), V.codePointLength('\u{1F600}a'));
+});
+
+test('mergeItems does not insert an incoming item while an add is pending, so no duplicate row appears', () => {
+  const current = [{ id: '1', text: 'Socks', ticked: false }, { id: 'tmp-1', text: 'Hat', ticked: false }];
+  const incoming = [{ id: '1', text: 'Socks', ticked: false }, { id: '2', text: 'Hat', ticked: false }];
+  const plan = L.mergeItems(current, incoming, new Map([['tmp-1', 'add']]));
+  assert.deepEqual(plan.upsert, []);
+  assert.deepEqual(plan.order, ['1', 'tmp-1']);
+  assert.deepEqual(plan.remove, []);
+  const after = L.mergeItems([current[0]], incoming, new Map());
+  assert.deepEqual(after.upsert, [{ id: '2', text: 'Hat', ticked: false }]);
+});
+
+test('settlePending clears only its own kind, so a tick settling does not undo a remove', () => {
+  const pending = new Map([['1', 'remove']]);
+  L.settlePending(pending, '1', 'tick');
+  assert.equal(pending.get('1'), 'remove');
+  assert.deepEqual(L.mergeItems([], [{ id: '1', text: 'a', ticked: true }], pending).upsert, []);
+  L.settlePending(pending, '1', 'remove');
+  assert.equal(pending.has('1'), false);
 });

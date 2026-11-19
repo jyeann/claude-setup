@@ -9,11 +9,12 @@ const DEFAULT_MAX_LISTS = 10000;
 
 // mkdir -p, write <file>.tmp-<pid>, fsync, close, rename over the file.
 function writeAtomic(file, data) {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const tmp = `${file}.tmp-${process.pid}`;
+  try { fs.unlinkSync(tmp); } catch { /* none left over */ }
   let fd;
   try {
-    fd = fs.openSync(tmp, 'w');
+    fd = fs.openSync(tmp, 'wx', 0o600);
     fs.writeSync(fd, data);
     fs.fsyncSync(fd);
     fs.closeSync(fd);
@@ -117,6 +118,7 @@ function createStore(file, { maxLists = DEFAULT_MAX_LISTS, log = (m) => process.
     try {
       writeAtomic(file, serialise(extra));
     } catch (err) {
+      log(`Could not write the data file (${err.code || 'unknown'}).`);
       throw new DomainError('storage_error', 503, MESSAGES.storage_error);
     }
   }

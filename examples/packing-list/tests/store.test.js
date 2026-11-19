@@ -198,3 +198,33 @@ test('an unreadable data path (a directory) starts empty without crashing', () =
   assert.equal(store.size(), 0);
   assert.equal(logs.length, 1);
 });
+
+test('data directory is 0700, data file 0600, and a persist failure logs only the error code', () => {
+  const dir = path.join(tmp(), 'data');
+  const file = path.join(dir, 'lists.json');
+  const logs = [];
+  const store = createStore(file, { log: (m) => logs.push(m) });
+  store.load();
+  store.create(L.createList(id('A'), 'Trip', 0));
+  assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  const realRename = fs.renameSync;
+  fs.renameSync = () => { const e = new Error('x'); e.code = 'ENOSPC'; throw e; };
+  try {
+    assert.throws(() => store.update(id('A'), (l) => L.addItem(l, 'x')), (e) => e.code === 'storage_error');
+  } finally { fs.renameSync = realRename; }
+  assert.equal(logs.length, 1);
+  assert.match(logs[0], /ENOSPC/);
+  assert.ok(!logs[0].includes(id('A')));
+});
+
+test('writeAtomic does not follow a planted symlink at the temp path', () => {
+  const dir = tmp();
+  const file = path.join(dir, 'lists.json');
+  const victim = path.join(dir, 'victim');
+  fs.writeFileSync(victim, 'keep');
+  fs.symlinkSync(victim, `${file}.tmp-${process.pid}`);
+  writeAtomic(file, 'data');
+  assert.equal(fs.readFileSync(victim, 'utf8'), 'keep');
+  assert.equal(fs.readFileSync(file, 'utf8'), 'data');
+});

@@ -75,3 +75,19 @@ test('readJsonBody passes stream errors on', async () => {
   req.headers = { 'content-type': 'application/json' };
   await assert.rejects(H.readJsonBody(req, 4096), /socket gone/);
 });
+
+test('readJsonBody stops keeping chunks once over the cap and never concatenates or parses', async () => {
+  const { mock } = require('node:test');
+  const concat = mock.method(Buffer, 'concat');
+  const parse = mock.method(JSON, 'parse');
+  let rejections = 0;
+  try {
+    const req = fakeReq(['{"a":"', 'x'.repeat(80), 'x'.repeat(80), 'y'.repeat(10), '"}']);
+    await H.readJsonBody(req, 100).catch((e) => { rejections += 1; assert.equal(e.code, 'body_too_large'); });
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    assert.equal(rejections, 1);
+    assert.equal(concat.mock.callCount(), 0);
+    assert.equal(parse.mock.callCount(), 0);
+  } finally { concat.mock.restore(); parse.mock.restore(); }
+});

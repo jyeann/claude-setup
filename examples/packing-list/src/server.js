@@ -13,7 +13,8 @@ function createApp({ dataFile, host = '127.0.0.1', maxLists } = {}) {
   const store = createStore(dataFile, maxLists === undefined ? {} : { maxLists });
   store.load();
   const ctx = { store, loopback: LOOPBACK.has(host) };
-  const server = http.createServer((req, res) => { handle(req, res, ctx); });
+  const server = http.createServer({ connectionsCheckingInterval: 1000 }, (req, res) => { handle(req, res, ctx); });
+  server.maxConnections = 1000;
   server.headersTimeout = 5000;
   server.requestTimeout = 10000;
   server.on('clientError', (err, socket) => {

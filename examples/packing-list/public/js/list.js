@@ -8,6 +8,7 @@
   const MSG_LOST = 'Connection lost. Trying again...';
   const MSG_SAVE = 'Could not save that change. Try again.';
   const MSG_COPIED = 'Link copied';
+  const MSG_SELECT = 'Select the link and copy it.';
 
   const $ = (id) => document.getElementById(id);
   const title = $('list-title');
@@ -49,7 +50,8 @@
     const items = currentItems();
     const n = items.filter((i) => i.ticked).length;
     const m = items.length;
-    progress.textContent = L.progressText(n, m);
+    const text = L.progressText(n, m);
+    if (progress.textContent !== text) progress.textContent = text;
     bar.setAttribute('aria-valuemax', String(m));
     bar.setAttribute('aria-valuenow', String(n));
     fill.style.width = L.percent(n, m) + '%';
@@ -122,7 +124,7 @@
     applyItems(known);
   }
 
-  function setStatus(text) { status.textContent = text; }
+  function setStatus(text) { if (status.textContent !== text) status.textContent = text; }
   function clearStatusIf(text) { if (status.textContent === text) status.textContent = ''; }
 
   function showFormError(message) {
@@ -150,7 +152,7 @@
       epoch += 1;
       const left = tickCounts.get(id) - 1;
       tickCounts.set(id, left);
-      if (left === 0) { tickCounts.delete(id); pending.delete(id); chains.delete(id); }
+      if (left === 0) { tickCounts.delete(id); L.settlePending(pending, id, 'tick'); chains.delete(id); }
       if (res && res.ok && res.body && Array.isArray(res.body.items)) {
         clearStatusIf(MSG_SAVE);
         applyView(res.body);
@@ -178,7 +180,7 @@
     input.focus();
     const res = await send('DELETE', itemUrl(id));
     epoch += 1;
-    pending.delete(id);
+    L.settlePending(pending, id, 'remove');
     if (res && res.ok && res.body && Array.isArray(res.body.items)) {
       clearStatusIf(MSG_SAVE);
       applyView(res.body);
@@ -235,7 +237,9 @@
     const live = document.createElement('div');
     live.id = 'status';
     live.setAttribute('role', 'status');
+    h1.tabIndex = -1;
     main.replaceChildren(h1, p, p2, live);
+    h1.focus();
     document.title = 'List not found - Packing list';
   }
 
@@ -258,10 +262,13 @@
 
   async function poll() {
     if (stopped) return;
-    const startEpoch = epoch;
-    const res = await send('GET', listUrl);
-    handle(res, startEpoch === epoch);
-    if (!stopped) pollTimer = setTimeout(poll, POLL_MS);
+    try {
+      const startEpoch = epoch;
+      const res = await send('GET', listUrl);
+      handle(res, startEpoch === epoch);
+    } finally {
+      if (!stopped) pollTimer = setTimeout(poll, POLL_MS);
+    }
   }
 
   function copyText(text) {
@@ -274,16 +281,20 @@
     return Promise.resolve(legacy());
   }
 
-  copyButton.addEventListener('click', async () => {
-    const ok = await copyText(shareLink.value);
-    if (!ok) { shareLink.select(); setStatus('Select the link and copy it.'); return; }
-    copyButton.textContent = 'Copied';
-    setStatus(MSG_COPIED);
+  function armClear(message) {
     clearTimeout(copyTimer);
     copyTimer = setTimeout(() => {
       copyButton.textContent = 'Copy';
-      clearStatusIf(MSG_COPIED);
+      clearStatusIf(message);
     }, COPIED_MS);
+  }
+
+  copyButton.addEventListener('click', async () => {
+    const ok = await copyText(shareLink.value);
+    if (!ok) { shareLink.select(); setStatus(MSG_SELECT); armClear(MSG_SELECT); return; }
+    copyButton.textContent = 'Copied';
+    setStatus(MSG_COPIED);
+    armClear(MSG_COPIED);
   });
 
   function start() {

@@ -79,10 +79,6 @@ function sendAsset(res, name) {
   return true;
 }
 
-function hasAsset(name) {
-  return assets.has(name);
-}
-
 const fail = (code, status, message) => new DomainError(code, status, message);
 
 function isJsonType(header) {
@@ -137,6 +133,6 @@ function readJsonBody(req, maxBytes) {
 }
 
 module.exports = {
-  PUBLIC_DIR, securityHeaders, applySecurityHeaders, sendJson, sendError, sendPage, sendAsset, hasAsset,
+  PUBLIC_DIR, securityHeaders, applySecurityHeaders, sendJson, sendError, sendPage, sendAsset,
   readJsonBody, loadPublic, isJsonType,
 };

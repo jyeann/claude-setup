@@ -86,7 +86,7 @@ Done when: UC2 and UC15 pass at 320px with a 120-character unbroken item and an 
 ## T10: Review-fix
 - type: AFK
 - blocked-by: T7, T8, T9
-- status: todo
+- status: done
 
 Done when: code-reviewer and security-reviewer pass over T2-T9; fix all CRITICAL and HIGH findings.
 
