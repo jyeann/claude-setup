@@ -7,7 +7,7 @@ Run of `orch-product-team` under the whole-pipeline stop gate, one session, no h
 - Product gate green: 175/175 tests, source coverage 99.45%, hidden tests 25/25, browser journeys 25/25 (J1 to J10, UC1 to UC15), mutation 8/8.
 - Reviews: 0 CRITICAL, 0 HIGH. QA: 0 BLOCKER, 1 MAJOR (fixed in round trip 1 of 3), 5 MINOR, 2 COSMETIC.
 - Stop hook: never fired before the end of phase 9, because the orchestrator never ended its turn (harness iteration 0 of 40 at the time of writing).
-- Frozen gate files: one amendment, by the test author, with an `AMEND:` line (`verify.config.json`, `mutation.copy` lacked `package.json`).
+- Frozen gate files: three amendments, all by the test author with `AMEND:` lines: `verify.config.json` (`mutation.copy` lacked `package.json`) and the two test helper files (a port race that made the gate flaky, found on the final pipeline check).
 
 ## Cost by phase (from `kpi.json`)
 
@@ -16,15 +16,15 @@ Run of `orch-product-team` under the whole-pipeline stop gate, one session, no h
 | discover | 1 | 18,186 | 0.6 min |
 | ux | 2 | 42,654 | 1.2 min |
 | design | 1 | 37,165 | 1.6 min |
-| plan | 4 | 204,492 | 19.6 min |
+| plan | 6 | 204,492 | 22.0 min |
 | build | 4 | 253,412 | 27.5 min |
 | review | 4 | 206,687 | 9.0 min |
 | qa | 1 | 69,306 | 7.0 min |
 | release | 1 | 25,599 | 0.4 min |
 | retro | 1 | 14,399 | 0.3 min |
-| total | 19 | 871,900 | 67.3 min |
+| total | 21 | 871,900 | 69.7 min |
 
-How to read it: 9 of the 18 delegated runs before this retro ran longer than 120 seconds and were moved to the background by the host, so the trace hook recorded no tokens or time for them. Their figures were typed in from the completion notices (`agent-finals.json`, passed with `--finals`). Without that file the KPI shows 9 of 18 runs unreported and 276,566 tokens. The orchestrator's own tokens are not in the KPI at all. The resumed test author (the amendment) is counted as a run with time but no tokens. The KPI counts 2 human prompts and 1 intervention; the second "prompt" was the host's "worker process was restarted" notice, not a person.
+How to read it: 9 of the 18 delegated runs before this retro ran longer than 120 seconds and were moved to the background by the host, so the trace hook recorded no tokens or time for them. Their figures were typed in from the completion notices (`agent-finals.json`, passed with `--finals`). Without that file the KPI shows 9 of 18 runs unreported and 276,566 tokens. The orchestrator's own tokens are not in the KPI at all. Three resumed test-author runs (the amendments, via SendMessage) are counted with time but no tokens, because their notices give only a cumulative token figure. The KPI counts 2 human prompts and 1 intervention; the second "prompt" was the host's "worker process was restarted" notice, not a person.
 
 ## What went well
 
@@ -41,7 +41,8 @@ How to read it: 9 of the 18 delegated runs before this retro ran longer than 120
 4. Two `pre-bash` guard crashes failed open (`.harness/hook-errors.jsonl`): a regular expression built from command text, and a JSON parse of command text.
 5. The guard blocked one read-only orchestrator command that only named a path under `.harness/` (documented false positive).
 6. A delegated agent left a server process running; the orchestrator's attempt to stop it was denied by the permission system.
-7. This retro's own agent (`harness-improver`) reported that it did not run the report or open any of the evidence files it was pointed to, and proposed a `verify.js --only mutation` flag that does not exist. Its proposal below is kept because the orchestrator checked it against the run; the wording is corrected.
+7. The gate was flaky once: the test helpers picked a free port and started the server afterwards, so under parallel load a test could fail with "Port N is in use". It showed as a failed mutation baseline on the final check and was fixed by the test authors (decision D29).
+8. This retro's own agent (`harness-improver`) reported that it did not run the report or open any of the evidence files it was pointed to, and proposed a `verify.js --only mutation` flag that does not exist. Its proposal below is kept because the orchestrator checked it against the run; the wording is corrected.
 
 ## The one proposed change (not applied; a human merges it)
 

@@ -1,14 +1,14 @@
 {
-  "generatedAt": 1795116906390,
+  "generatedAt": 1795117676124,
   "totals": {
     "agents": 15,
     "active": 14,
     "idle": 1,
-    "runs": 19,
+    "runs": 21,
     "failed": 0,
     "unreported": 0,
     "tokens": 871900,
-    "durationMs": 4038616
+    "durationMs": 4182129
   },
   "rows": [
     {
@@ -96,18 +96,18 @@
       "role": "End-to-end testing specialist using Vercel Agent Browser (preferred) with Playwright fallback. Use for generating, maintaining, and running ",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 1,
+      "runs": 2,
       "failed": 0,
       "unreported": 0,
       "successRate": 1,
       "tokens": 64096,
-      "durationMs": 714455,
-      "toolUses": 21,
+      "durationMs": 809533,
+      "toolUses": 23,
       "models": {
-        "default": 1
+        "default": 2
       },
       "efforts": {
-        "medium": 1
+        "medium": 2
       },
       "lastRun": 1795092435839
     },
@@ -272,18 +272,18 @@
       "role": "Test-Driven Development specialist enforcing write-tests-first methodology. Use when writing new features, fixing bugs, or refactoring code.",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 2,
+      "runs": 3,
       "failed": 0,
       "unreported": 0,
       "successRate": 1,
       "tokens": 106539,
-      "durationMs": 426037,
-      "toolUses": 29,
+      "durationMs": 474472,
+      "toolUses": 32,
       "models": {
-        "default": 2
+        "default": 3
       },
       "efforts": {
-        "medium": 2
+        "medium": 3
       },
       "lastRun": 1795092435841
     },
@@ -312,7 +312,7 @@
     "sessions": 1,
     "prompts": 2,
     "interventions": 1,
-    "recordedPrompts": 21,
+    "recordedPrompts": 23,
     "unclassified": 0
   },
   "byPhase": [
@@ -342,11 +342,11 @@
     },
     {
       "phase": "plan",
-      "runs": 4,
+      "runs": 6,
       "unreported": 0,
       "failed": 0,
       "tokens": 204492,
-      "durationMs": 1178063
+      "durationMs": 1321576
     },
     {
       "phase": "build",
@@ -401,10 +401,10 @@
     {
       "model": "default",
       "effort": "medium",
-      "runs": 7,
+      "runs": 9,
       "failed": 0,
       "tokens": 424047,
-      "durationMs": 2793111
+      "durationMs": 2936624
     },
     {
       "model": "default",
@@ -642,6 +642,30 @@
       "effort": "medium",
       "tokens": null,
       "durationMs": 90867,
+      "outcomeReported": true
+    },
+    {
+      "ts": 0,
+      "agent": "tdd-guide",
+      "phase": "plan",
+      "task": "[phase:plan] amend test helpers for the port race (resumed test author, via SendMessage)",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": null,
+      "durationMs": 48435,
+      "outcomeReported": true
+    },
+    {
+      "ts": 0,
+      "agent": "e2e-runner",
+      "phase": "plan",
+      "task": "[phase:plan] amend journeys/support.js for the port race (resumed journey author, via SendMessage)",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": null,
+      "durationMs": 95078,
       "outcomeReported": true
     }
   ]
