@@ -26,6 +26,7 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | Report + markers | `bin/report.js` + `lib/report.js` | Pass rates, last-10 vs previous-10 trend, most common failures, and before/after rates around changes you `--mark`. |
 | Improver | `agents/harness-improver.md`, `/harness-improve` | Read-only agent proposes ONE change from the evidence; a human merges it. |
 
+| Job spine | `bin/job.js` + `lib/job.js` | One durable record per job (`docs/jobs/<id>/job.json`), written only by the CLI and validated on every change: stage order, gate before review, risk-picked reviewers, per-phase cost with unreported outcomes kept distinct, owner contact limited to three reasons, merge rules (agents merge only low risk, all checks green, never money, logins or personal data), a recorded acknowledgement for rebuilds. A write guard blocks hand-editing the file. |
 | Reference check | `bin/check-refs.js` + `lib/refs.js` | Fails on commands, agents, skills or rules that point at a script, skill, rules dir, agent or removed command that does not exist. Runs in CI via the test suite, so an upstream sync that re-adds a broken item is caught. |
 
 Everything except the secret scan, the dangerous-command blocklist and tracing is inert unless `.harness/state.json` says a run is active.

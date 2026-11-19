@@ -324,6 +324,10 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
     const hit = candidateRelPaths(file, projectDir).some((rel) => guarded.some((p) => rel.startsWith(p)));
     if (hit) return deny(`${file} is protected during a harness run (guardrails, state and acceptance tests are read-only).`);
   }
+  // Job records have one writer, bin/job.js. An editor tool must not hand-write them, even when no run is active.
+  if (file && candidateRelPaths(file, projectDir).some((rel) => /(^|\/)jobs\/[a-z0-9][a-z0-9-]*\/job\.json(\.[\w.]+\.tmp)?$/.test(rel))) {
+    return deny(`${file} is a job record. Change it with "node .claude/harness/bin/job.js <command>", never by editing the file.`);
+  }
   if (TEMPLATE_ENV.test(path.basename(file))) return ok;
   const found = scanSecrets(writtenText(input));
   return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;

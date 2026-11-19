@@ -19,6 +19,17 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 - **Tag every delegated agent** with its phase: `description: "[phase:design] ..."`. The KPI roll-up groups cost by this tag. Pass `effort` explicitly (see Effort).
 - **Done means a person can use it.** The build is not finished until phase 7 has executed every journey in `ux.md` in a real browser and they pass.
 
+## The job record (the spine)
+
+Every piece of work has one record, `docs/jobs/<id>/job.json`, written only by `node .claude/harness/bin/job.js`. Never edit it by hand (a write guard blocks the editor tools). The orchestrator calls the script at each step, so state, cost and outcome are never re-typed:
+
+- Start: `job.js create --id <slug> --title "..."`. A rebuild of someone else's product also needs `--kind rebuild --requested-by <who> --ack "<their acknowledgement that they own the legal responsibility>"`.
+- Phase 1 ends with `job.js intake <id> --decision accept|reject|ask --risk low|medium|high --surface money,logins,personal-data,...`. The risk picks the reviewers for phase 6 (low: code; medium: plus security; high: plus architect). Money, logins or personal data raise a low risk to medium.
+- Move on with `job.js advance <id> <stage>`; record the verify result with `job.js gate`, each reviewer with `job.js review`, and every delegated agent with `job.js agent --agent A --phase P --effort E --tokens N --duration-ms N --ok true|false` (leave `--ok` out when the outcome is unknown: it is counted as unreported, never as a pass).
+- Waiting for the owner is `job.js needs-human <id> --reason real-scenario-test|secrets-or-access|spend-legal-scope --detail "..."`. Any other reason is refused: decide, record it in `decisions.md`, carry on.
+- `job.js merge <id>` succeeds only for low risk with the gate and every assigned reviewer passed, and never for money, logins or personal data. Anything else needs `--human`.
+- `job.js summary <id>` gives cost and time per phase; `job.js queue` lists what is active or waiting.
+
 ## Starting the build run
 
 `node .claude/harness/bin/harness.js init --verify "cd examples/<p> && CLAUDE_PROJECT_DIR=$PWD node ../../.claude/harness/bin/verify.js" --task-file examples/<p>/spec.md --protect examples/<p>/acceptance/,examples/<p>/verify.config.json,docs/product/<p>/ --hide examples/<p>/holdout --max 14 --stall 3`. The holdout lives in the repo so every gate and CI can run it; `--hide` keeps it from the agent while the run is active. Stay in the turn while a builder works: ending it makes the Stop hook re-run verify and count identical red results toward the stall breaker.
