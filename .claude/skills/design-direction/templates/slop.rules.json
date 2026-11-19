@@ -1,0 +1,4 @@
+[
+  { "id": "gradient-text", "pattern": "background-clip:\\s*text|bg-clip-text", "message": "gradient text on headings is on the slop list" },
+  { "id": "purple-blue-gradient", "pattern": "(from|via|to)-(purple|violet|indigo)-\\d+.*(to|via)-(blue|pink|cyan)-\\d+", "message": "purple-to-blue gradient is on the slop list" }
+]

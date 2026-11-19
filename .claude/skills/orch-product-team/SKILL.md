@@ -28,11 +28,11 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 | # | Phase tag | Who | Output (under `docs/product/<slug>/`) | Exit check |
 |---|-----------|-----|----------------------------------------|------------|
 | 1 | `discover` | `product-scoper` | `brief.md` | build/adopt/extend decided; success criteria are user-visible and testable |
-| 2 | `ux` | `ux-designer` (+ `a11y-architect` for review) | `ux.md` | every success criterion has a journey and a UI acceptance check |
+| 2 | `look`, `ux` | `design-director` first (screens only; `design-direction` skill), then `ux-designer` (+ `a11y-architect` for review) | `docs/design/`, `ux.md` | direction, tokens and slop list recorded; every success criterion has a journey and a UI acceptance check that follows the direction |
 | 3 | `design` | `architect`, `api-design` skill; record choices with `architecture-decision-records` | `design.md`, `adr/` | interfaces, data, failure modes, security notes written; ADR per real choice |
 | 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec and acceptance tests | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder |
 | 5 | `build` | `tdd-guide` / `gan-generator` under `/harness-build` | code, unit tests | `verify.js` exits 0 (tests, coverage, mutation, holdout) |
-| 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer` in parallel, foreground | `reviews.md` | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason |
+| 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer`, and `design-director` (review mode, screens only) in parallel, foreground | `reviews.md` | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason |
 | 7 | `qa` | `e2e-runner` (Playwright) or `gan-evaluator` | `qa.md`, screenshots | every journey and UI acceptance check in `ux.md` passes in a browser |
 | 8 | `release` | `doc-updater` | README with run steps, `CHANGELOG` entry | someone with only the README can run it |
 | 9 | `retro` | `harness-improver` + the KPI roll-up | `retro.md` | one evidence-backed change proposed; KPI file refreshed |
@@ -49,7 +49,7 @@ From the per-phase comparison on the retro board (`docs/product/retro-board/effo
 
 | Phase | Default | Why |
 |---|---|---|
-| discover, ux, design, release | `low` | All levels passed; `high` cost 1.4x to 2.0x for no measured gain |
+| discover, look, ux, design, release | `low` | All levels passed; `high` cost 1.4x to 2.0x for no measured gain |
 | review, qa | `low` | All levels passed the seeded-defect graders; `high` cost 1.5x. Use `high` for auth, input, files and money on judgment: the data does not show it helps |
 | tests (test owner) | `medium` | `low` passed 1 of 2; `high` cost 2x `medium` with the same pass |
 | build | `low` or `medium`, with the full gate including the hidden holdout | `high` failed the gate 2 of 2: in the one run diagnosed, it missed a rule from the design that no visible test covered (control characters in card text) |
