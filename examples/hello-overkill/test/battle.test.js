@@ -85,3 +85,9 @@ test('pickPair re-rolls only while the second pick collides with the first', () 
   assert.equal(calls, 4);
   assert.notEqual(pair.a.id, pair.b.id);
 });
+
+test('every catalogue entry renders to a distinct battle greeting, so equal id and equal text always agree', () => {
+  const { CATALOGUE } = require('../src/greetings');
+  const texts = [...CATALOGUE.values()].map((e) => render(e.language, e.tone, 'World'));
+  assert.equal(new Set(texts).size, texts.length);
+});

@@ -63,3 +63,12 @@ test('render inserts the name literally and exactly once', () => {
   const out = render('en', 'formal', '{name}');
   assert.equal(out.split('{name}').length - 1, 1);
 });
+
+test('render returns null unless both language and tone are real strings, even when they coerce to a catalogue key', () => {
+  const asLang = { toString: () => 'en' };
+  const asTone = { toString: () => 'formal' };
+  assert.equal(render(asLang, 'formal', 'A'), null);
+  assert.equal(render('en', asTone, 'A'), null);
+  assert.equal(render(['en'], 'formal', 'A'), null);
+  assert.ok(render('en', 'formal', 'A'));
+});

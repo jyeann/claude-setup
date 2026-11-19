@@ -99,3 +99,26 @@ test('production flag follows NODE_ENV', () => {
   assert.equal(loadConfig({ NODE_ENV: 'production', HELLO_SIGNING_SECRET: 'x'.repeat(32) }, () => {}).production, true);
   assert.equal(run({ HELLO_SIGNING_SECRET: 'x' }).cfg.production, false);
 });
+
+test('accepts HELLO_RATE_LIMIT of exactly 1 and rejects 0', () => {
+  const ok = run({ HELLO_RATE_LIMIT: '1', HELLO_SIGNING_SECRET: 'x' });
+  assert.equal(ok.cfg.rateLimit, 1);
+  assert.deepEqual(ok.w, []);
+  const bad = run({ HELLO_RATE_LIMIT: '0', HELLO_SIGNING_SECRET: 'x' });
+  assert.equal(bad.cfg.rateLimit, 10);
+  assert.deepEqual(bad.w, ['invalid HELLO_RATE_LIMIT, using 10']);
+});
+
+test('HELLO_CHAOS_SEED: unset or empty is silent, digits are used, anything else warns and is ignored', () => {
+  for (const env of [{}, { HELLO_CHAOS_SEED: '' }]) {
+    const { cfg, w } = run({ ...env, HELLO_SIGNING_SECRET: 'x' });
+    assert.equal(cfg.chaosSeed, undefined);
+    assert.deepEqual(w, []);
+  }
+  assert.equal(run({ HELLO_CHAOS_SEED: '42', HELLO_SIGNING_SECRET: 'x' }).cfg.chaosSeed, 42);
+  for (const v of ['abc', '-1', '12345678901', '1.5']) {
+    const { cfg, w } = run({ HELLO_CHAOS_SEED: v, HELLO_SIGNING_SECRET: 'x' });
+    assert.equal(cfg.chaosSeed, undefined, v);
+    assert.deepEqual(w, ['invalid HELLO_CHAOS_SEED, ignoring'], v);
+  }
+});

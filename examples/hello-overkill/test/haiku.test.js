@@ -3,6 +3,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { countSyllables, lineSyllables, makeHaiku, BANKS } = require('../src/haiku');
 const { mulberry32 } = require('../src/weather');
+const fs = require('node:fs');
+const path = require('node:path');
+const Module = require('node:module');
 
 const THEMES = Object.keys(BANKS.themes);
 
@@ -159,4 +162,86 @@ test('makeHaiku: Unicode names with diacritics and emoji remain scannable with a
   assert.equal(makeHaiku({ name: 'José' }).nameSyllables, 2);
   assert.deepEqual(makeHaiku({ name: 'Zoë 😀' }).syllables, [5, 7, 5]);
   assert.deepEqual(makeHaiku({ name: '日本', syllables: 2 }).syllables, [5, 7, 5]);
+});
+
+// Replaces one bank entry for the duration of fn(), then restores it, so a test can feed makeHaiku a bad fragment.
+function withBadFragment(list, index, fragment, fn) {
+  const original = list[index];
+  list[index] = fragment;
+  try { return fn(); } finally { list[index] = original; }
+}
+
+const HAIKU_SRC = path.join(__dirname, '..', 'src', 'haiku.js');
+// Loads src/haiku.js with its text edited, to exercise the load-time bank check.
+function loadEdited(edit) {
+  const m = new Module(HAIKU_SRC, module);
+  m.filename = HAIKU_SRC;
+  m.paths = Module._nodeModulePaths(path.dirname(HAIKU_SRC));
+  m._compile(edit(fs.readFileSync(HAIKU_SRC, 'utf8')), HAIKU_SRC);
+  return m.exports;
+}
+
+test('makeHaiku skips a seven-syllable line that does not scan and uses the next fragment', () => {
+  const seven = BANKS.themes.morning.seven;
+  withBadFragment(seven, 0, [7, 'one two'], () => {
+    const h = makeHaiku({ name: 'Zed', theme: 'morning', random: () => 0 });
+    assert.equal(h.haiku[1], seven[1][1]);
+    assert.deepEqual(h.syllables, [5, 7, 5]);
+  });
+});
+
+test('makeHaiku skips a five-syllable closing line that does not scan and uses the next fragment', () => {
+  const five = BANKS.themes.morning.five;
+  withBadFragment(five, 0, [5, 'one two'], () => {
+    const h = makeHaiku({ name: 'Zed', theme: 'morning', random: () => 0 });
+    assert.equal(h.haiku[2], five[1][1]);
+    assert.deepEqual(h.syllables, [5, 7, 5]);
+  });
+});
+
+test('makeHaiku skips a name template whose syllable total is wrong', () => {
+  const list = BANKS.nameLine1[1];
+  withBadFragment(list, 0, [4, '{name} x'], () => {
+    const h = makeHaiku({ name: 'Zed', theme: 'morning', random: () => 0 });
+    assert.equal(h.haiku[0], list[1][1].replace('{name}', 'Zed'));
+    assert.deepEqual(h.syllables, [5, 7, 5]);
+  });
+});
+
+test('makeHaiku skips a name template that scans differently once the name is joined to its neighbours', () => {
+  const list = BANKS.nameLine1[1];
+  // Parts count 1 + 4 = 5, but "Zede sky is soft" scans as 4 as a whole line.
+  withBadFragment(list, 0, [4, '{name}e sky is soft'], () => {
+    const h = makeHaiku({ name: 'Zed', theme: 'morning', random: () => 0 });
+    assert.notEqual(h.haiku[0], 'Zede sky is soft');
+    assert.equal(lineSyllables(h.haiku[0]), 5);
+    assert.equal(h.haiku[0], list[1][1].replace('{name}', 'Zed'));
+  });
+});
+
+test('makeHaiku returns null when no candidate scans', () => {
+  const list = BANKS.nameLine1[1];
+  const saved = list.slice();
+  for (let i = 0; i < list.length; i += 1) list[i] = [4, '{name}e sky is soft'];
+  try {
+    assert.equal(makeHaiku({ name: 'Zed', theme: 'morning', random: () => 0 }), null);
+  } finally { saved.forEach((f, i) => { list[i] = f; }); }
+});
+
+test('makeHaiku: an explicit seed drives the choice and the default seed comes from the name', () => {
+  const seeds = new Set();
+  for (let s = 1; s <= 30; s += 1) seeds.add(JSON.stringify(makeHaiku({ name: 'Zed', theme: 'ocean', seed: s }).haiku));
+  assert.ok(seeds.size > 1, 'different seeds must produce different haiku');
+  assert.deepEqual(makeHaiku({ name: 'Zed', seed: 7 }), makeHaiku({ name: 'Zed', seed: 7 }));
+  const byName = new Set();
+  for (const n of ['Zed', 'Bob', 'Tim', 'Sam', 'Max', 'Dan', 'Ann', 'Jim', 'Ron', 'Hal', 'Eve', 'Kay']) byName.add(JSON.stringify(makeHaiku({ name: n, theme: 'city' }).haiku.filter((l) => !l.includes(n))));
+  assert.ok(byName.size > 1, 'unseeded output must depend on the name');
+});
+
+test('the load-time bank check rejects a fragment whose declared syllables are wrong', () => {
+  // Declared 5 but really 2: the count disagrees while the declared total still matches the line.
+  assert.throws(() => loadEdited((src) => src.replace("[5, 'soft light on the street']", "[5, 'soft light']")), /haiku bank mismatch/);
+  // Declared 4 and really 4, but a five-syllable line needs 5: the count agrees while the total does not.
+  assert.throws(() => loadEdited((src) => src.replace("[5, 'soft light on the street']", "[4, 'soft light on street']")), /haiku bank mismatch/);
+  assert.doesNotThrow(() => loadEdited((src) => src));
 });
