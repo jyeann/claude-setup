@@ -76,7 +76,7 @@ function mutate(root, id, fn, { event, by = 'orchestrator', note = '', now = Dat
   });
 }
 
-function create(root, { id, title, kind = 'build', source = '', surfaces = [], builder = 'native', requestedBy = '', acknowledgement = '', now = Date.now() }) {
+function create(root, { id, title, kind = 'build', source = '', surfaces = [], builder = 'native', requestedBy = '', acknowledgement = '', external = null, now = Date.now() }) {
   assertId(id);
   if (!title || !String(title).trim()) throw new Error('A job needs a title.');
   if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(', ')}.`);
@@ -88,7 +88,7 @@ function create(root, { id, title, kind = 'build', source = '', surfaces = [], b
     throw new Error('A rebuild job needs --requested-by and --ack (the requester owns the legal responsibility; it is recorded).');
   }
   const job = {
-    version: VERSION, id, title: String(title).trim(), kind, source, builder, surfaces: [...new Set(surfaces)],
+    version: VERSION, id, title: String(title).trim(), kind, source, builder, external, surfaces: [...new Set(surfaces)],
     stage: 'intake', status: 'active', risk: null, riskRaisedBy: null, reviewers: [], decision: null, needsHuman: null,
     requestedBy: requestedBy || null, acknowledgement: acknowledgement || null,
     gate: null, refChecks: [], refCheckWaiver: null, agents: [], feedback: [], reviews: [], merge: null,
