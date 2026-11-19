@@ -9,3 +9,7 @@
 | 5 | Build, adopt or extend | build; extend | Build | Nothing else is a solo offline incident game | product-scoper |
 | 6 | Harness run | start a Stop-hook run; call verify.js directly | Call verify.js directly | The earlier wiki run is still marked active; two products cannot share a run | orchestrator |
 | 7 | Test-only dependency `@axe-core/playwright` | allow in test tooling; inject axe-core like the wiki QA | Inject axe-core into the page from a scratch install outside the repo, as in the wiki QA; no dependency added | Zero npm dependencies stays true, including dev | orchestrator |
+| 8 | Schema title cap (ux 80 chars vs check 37 needing 300) | 80; 300 | 300 | Check 37 needs a valid 300-character title | architect |
+| 9 | Progress format additions | as ux.md; add `actions[].node` and a `scenarioHash` per run | Add both | Detects a changed scenario file and keeps the replay exact | architect |
+| 10 | Licence text in brief/ux/design-direction | SA; ND | ND everywhere (replaced by the orchestrator) | Source LICENSE.md says CC BY-NC-ND 4.0 | orchestrator |
+| 11 | Remaining ux.md conflicts (design.md section 17, seven minor edits) | edit ux.md; let the spec win | design.md wins; the planner lists them as resolved ambiguities in spec.md | ux.md says engine/server details are decided by design.md | orchestrator |

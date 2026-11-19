@@ -13,7 +13,7 @@ The job: turn "I know the term" into "I spotted it in the metrics, picked the ri
 
 Constraints (house stack): Node >=22, zero npm dependencies, `node:test`, vanilla JS, no build step, canvas 2D/SVG/CSS visuals, CSP-safe (no inline script or style), `node src/server.js` serves static files with the same Host/CSP hardening as `examples/wiki`. Progress lives in localStorage with optional JSON export/import. No accounts, no network calls at runtime, no personal data. Fully keyboard-playable, with a text-first mode and `prefers-reduced-motion` respected.
 
-Licence: system-design-101 is CC BY-NC-SA 4.0. We link to guide URLs from its README and write all scenario and debrief text ourselves. We copy no guide text or images. An About screen and the README credit the source repo.
+Licence: system-design-101 is CC BY-NC-ND 4.0. We link to guide URLs from its README and write all scenario and debrief text ourselves. We copy no guide text or images. An About screen and the README credit the source repo.
 
 Repository check: nothing in `examples/` or `docs/product/` simulates systems. `examples/wiki` supplies the static-server hardening pattern to reuse.
 
@@ -74,7 +74,7 @@ SC10. **Progress round trip.** After finishing 3 incidents, Export downloads a J
 
 SC11. **Hostile import.** Importing a file over 256 KB, non-JSON, JSON with `__proto__`/`constructor` keys, or JSON with `<img onerror>` in a name field shows "Import rejected: <reason>". Stored progress is unchanged, no script runs, and `Object.prototype` is not polluted.
 
-SC12. **Share and attribution.** "Copy result" puts a plain-text summary with no personal data on the clipboard, and the page makes no network request (DevTools Network shows only same-origin static files). The About screen credits ByteByteGo system-design-101 under CC BY-NC-SA 4.0 with a link.
+SC12. **Share and attribution.** "Copy result" puts a plain-text summary with no personal data on the clipboard, and the page makes no network request (DevTools Network shows only same-origin static files). The About screen credits ByteByteGo system-design-101 under CC BY-NC-ND 4.0 with a link.
 
 ## Design bar (testable observations)
 
@@ -88,7 +88,7 @@ SC12. **Share and attribution.** "Copy result" puts a plain-text summary with no
 ## Risks
 
 - **Simulation feels arbitrary**: if fixes do not follow believable causes, players learn nothing. Each scenario states a causal model, and unit tests assert the metric direction for each fix.
-- **Licence (NC-SA)**: we link only and write original text. Any commercial use of this game needs a human decision.
+- **Licence (NC-ND)**: we link only and write original text. Any commercial use of this game needs a human decision.
 - **Broken guide links**: a test checks every `guideUrl` appears in the pinned README TOC. The URLs are not fetched at runtime.
 - **Hostile imports and XSS**: render all text through `textContent`, parse imports defensively, and have the `security-reviewer` agent review import and storage.
 - **Scope creep** toward a general simulator: the topology stays fixed and new content comes from JSON.
