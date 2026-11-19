@@ -270,6 +270,7 @@ test('the CLI drives a whole job and prints JSON', () => {
   ok('gate', 'x', '--passed', 'true', '--summary', 'green');
   ok('advance', 'x', 'review');
   ok('review', 'x', '--reviewer', 'code-reviewer', '--verdict', 'pass');
+  ok('review', 'x', '--reviewer', 'a11y-architect', '--verdict', 'pass');
   ok('advance', 'x', 'approve');
   assert.equal(ok('merge', 'x', '--ref', 'PR 1').status, 'done');
   assert.equal(ok('summary', 'x').tokens, 120);

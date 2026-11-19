@@ -3,13 +3,17 @@
 // The only writer of job records (docs/jobs/<id>/job.json, or $HARNESS_JOBS_DIR). Agents call this; they never edit the file.
 //   job.js create --id ID --title T [--kind build|rebuild] [--builder native|craft-anything] [--source S]
 //                 [--surface money,logins] [--requested-by WHO --ack TEXT]      (rebuild needs --requested-by and --ack)
+//   job.js intake ID --from docs/jobs/ID/intake.md          (the intake agent's verdict file; see agents/intake.md)
 //   job.js intake ID --decision accept|reject|ask [--risk low|medium|high] [--surface a,b] [--reason R]
 //   job.js advance ID STAGE        job.js gate ID --passed true|false [--summary S]
 //   job.js agent ID --agent A --phase P [--effort E] [--model M] [--tokens N] [--duration-ms N] [--ok true|false] [--task T]
 //   job.js review ID --reviewer R --verdict pass|fail [--summary S]
 //   job.js needs-human ID --reason real-scenario-test|secrets-or-access|spend-legal-scope --detail TEXT
 //   job.js feedback ID --text T     job.js merge ID [--human] [--ref PR]     job.js show ID     job.js queue     job.js summary ID
+const fs = require('node:fs');
+const path = require('node:path');
 const job = require('../lib/job');
+const { parseIntake } = require('../lib/intake');
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -28,7 +32,12 @@ function run() {
   const out = (v) => process.stdout.write(`${JSON.stringify(v, null, 2)}\n`);
   switch (cmd) {
     case 'create': return out(job.create(root, { id, title: flag('title'), kind: flag('kind'), builder: flag('builder'), source: flag('source') ?? '', surfaces: list('surface'), requestedBy: flag('requested-by') ?? '', acknowledgement: flag('ack') ?? '' }));
-    case 'intake': return out(job.intake(root, id, { decision: flag('decision'), risk: flag('risk'), surfaces: list('surface'), reason: flag('reason') ?? '' }));
+    case 'intake': {
+      // --from <file>: the verdict file the intake agent wrote, parsed strictly, so nothing is re-typed on the way in.
+      const from = flag('from');
+      if (from) return out(job.intake(root, id, parseIntake(fs.readFileSync(path.resolve(process.env.CLAUDE_PROJECT_DIR || process.cwd(), from), 'utf8'))));
+      return out(job.intake(root, id, { decision: flag('decision'), risk: flag('risk'), surfaces: list('surface'), reason: flag('reason') ?? '' }));
+    }
     case 'advance': return out(job.advance(root, id, positional[1]));
     case 'waive-ref-check': return out(job.waiveRefCheck(root, id, { reason: flag('reason') }));
     case 'gate': return out(job.recordGate(root, id, { passed: bool('passed') === true, summary: flag('summary') ?? '' }));

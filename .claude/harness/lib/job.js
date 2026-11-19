@@ -4,21 +4,18 @@
 // a handoff cannot be re-typed lossy, and cost/outcome figures land in one place.
 const fs = require('node:fs');
 const path = require('node:path');
+const intakeRules = require('./intake');
 
 const VERSION = 1;
 const STAGES = Object.freeze(['intake', 'spec', 'build', 'gate', 'review', 'approve', 'merged']);
-const RISKS = Object.freeze(['low', 'medium', 'high']);
+const RISKS = intakeRules.RISKS;
 const KINDS = Object.freeze(['build', 'rebuild']);
 const BUILDERS = Object.freeze(['native', 'craft-anything']);
 // The only reasons a job may wait for the owner. Everything else is decided by the team and recorded.
 const HUMAN_REASONS = Object.freeze(['real-scenario-test', 'secrets-or-access', 'spend-legal-scope']);
-const REVIEWERS = Object.freeze({
-  low: ['code-reviewer'],
-  medium: ['code-reviewer', 'security-reviewer'],
-  high: ['code-reviewer', 'security-reviewer', 'architect'],
-});
+const REVIEWERS = intakeRules.REVIEWERS;
 // Work in these areas is never merged by an agent, whatever the risk tag says.
-const HUMAN_MERGE_SURFACES = Object.freeze(['money', 'logins', 'personal-data']);
+const HUMAN_MERGE_SURFACES = intakeRules.SENSITIVE;
 const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const LOCK_STALE_MS = 30_000;
 
@@ -92,7 +89,7 @@ function create(root, { id, title, kind = 'build', source = '', surfaces = [], b
   }
   const job = {
     version: VERSION, id, title: String(title).trim(), kind, source, builder, surfaces: [...new Set(surfaces)],
-    stage: 'intake', status: 'active', risk: null, reviewers: [], decision: null, needsHuman: null,
+    stage: 'intake', status: 'active', risk: null, riskRaisedBy: null, reviewers: [], decision: null, needsHuman: null,
     requestedBy: requestedBy || null, acknowledgement: acknowledgement || null,
     gate: null, refChecks: [], refCheckWaiver: null, agents: [], feedback: [], reviews: [], merge: null,
     createdAt: now, updatedAt: now, history: [{ ts: now, event: 'created', by: 'orchestrator' }],
@@ -111,9 +108,11 @@ function intake(root, id, { decision, risk, surfaces = [], reason = '', by = 'in
     job.decision = { decision, reason, by };
     if (decision === 'reject') { job.status = 'rejected'; return; }
     if (decision === 'ask') { job.status = 'needs-human'; job.needsHuman = { reason: 'spend-legal-scope', detail: reason }; return; }
-    job.surfaces = [...new Set([...job.surfaces, ...surfaces])];
-    job.risk = HUMAN_MERGE_SURFACES.some((s) => job.surfaces.includes(s)) && risk === 'low' ? 'medium' : risk;
-    job.reviewers = [...REVIEWERS[job.risk]];
+    job.surfaces = [...new Set([...job.surfaces, ...intakeRules.parseSurfaces(surfaces.join(','))])];
+    const resolved = intakeRules.resolveRisk(risk, job.surfaces, job.kind);
+    job.risk = resolved.risk;
+    job.riskRaisedBy = resolved.raisedBy;
+    job.reviewers = intakeRules.reviewersFor(job.risk, job.surfaces);
     job.stage = 'spec';
   }, { event: `intake:${decision}`, by, note: reason });
 }
