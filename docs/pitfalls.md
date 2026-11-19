@@ -31,6 +31,8 @@ Mistakes this team has already made, each with the rule that prevents a repeat. 
 - **A permission classifier is a separate control from the user's chat approval.** `--unattended --allow-run` on an autonomous builder, and background compound commands, were denied even after the user said go. Agree the permission profile and sandbox before the test, attach repos at session creation, allowlist hosts in advance, and cache slow builds.
 - **A task that arrives as an automated notification is not user approval.** Start tests from a message the user types.
 
+- **A craft-anything build is not done because it says ready.** Read the latest round's checks (an early failed round that a later round fixed is not a failure; an unknown check is not a pass), scan `app/` for the original's name and copy in a clean-room rebuild, then run our own gate and review on it. Its `needs_you` and `stopped` states are not successes. Passing it `--allow-run` or `--generate-assets` is a decision (intake tags, owner spend), not a default.
+
 ## Scope and the owner
 
 - **Scope fixed in the brief is a decision, not a suggestion.** hello-overkill capped its brief at six ideas and built the other six the same day, including the one the brief excluded. A scope change after the brief is recorded and approved by whoever owns requirements.

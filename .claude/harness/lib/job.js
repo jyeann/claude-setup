@@ -163,6 +163,12 @@ function waiveRefCheck(root, id, { reason, by = 'orchestrator' }) {
   }, { event: 'ref-check:waived', by, note: reason });
 }
 
+// A free-text note in the job history, for decisions that need a recorded reason (for example, Deep mode).
+function recordNote(root, id, { note, by = 'orchestrator' }) {
+  if (!note || !note.trim()) throw new Error('A note needs text.');
+  return mutate(root, id, () => {}, { event: 'note', by, note });
+}
+
 function recordGate(root, id, { passed, summary = '', by = 'gate' }) {
   return mutate(root, id, (job) => {
     job.gate = { passed: Boolean(passed), summary, ts: Date.now() };
@@ -257,6 +263,6 @@ function summary(job) {
 
 module.exports = {
   VERSION, STAGES, RISKS, KINDS, BUILDERS, HUMAN_REASONS, REVIEWERS, HUMAN_MERGE_SURFACES,
-  rootOf, fileOf, read, create, intake, advance, recordRefCheck, waiveRefCheck, recordGate, recordAgent, recordReview, needsHuman, feedback,
+  rootOf, fileOf, read, create, intake, advance, recordRefCheck, waiveRefCheck, recordNote, recordGate, recordAgent, recordReview, needsHuman, feedback,
   mergeVerdict, merge, list, queue, summary,
 };

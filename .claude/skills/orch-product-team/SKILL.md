@@ -40,6 +40,16 @@ A test nobody has run is a guess; three products had a test that contradicted th
 
 The check copies everything to a temp folder and never touches the project. A hidden holdout outside the project works through `--holdout-dir` or `HARNESS_HIDDEN_DIR`.
 
+## Choosing the builder (`native` or `craft-anything`)
+
+A job names its builder at creation: `job.js create ... --builder native|craft-anything` (default `native`: the delegated `tdd-guide` agents below). `craft-anything` hands phase 5 to the craft-anything CLI, which studies a target (or a written request), builds a project with Claude Code, checks it against the original where there is one, and refines it. Use it for rebuilding or reimagining something that exists, and for games; keep `native` for greenfield work that has a spec and a hidden holdout, where our gate is the stronger check. Either way the verify gate, review and approval run on the result.
+
+- `node .claude/harness/bin/builder.js plan <id> --request "..."` prints the exact command and runs nothing. `run` executes it, reads `craft.json` and `usage.json`, records the build on the job as an agent run (tokens, time, and an outcome that is never assumed to pass), and exits 0 only when the build is `ready`, its latest checks pass and no forbidden term was found. `collect --to <folder>` copies `app/` into the repo (an empty folder only); the build itself lives outside the repo in `.harness/builds/<id>`.
+- Limits the adapter will not loosen: always `--unattended` (questions take the first choice, approvals are refused); `--allow-run` only if intake tagged `runs-generated-code` (risk medium, security review); a rebuild of someone else's product is `--clean-room` unless `--deep --deep-reason "..."` (recorded in the job history); `--generate-assets` is never passed because it spends money (an owner decision).
+- Rebuilds: the requester owns the legal responsibility and the job records who asked and what they acknowledged. For a clean-room rebuild pass `--forbid "<name>,<brand terms>"` so the run fails if the original's name or copy shows up in `app/`. It is a literal tripwire, not a legal review.
+- `needs-you` (craft-anything is waiting for a person) and `stopped` are not successes. Decide from the question: a default answer recorded in `decisions.md`, or `job.js needs-human` if it is one of the three owner reasons.
+- craft-anything is early alpha. Build its CLI once (about 7 minutes: `cargo build --release -p craft-anything-cli` in a checkout, Rust 1.97 or newer) and set `CRAFT_ANYTHING_CLI`. Its own permission checks and the sandbox profile must be agreed before an unattended run: an unplanned `--unattended --allow-run` was refused by the permission classifier in earlier tests.
+
 ## Starting the build run
 
 `node .claude/harness/bin/harness.js init --verify "cd examples/<p> && CLAUDE_PROJECT_DIR=$PWD node ../../.claude/harness/bin/verify.js" --task-file examples/<p>/spec.md --protect examples/<p>/acceptance/,examples/<p>/verify.config.json,docs/product/<p>/ --hide examples/<p>/holdout --max 14 --stall 3`. The holdout lives in the repo so every gate and CI can run it; `--hide` keeps it from the agent while the run is active. Stay in the turn while a builder works: ending it makes the Stop hook re-run verify and count identical red results toward the stall breaker.
