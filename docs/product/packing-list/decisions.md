@@ -83,3 +83,13 @@ Interpretations:
 | D14 | Both phase-4 test authors were sent in one message with `run_in_background: false` and still ran in the background | wait in turn / end turn | stayed in the turn and used the wait for Part 2 work (retro-board journeys) | ending the turn costs a harness iteration; recorded as a finding | orchestrator |
 | D15 | Phase-4 exit check (RED for the right reason) | accept / redo | accepted: 45 visible, 25 hidden, 25 journey tests, all failing with "src/server.js not found"; both authors proved their files against throwaway stubs outside the repo | skill "Test author rules" | orchestrator |
 | D16 | Builder brief | include holdout path / omit | the builder is given spec.md, ux.md, design.md, acceptance/ and journeys/ only; the hidden test directory is never named | skill: never give a builder the holdout path or contents | orchestrator |
+AMEND: examples/packing-list/verify.config.json - mutation.copy lacked package.json, so the mutation baseline failed on the R44 tests that read ../package.json; added it. No test or threshold changed. (test author)
+
+## Orchestrator decisions during build, review and after (phases 5 to 9)
+
+| # | Decision | Options | Chosen | Why | Decided by |
+|---|----------|---------|--------|-----|------------|
+| D17 | Build split | one builder / server then UI | builder S (`gan-generator`, medium): src/, unit tests, HTML shells; then builder P (`gan-generator`, medium): public/ JS and CSS against the journeys | fits one agent context each; visible tests green before the UI starts | orchestrator |
+| D18 | Mutation baseline failed (package.json not copied) | builder edits config / orchestrator edits / test author amends | sent back to the test author (`tdd-guide`, resumed), who added `package.json` to `mutation.copy` and wrote the AMEND line; the omission came from the orchestrator's config template | skill: only the test author amends a frozen gate file | orchestrator |
+| D19 | Surviving mutant `src/http.js:114 true -> false` (kill rate 7/8, floor 60%) | fix now / hand to review round | handed to the review fix round as a test gap | gate passes; one fix round is cheaper than two | orchestrator |
+| D20 | Review effort | all low / security high | `code-reviewer`, `a11y-architect`, `performance-optimizer` low; `security-reviewer` high | skill: high for input and files on judgment (this app parses untrusted input and writes a file) | orchestrator |
