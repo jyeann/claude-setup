@@ -27,7 +27,7 @@ async function waitFor(check, { timeoutMs = 2000, stepMs = 5 } = {}) {
 async function boot(over = {}) {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'ho-r2-')), 'd.json');
   const deps = {
-    store: createStore(file, undefined, noop),
+    store: createStore(file, over.now || (() => NOW), noop),
     limiter: createRateLimiter({ limit: 1000, windowMs: 60000 }),
     voteLimiter: createRateLimiter({ limit: 1000, windowMs: 60000 }),
     signer: createSigner('unit'),
