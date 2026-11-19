@@ -78,6 +78,21 @@ jobs:
         working-directory: examples/retro-board
         run: CLAUDE_PROJECT_DIR="$PWD" node ../../.claude/harness/bin/verify.js
 
+  gate-hello-overkill:
+    name: gate-hello-overkill
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Full verify gate (tests, coverage, test quality, hidden holdout, mutation)
+        working-directory: examples/hello-overkill
+        run: CLAUDE_PROJECT_DIR="$PWD" node ../../.claude/harness/bin/verify.js
+
   eval-kit-selftest:
     name: eval-kit-selftest
     runs-on: ubuntu-latest
