@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wiki</title>
+<link rel="stylesheet" href="/app.css">
+<script type="module" src="/js/app.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main" data-testid="skip-link">Skip to main content</a>
+<div class="app" data-route="home">
+  <nav class="sidebar" aria-label="Notes">
+    <h1 class="sidebar-heading" tabindex="-1" data-testid="sidebar-heading">Wiki</h1>
+    <p class="brand" data-testid="sidebar-brand">Wiki</p>
+    <div class="search-box">
+      <label class="sr-only" for="search-input">Search notes</label>
+      <input id="search-input" class="search-input" type="search" maxlength="200" placeholder="Search notes (Ctrl+K)" autocomplete="off" spellcheck="false" aria-keyshortcuts="Control+K Meta+K" data-testid="search-input">
+    </div>
+    <div class="sr-only" role="status" data-testid="search-status"></div>
+    <div class="side-actions">
+      <button type="button" class="btn btn-primary" data-testid="new-note-button">New note</button>
+      <a href="/graph" class="btn" data-testid="graph-link">Graph</a>
+    </div>
+    <div id="list-region" class="list-region">
+      <p class="list-empty" role="status" data-testid="list-loading">Loading notes...</p>
+    </div>
+  </nav>
+  <main id="main" class="main" tabindex="-1"></main>
+</div>
+<div class="sr-only" aria-live="polite" data-testid="status-live"></div>
+<div class="sr-only" role="alert" data-testid="alert-live"></div>
+<noscript><p class="noscript">The wiki needs JavaScript to show your notes.</p></noscript>
+</body>
+</html>
