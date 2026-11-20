@@ -1,0 +1,128 @@
+[
+ {
+  "id": "RC1",
+  "title": "theme override, persistence, system fallback",
+  "ok": true,
+  "evidence": "light->dark override persists across reload, system clears it, light override beats dark system"
+ },
+ {
+  "id": "RC2",
+  "title": "no flash: override applied at domcontentloaded",
+  "ok": true,
+  "evidence": "first computed body background rgb(18, 22, 28)"
+ },
+ {
+  "id": "RC3",
+  "title": "reduced motion: keyframes are opacity-only, no infinite loops, no view transition",
+  "ok": false,
+  "evidence": "battle: infinite animation [{\"name\":\"pulse\",\"keys\":[\"composite\",\"computedOffset\",\"easing\",\"offset\",\"opacity\"],\"inf\":true}]"
+ },
+ {
+  "id": "RC4",
+  "title": "default motion completes; nothing left invisible",
+  "ok": false,
+  "evidence": "certificate: 12 animations still running"
+ },
+ {
+  "id": "RC5",
+  "title": "390px: no overflow, 44px targets, 10 views x 2 themes; hostile hello",
+  "ok": true,
+  "evidence": "20 view/theme loads without overflow, all targets >= 44px, hostile names contained"
+ },
+ {
+  "id": "RC6",
+  "title": "certificate print layout and A4 PDF page count",
+  "ok": true,
+  "evidence": "hidden chrome ok, sheet 665px aspect 1.415, dark-theme contrast 16.4, PDF 1 page, 40xW fits"
+ },
+ {
+  "id": "RC7",
+  "title": "contrast spot checks, both themes",
+  "ok": true,
+  "evidence": "34 contrast pairs measured"
+ },
+ {
+  "id": "RC8",
+  "title": "v1 focus rules survive",
+  "ok": false,
+  "evidence": "(f) focus stays on copy: got \"cert-text\" expected \"cert-copy\""
+ },
+ {
+  "id": "RC9",
+  "title": "DOM order equals visual order",
+  "ok": true,
+  "evidence": "tab order 15 stops incl. theme-system last; annex/footer geometry at 390, 768, 1280"
+ },
+ {
+  "id": "RC10",
+  "title": "view transition guard",
+  "ok": true,
+  "evidence": "(a) works without the API; (b) API present, 0 transition call(s), cert-name visible and title focused; (c) 0 calls under reduced motion"
+ },
+ {
+  "id": "RC11",
+  "title": "certificate artifact structure",
+  "ok": true,
+  "evidence": "19 guilloche paths, 26 ring glyphs, Serial 68AB-03B6-5A25-23C9"
+ },
+ {
+  "id": "RC12",
+  "title": "constraint lint on the served HTML",
+  "ok": true,
+  "evidence": "1 style, 1 script, 2 setAttribute(href) calls all route-only, 6 hello states clean"
+ },
+ {
+  "id": "RC13.1",
+  "title": "wall: stubbed EventSource, 3 rows, status quiet",
+  "ok": true,
+  "evidence": "3 rows, 1 status mutation(s)"
+ },
+ {
+  "id": "RC13.2",
+  "title": "rate limit ticket and quiet countdown",
+  "ok": true,
+  "evidence": "\"Wait 60s\", 1 announcement(s) while ticking, final announcement present"
+ },
+ {
+  "id": "RC13.3",
+  "title": "time machine 1987-05-02 state and timing",
+  "ok": true,
+  "evidence": "default 401 ms, reduced 65 ms; era e4, year 1987, marker 3"
+ },
+ {
+  "id": "RC13.4",
+  "title": "weather meter, exact percent, literal markup",
+  "ok": true,
+  "evidence": "28% shown, data-q 30, markup literal"
+ },
+ {
+  "id": "RC13.5",
+  "title": "federation map: not configured and stubbed up/down",
+  "ok": true,
+  "evidence": "HQ-only map without peers; 1 solid + 1 dashed line for 1 of 2 up"
+ },
+ {
+  "id": "RC13.6",
+  "title": "haiku card theme and verified seal",
+  "ok": true,
+  "evidence": "data-haiku=ocean, \"5-7-5 verified\" with visible icon"
+ },
+ {
+  "id": "SHOTS",
+  "title": "review screenshots: 11 views x {390,1280} x {light,dark}",
+  "ok": true,
+  "evidence": "44 screenshots"
+ },
+ {
+  "id": "SHOTS-extra",
+  "title": "hello-empty, 418, 429, print preview",
+  "ok": true,
+  "evidence": "extra screenshots written"
+ },
+ {
+  "id": "CONSOLE",
+  "title": "no page errors or unexpected console errors (extra, not an RC)",
+  "ok": true,
+  "evidence": "0 errors"
+ }
+]

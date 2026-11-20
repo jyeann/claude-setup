@@ -62,7 +62,7 @@ const STYLE = `
 *,*::before,*::after{box-sizing:border-box}
 html{background:var(--paper);-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;color:var(--ink);background-color:var(--paper);background-image:repeating-linear-gradient(0deg,var(--grain) 0 1px,transparent 1px 4px);font:400 1rem/1.55 var(--font-ui);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-.theme-ready body{transition:background-color var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
+.theme-anim body{transition:background-color var(--d-base) var(--ease-out),color var(--d-base) var(--ease-out)}
 [hidden]{display:none!important}
 ::selection{background:var(--teal);color:var(--paper)}
 :focus-visible{outline:3px solid var(--focus);outline-offset:2px}
@@ -258,7 +258,7 @@ textarea{min-height:9rem;resize:vertical;overflow-wrap:anywhere;font-family:var(
 .stamp.ok{color:var(--ok)}
 .stamp.bad{color:var(--bad);transform:rotate(4deg);animation:stamp-in-r 200ms var(--ease-stamp) backwards,shake 400ms var(--ease-out) 280ms}
 .stamp strong{font:700 2rem/1 var(--font-display)}
-.stamp .ic{width:2rem;height:2rem;stroke-width:2.5}
+.stamp .glyph{font:700 2rem/1 var(--font-ui)}
 .stamp::after{content:"";position:absolute;inset:-6px;border:2px solid currentColor;border-radius:inherit;opacity:0;animation:ripple 400ms var(--ease-out) 200ms backwards;pointer-events:none}
 .reason{max-width:22rem;text-wrap:pretty;animation:rise var(--d-base) var(--ease-out) 240ms backwards}
 
@@ -287,6 +287,8 @@ textarea{min-height:9rem;resize:vertical;overflow-wrap:anywhere;font-family:var(
 .table-well>:not(.opt):not(.ghost-letter){grid-column:1/-1}
 .done-list{list-style:none;margin:0;padding:var(--s-3) 0 0;display:grid;gap:var(--s-5);grid-template-columns:minmax(0,1fr)}
 .done-letter .pick{position:absolute}
+
+@media (max-width:767px){.opt.a,.opt.b{transform:none;animation-name:rise}}
 
 /* ---------- tables ---------- */
 table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}

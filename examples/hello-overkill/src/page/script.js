@@ -56,7 +56,8 @@ function say(t) {
 }
 // Announce a loading text only if the wait is noticeable; returns a cancel function.
 function slowSay(text) {
-  var t = setTimeout(function () { say(text); }, 1000);
+  var view = curKey;
+  var t = setTimeout(function () { if (curKey === view) say(text); }, 1000);
   return function () { clearTimeout(t); };
 }
 
@@ -80,12 +81,12 @@ function api(method, path, body) {
     return r.text().then(function (t) {
       var j = null; try { j = JSON.parse(t); } catch (e) { j = null; }
       return { status: r.status, retry: r.headers.get('retry-after'), json: j };
-    });
+    }, function () { return { status: 0, retry: null, json: null }; });
   }, function () { return { status: 0, retry: null, json: null }; });
 }
 function cleanText(v, max) {
   var s = typeof v === 'string' ? v : '';
-  return s.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, '').slice(0, max || 300);
+  return s.replace(/[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, '').slice(0, max || 300);
 }
 function normText(v) { return v.normalize('NFC').trim().replace(/\s+/g, ' '); }
 function fmtMs(v) { return typeof v === 'number' ? v.toFixed(1) + ' ms' : 'n/a'; }
@@ -121,7 +122,7 @@ function clearErr(errEl, inputs) {
 function apiMsg(res, generic) {
   var j = res.json;
   if ((res.status === 400 || res.status === 422) && j && typeof j.error === 'string') {
-    return j.error + (typeof j.hint === 'string' ? '. ' + j.hint : '');
+    return cleanText(j.error, 200) + (typeof j.hint === 'string' ? '. ' + cleanText(j.hint, 200) : '');
   }
   return errorText(res, generic);
 }
@@ -147,6 +148,8 @@ function applyTheme(v, announce) {
     try { localStorage.removeItem('ho-theme'); } catch (e) { /* nothing stored */ }
   }
   syncThemeColor();
+  root.classList.add('theme-anim');
+  setTimeout(function () { root.classList.remove('theme-anim'); }, 400);
   if (announce) say(v === 'light' || v === 'dark' ? 'Theme set to ' + v + '.' : 'Theme follows your device.');
 }
 var themeSet = document.querySelector('.appearance');
@@ -159,7 +162,6 @@ themeSet.addEventListener('change', function (ev) {
   applyTheme(ev.target.value, themePointer);
   themePointer = false;
 });
-requestAnimationFrame(function () { requestAnimationFrame(function () { root.classList.add('theme-ready'); }); });
 
 /* ---------- routing ---------- */
 var KEYS = ['hello', 'battle', 'verify', 'cert', 'weather', 'wall', 'sla', 'time-machine', 'haiku', 'federation'];
@@ -199,6 +201,7 @@ function route() {
   if (sig === lastSig) return;
   lastSig = sig;
   runLeave();
+  stopFlick();
   curKey = key;
   Object.keys(views).forEach(function (k) { views[k].hidden = k !== key; });
   title.textContent = NAMES[key];
@@ -298,8 +301,8 @@ function rateLimited(res) {
 }
 function success(j) {
   restart(result, 'is-open');
-  var p = el('p', 'greeting-text', j.greeting, 'greeting');
-  p.setAttribute('lang', j.language || 'en');
+  var p = el('p', 'greeting-text', cleanText(j.greeting, 600), 'greeting');
+  p.setAttribute('lang', langOf(j.language));
   var led = el('div', null, null, 'ledger stagger');
   led.appendChild(el('span', 'visit-count', 'Visit ' + j.visit, 'chip rise'));
   var streak = el('span', null, null, 'chip rise');
@@ -316,7 +319,7 @@ function success(j) {
   a.appendChild(document.createTextNode('View certificate'));
   led.appendChild(a);
   showLetter([postmark(new Date()), p, led], 'arrive');
-  say('Greeting ready for ' + j.name + '.');
+  say('Greeting ready for ' + cleanText(j.name, 40) + '.');
 }
 function sendHello(req) {
   lastReq = req;
@@ -325,7 +328,7 @@ function sendHello(req) {
   if (inResult) sayBtn.focus();
   var pen = svg('svg', { 'class': 'pen', viewBox: '0 0 200 40', 'aria-hidden': 'true', focusable: 'false' });
   pen.appendChild(svg('path', { pathLength: 1, d: 'M4 30c14-22 24-22 30 0s18 18 26-2 20-20 28 0 18 18 26 0 20-20 28 0 18 14 26-4 16-12 26 0' }));
-  const loading = el('div', 'result-loading', 'Warming up the greeting...');
+  var loading = el('div', 'result-loading', 'Warming up the greeting...');
   loading.setAttribute('aria-busy', 'true');
   result.classList.remove('is-open');
   showLetter([pen, loading], 'blank');
@@ -362,6 +365,7 @@ var copiedTimer = null;
 function certShow(which) { certWait.hidden = which !== 'wait'; certMsg.hidden = which !== 'msg'; certStage.hidden = which !== 'stage'; }
 function loadCert(id, refocus) {
   certShow('wait');
+  if (refocus) title.focus();
   var done = function () { if (refocus) { var c = views.cert.querySelector('#cert-msg button, #cert-msg a'); (c || title).focus(); } };
   if (!/^[a-f0-9]{16}$/.test(id)) { certMissing(); say('We could not find that certificate.'); done(); return; }
   var stopSlow = slowSay('Loading certificate...');
@@ -397,10 +401,10 @@ function certMissing() {
 }
 function renderCert(c) {
   var id = String(c.id || '');
-  $('cert-name').textContent = c.name;
-  var g = $('cert-greeting'); g.textContent = c.greeting; g.setAttribute('lang', langOf(c.language));
+  $('cert-name').textContent = cleanText(c.name, 40);
+  var g = $('cert-greeting'); g.textContent = cleanText(c.greeting, 600); g.setAttribute('lang', langOf(c.language));
   $('cert-date').textContent = c.date;
-  $('cert-signature').textContent = c.signature;
+  $('cert-signature').textContent = cleanText(c.signature, 200);
   $('cert-serial').textContent = 'Serial ' + (id.toUpperCase().match(/.{1,4}/g) || []).join('-');
   certText.value = c.text;
   $('cert-copied').hidden = true;
@@ -442,7 +446,8 @@ $('verify-form').addEventListener('submit', function (ev) {
     if (res.status === 200 && res.json && (res.json.verdict === 'Authentic' || res.json.verdict === 'Forged')) {
       var ok = res.json.verdict === 'Authentic';
       var box = el('div', 'verify-result', null, 'stamp ' + (ok ? 'ok' : 'bad'));
-      box.appendChild(icon(ok ? 'check' : 'cross'));
+      var glyph = el('span', null, ok ? '\u2713' : '\u2717', 'glyph'); glyph.setAttribute('aria-hidden', 'true');
+      box.appendChild(glyph);
       box.appendChild(el('strong', 'verify-verdict', res.json.verdict));
       var why = ok ? 'This certificate was signed by this server.'
         : res.json.reason === 'unreadable' ? 'This is not a readable certificate.'
@@ -459,7 +464,7 @@ $('verify-form').addEventListener('submit', function (ev) {
 });
 
 /* ---------- battle ---------- */
-var bBox = $('battle-body'), lbBox = $('lb-body');
+var bBox = $('battle-body'), lbBox = $('lb-body'), battleSeq = 0;
 function renderLb(rows, hot) {
   var tbl = tableOf('leaderboard', 'Top 10 greetings', ['Rank', 'Greeting', 'Votes'], 'lb');
   var tb = el('tbody');
@@ -476,19 +481,23 @@ function renderLb(rows, hot) {
   clear(lbBox); lbBox.appendChild(tbl);
 }
 function loadLb() {
+  var my = battleSeq;
   clear(lbBox); lbBox.appendChild(el('p', null, 'Loading leaderboard...', 'hint'));
   return api('GET', '/api/leaderboard').then(function (res) {
+    if (my !== battleSeq) return;
     if (res.status === 200 && res.json) renderLb(res.json.leaderboard);
     else { clear(lbBox); lbBox.appendChild(el('p', null, GENERIC)); say(GENERIC); }
   });
 }
 function loadBattle(refocus) {
+  var my = ++battleSeq;
   clear(bBox);
   bBox.appendChild(el('div', null, null, 'ghost-letter'));
   bBox.appendChild(el('div', null, null, 'ghost-letter'));
   bBox.appendChild(el('p', null, 'Finding two greetings...', 'hint'));
   loadLb();
   api('GET', '/api/battle').then(function (res) {
+    if (my !== battleSeq || !isCur('battle')) return;
     clear(bBox);
     if (res.status !== 200 || !res.json || !res.json.a || !res.json.b) {
       var lm = 'Could not load the battle. Try again.';
@@ -510,7 +519,7 @@ function loadBattle(refocus) {
       b.setAttribute('aria-describedby', 'vote-error');
       b.appendChild(el('span', null, 'Vote for ' + p[1] + ':', 'opt-tag'));
       b.appendChild(document.createTextNode(' '));
-      var tx = el('span', null, o.greeting, 'opt-text'); tx.setAttribute('lang', langOf(o.id));
+      var tx = el('span', null, cleanText(o.greeting, 300), 'opt-text'); tx.setAttribute('lang', langOf(o.id));
       b.appendChild(tx);
       b.addEventListener('click', function () { vote(o, res.json[p[0] === 'a' ? 'b' : 'a'], note, b); });
       bBox.appendChild(b);
@@ -522,18 +531,21 @@ function loadBattle(refocus) {
 }
 function vote(o, other, note, btn) {
   if (isBusyBtn(btn)) return;
+  var my = battleSeq;
+  var opts = Array.prototype.slice.call(bBox.querySelectorAll('.opt'));
   note.textContent = '';
-  setBusyBtn(btn, true);
+  opts.forEach(function (b) { setBusyBtn(b, true); });
   api('POST', '/api/battle/vote', { choice: o.id }).then(function (res) {
-    setBusyBtn(btn, false);
+    opts.forEach(function (b) { setBusyBtn(b, false); });
+    if (my !== battleSeq || !isCur('battle')) return;
     if (res.status === 200 && res.json) {
       clear(bBox);
       var list = el('ul', null, null, 'done-list'); list.setAttribute('role', 'list');
       var win = el('li', null, null, 'done-letter win');
       win.appendChild(el('span', null, 'Your pick', 'pick'));
-      var wt = el('span', null, ' ' + o.greeting); wt.setAttribute('lang', langOf(o.id)); win.appendChild(wt);
+      var wt = el('span', null, ' ' + cleanText(o.greeting, 300)); wt.setAttribute('lang', langOf(o.id)); win.appendChild(wt);
       var lose = el('li', null, null, 'done-letter lose');
-      var lt = el('span', null, other ? other.greeting : ''); lt.setAttribute('lang', langOf(other && other.id)); lose.appendChild(lt);
+      var lt = el('span', null, other ? cleanText(other.greeting, 300) : ''); lt.setAttribute('lang', langOf(other && other.id)); lose.appendChild(lt);
       append(list, [win, lose]);
       var after = el('div', null, null, 'after-vote');
       after.appendChild(el('p', null, 'Thanks, vote counted.', 'thanks'));
@@ -640,6 +652,7 @@ function wallInsert(row, animate) {
   var now = Date.now();
   var anim = animate && motionOK() && now - wallAnimAt >= 500;
   wList.insertBefore(li, wList.firstChild);
+  while (wList.children.length > 50) wList.removeChild(wList.lastChild);
   if (anim) {
     wallAnimAt = now;
     li.classList.add('new');
@@ -751,6 +764,7 @@ function loadSla() {
 function stopSla() { if (slaTimer) { clearInterval(slaTimer); slaTimer = null; } }
 function startSla() {
   stopSla();
+  slaSamples = [];
   slaMsg = '';
   loadSla();
   slaTimer = setInterval(function () { if (!document.hidden && isCur('sla')) loadSla(); }, 5000);
@@ -761,7 +775,7 @@ function startSla() {
 var tmDate = $('tm-date'), tmName = $('tm-name'), tmBtn = $('tm-btn'), tmErr = $('tm-error'), tmOut = $('tm-out'), tmRes = $('tm-result'), tmLoad = $('tm-loading');
 var tmPm = $('tm-pm'), tmYr = $('tm-pm-yr'), tmRail = $('tm-rail'), tmMarker = $('tm-marker');
 var ERA_KEYS = [['edwardian', 'e1'], ['radio', 'e2'], ['atomic', 'e3'], ['disco', 'e4'], ['web 1.0', 'e5'], ['social', 'e6'], ['now', 'e7']];
-var flickTimer = null, flickStop = null;
+var flickTimer = null, flickStop = null, rollSeq = 0, tmYearBefore = '----';
 function setTmMax() { tmDate.setAttribute('max', new Date().toISOString().slice(0, 10)); }
 setTmMax();
 function eraKey(era) {
@@ -777,6 +791,7 @@ function startFlick() {
   flickStop = setTimeout(stopFlick, 3000);
 }
 function rollYear(target) {
+  var my = ++rollSeq;
   var from = parseInt(tmYr.textContent, 10);
   if (!motionOK() || !(from >= 1900) || !window.requestAnimationFrame) { tmYr.textContent = String(target); return; }
   var t0 = null;
@@ -784,8 +799,9 @@ function rollYear(target) {
     if (t0 === null) t0 = ts;
     var k = Math.min(1, (ts - t0) / 640);
     var e = 1 - Math.pow(1 - k, 3);
+    if (my !== rollSeq) return;
     tmYr.textContent = String(Math.round(from + (target - from) * e));
-    if (k < 1) requestAnimationFrame(stepFn);
+    if (k < 1 && my === rollSeq) requestAnimationFrame(stepFn);
   };
   requestAnimationFrame(stepFn);
 }
@@ -808,6 +824,8 @@ $('tm-form').addEventListener('submit', function (ev) {
   var q = new URLSearchParams(); q.set('date', date); if (name) q.set('name', name);
   busyBtn(tmBtn, true, 'Travel', 'Travelling...');
   setLoading(tmLoad, true, 'Warming up the flux capacitor...');
+  tmYearBefore = tmYr.textContent;
+  rollSeq += 1;
   tmPm.classList.remove('blank');
   startFlick();
   var stopSlow = slowSay('Warming up the flux capacitor...');
@@ -836,7 +854,7 @@ $('tm-form').addEventListener('submit', function (ev) {
       restart(tmOut, 'landed');
       say('Greeting from ' + cleanText(j.era, 80) + ' ready.');
     } else {
-      if (!tmOut.classList.contains('landed')) { tmPm.classList.add('blank'); tmYr.textContent = '----'; }
+      if (!tmOut.classList.contains('landed')) { tmPm.classList.add('blank'); tmYr.textContent = '----'; } else tmYr.textContent = tmYearBefore;
       showErr(tmErr, res.status === 400 ? tmDate : null, apiMsg(res), res.status === 400);
     }
   });
@@ -907,7 +925,9 @@ function drawMap(states) {
     fNodes.appendChild(t);
   }
 }
+var dotsTimer = null;
 function sendDots(n) {
+  if (dotsTimer) { clearTimeout(dotsTimer); dotsTimer = null; }
   clear(fDots);
   if (!motionOK() || !n) return;
   var count = Math.min(8, n);
@@ -917,7 +937,7 @@ function sendDots(n) {
     fDots.appendChild(dot);
     if (dot.animate) dot.animate([{ transform: 'translate(0px, 0px)', opacity: 1 }, { transform: 'translate(' + (p[0] - 160).toFixed(1) + 'px, ' + (p[1] - 110).toFixed(1) + 'px)', opacity: 0 }], { duration: 620, delay: i * 120, easing: 'cubic-bezier(.22,1,.36,1)', fill: 'forwards' });
   }
-  setTimeout(function () { clear(fDots); }, 620 + count * 120 + 50);
+  dotsTimer = setTimeout(function () { dotsTimer = null; clear(fDots); }, 620 + count * 120 + 50);
 }
 function loadFed(refocus) {
   if (isBusyBtn(fHBtn)) return;
@@ -990,15 +1010,16 @@ $('fed-form').addEventListener('submit', function (ev) {
       });
       fOut.appendChild(ul);
       say(msg);
-    } else showErr(fErr, res.status === 400 ? fName : null, apiMsg(res), res.status === 400);
+    } else { clear(fOut); showErr(fErr, res.status === 400 ? fName : null, apiMsg(res), res.status === 400); }
   });
 });
 
 window.addEventListener('hashchange', route);
+window.addEventListener('pageshow', function (e) { if (e.persisted) { lastSig = null; route(); } });
 route();
 })();
 `;
 
-const SCRIPT = RAW.replace('__ICONS__', JSON.stringify(ICONS));
+const SCRIPT = RAW.replace('__ICONS__', () => JSON.stringify(ICONS));
 
 module.exports = { SCRIPT };

@@ -115,7 +115,7 @@ ${SEAL}
 </div>
 </div>
 <div class="cert-tools">
-<label for="cert-text-box">Certificate text</label>
+<label for="cert-text-box">Text to paste into Verify</label>
 <textarea id="cert-text-box" data-testid="cert-text" readonly spellcheck="false"></textarea>
 <div class="actions">
 ${btn('type="button" id="cert-copy" data-testid="cert-copy"', 'copy', 'Copy certificate')}
