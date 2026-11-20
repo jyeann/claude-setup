@@ -365,3 +365,41 @@ process.on('SIGTERM', () => s.close(() => process.exit(0)));
   assert.doesNotMatch(tpl, /Math\.random/);
   assert.match(tpl, /PORT: '0'/);
 });
+
+// The Stop hook, end to end, with `pipeline.js check` as the run's verify command: it blocks with the next
+// unfinished phase and lets the turn end only once the whole pipeline is complete.
+test('the stop hook holds the agent at the next unfinished phase and releases it when the pipeline is complete', () => {
+  const root = project({ 'app/src/math.js': MATH, 'app/tests/math.test.js': UNIT });
+  const docs = path.join(root, 'docs');
+  const reviews = fs.readFileSync(path.join(docs, 'reviews.md'), 'utf8');
+  const qa = fs.readFileSync(path.join(docs, 'qa.md'), 'utf8');
+  fs.rmSync(path.join(docs, 'reviews.md'));
+  fs.rmSync(path.join(docs, 'qa.md'));
+  const env = { ...process.env, CLAUDE_PROJECT_DIR: root };
+  const HARNESS = path.join(__dirname, '..', 'bin', 'harness.js');
+  const STOP = path.join(__dirname, '..', 'hooks', 'stop.js');
+  const verify = `node "${PIPELINE}" check --product app --docs docs`;
+  const init = spawnSync('node', [HARNESS, 'init', '--verify', verify, '--task', 'build the thing', '--open-gate-files', '--no-commit-gate', '--max', '10', '--stall', '5'], { cwd: root, encoding: 'utf8', env });
+  assert.equal(init.status, 0, init.stderr);
+  const stop = () => spawnSync('node', [STOP], { cwd: root, input: JSON.stringify({ hook_event_name: 'Stop', session_id: 's' }), encoding: 'utf8', env });
+  const blocked = (r) => { assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout); };
+
+  const first = blocked(stop());
+  assert.equal(first.decision, 'block');
+  assert.match(first.reason, /PIPELINE INCOMPLETE at phase "review"/);
+  assert.match(first.reason, /do not stop to ask a human/);
+
+  fs.writeFileSync(path.join(docs, 'reviews.md'), reviews);
+  const second = blocked(stop());
+  assert.equal(second.decision, 'block');
+  assert.match(second.reason, /PIPELINE INCOMPLETE at phase "qa"/);
+  assert.match(second.reason, /write qa\.md/);
+
+  fs.writeFileSync(path.join(docs, 'qa.md'), qa);
+  write(root, { 'docs/kpi.json': {} }); // the KPI is refreshed after the review, as the retro phase requires
+  const done = stop();
+  assert.equal(done.status, 0, done.stderr);
+  assert.equal(done.stdout, '', 'no block: the turn may end');
+  assert.match(done.stderr, /run ended: passed/i);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.harness', 'state.json'), 'utf8')).active, false);
+});
