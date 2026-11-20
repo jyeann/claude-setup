@@ -63,7 +63,7 @@
   "id": "RC11",
   "title": "certificate artifact structure",
   "ok": true,
-  "evidence": "19 guilloche paths, 26 ring glyphs, Serial 2BF8-F620-628F-C9F9"
+  "evidence": "19 guilloche paths, 26 ring glyphs, Serial 3ABF-7E1B-CB1A-4B60"
  },
  {
   "id": "RC12",
@@ -87,7 +87,7 @@
   "id": "RC13.3",
   "title": "time machine 1987-05-02 state and timing",
   "ok": true,
-  "evidence": "default 275 ms, reduced 53 ms; era e4, year 1987, marker 3"
+  "evidence": "default 411 ms, reduced 67 ms; era e4, year 1987, marker 3"
  },
  {
   "id": "RC13.4",

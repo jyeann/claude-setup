@@ -402,3 +402,15 @@ test('parsePeers warns once per non-loopback http peer and never for https or lo
   parsePeers('https://a.example.com,http://localhost:1', { warn: (m) => none.push(m) });
   assert.deepEqual(none, []);
 });
+
+test('peer status codes 300 and 399 count as redirects, 299 and 400 as bad status', async () => {
+  for (const [status, code] of [[300, 'redirect'], [399, 'redirect'], [299, 'bad_status'], [400, 'bad_status']]) {
+    const fed = createFederation({
+      peers: ['https://bad.example'],
+      fetchPeer: async () => json({ ok: true }, { status }),
+    });
+    const out = await fed.health();
+    assert.equal(out.peers[0].ok, false, String(status));
+    assert.equal(out.peers[0].error, code, String(status));
+  }
+});

@@ -65,7 +65,7 @@ The redesign had four reviewers working in parallel and read-only: code-reviewer
 | F7-F9, F11, F12 | code | LOW | Certificate retry focus; dots timer; SLA samples kept across visits; string-replace pattern; stale federation output | FIX |
 | F10 | code | LOW | `const` in ES5-style script | FIX |
 | S1-S4 | security | LOW/INFO | `lang` not validated; same-origin text not cleaned; `cleanText` missing U+00AD and U+061C; server error text shown raw | FIX: `langOf`, `cleanText` at render, extra characters, cleaned error and hint |
-| P1 | perf | HIGH | Page served uncompressed (156 KB; 44 KB gzip, 33 KB brotli) | DEFERRED: needs a router change (content negotiation and ETag) outside the UI redesign, in code whose responses the acceptance tests pin. The old page was not compressed either. Recommended in the retro. |
+| P1 | perf | HIGH | Page served uncompressed (156 KB; 44 KB gzip, 33 KB brotli) | FIXED after the user asked for it: `src/compress.js` precomputes a gzip variant (level 9) and a strong ETag at startup. `GET /` sends gzip when Accept-Encoding allows it (q-values honoured), adds `Vary: Accept-Encoding` and `Cache-Control: no-cache`, and answers 304 for a matching If-None-Match. The security headers are unchanged on every variant. API responses are not compressed. 12 new unit and router tests; no acceptance or holdout test pins page encoding. |
 | P2 | perf | MED | Loops (scan glow, pen, skeleton) | ACCEPTED: they run only while loading, and are off under reduced motion |
 | P6, P8 | perf | MED/LOW | Wall FLIP read before the trim; year flick not stopped on route change | FIX |
 | N1 | a11y | MED | `.ghost-letter` pulsed under reduced motion | FIX (also RC3 in QA) |

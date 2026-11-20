@@ -144,7 +144,7 @@ Also left out: user accounts, an HTTPS listener, external translation APIs and d
 
 ## The page
 
-The page is styled as "The Overkill Greeting Office", a fictional ministry of correspondence. There are three counters (Hello, Battle, Verify) and six other departments: Weather, Wall, SLA, Time machine, Haiku and Federation. The footer has an Appearance control that switches between System, Light and Dark and remembers the choice in this browser. Certificates print on one page from the Print certificate button. The design spec is in `docs/product/hello-overkill/redesign/ux-redesign.md`.
+The page is styled as "The Overkill Greeting Office", a fictional ministry of correspondence. There are three counters (Hello, Battle, Verify) and six other departments: Weather, Wall, SLA, Time machine, Haiku and Federation. The footer has an Appearance control that switches between System, Light and Dark and remembers the choice in this browser. Certificates print on one page from the Print certificate button. The page is sent gzip-compressed to browsers that accept it, with an ETag so a reload revalidates with a 304. The design spec is in `docs/product/hello-overkill/redesign/ux-redesign.md`.
 
 ## Layout
 

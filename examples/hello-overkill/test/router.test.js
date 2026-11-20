@@ -308,13 +308,13 @@ async function bootDeps() {
   return { store: createStore(file, undefined, () => {}), voteLimiter: createRateLimiter({}), signer: createSigner('unit') };
 }
 
-test('cache-control no-store on /api/* only', async () => {
+test('cache-control is no-store on /api/*, absent on /healthz, and no-cache (always revalidate) on the page', async () => {
   const s = await boot();
   try {
     assert.equal((await s.req('GET', '/api/catalogue')).headers['cache-control'], 'no-store');
     assert.equal((await s.req('GET', '/api/certificates/nope')).headers['cache-control'], 'no-store');
     assert.equal((await s.req('GET', '/healthz')).headers['cache-control'], undefined);
-    assert.equal((await s.req('GET', '/')).headers['cache-control'], undefined);
+    assert.equal((await s.req('GET', '/')).headers['cache-control'], 'no-cache');
   } finally { await s.close(); }
 });
 

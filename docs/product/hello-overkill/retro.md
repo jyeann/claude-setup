@@ -87,13 +87,21 @@ The page was rebuilt as a flagship-quality product with no new dependencies. The
    - The certificate art first pushed the page to 195 KB against a 160 KB cap.
    - It was fixed by rounding the art to one decimal and using a 4-unit step, which gives 157.8 KB.
    - My first attempt at implicit lineto saved nothing, because it swapped `L` for a space.
-   - The remaining big win is P1 compression (156 KB to 33-44 KB), which is deferred.
+   - Compression was added afterwards; see Deferred.
 
 ## Deferred, with reasons
-- **P1 compression and ETag for `GET /`:** this is a router change, outside the UI scope, and the acceptance tests pin byte-exact responses.
+- **P1 compression and ETag for `GET /`:** deferred at first, because it is a router change outside the UI scope. Done in a follow-up the user asked for: gzip plus ETag/304 on the page only. API bodies stay byte-exact and uncompressed.
 - **N4 wall reconnect debounce:** LOW, logged.
 - **A11Y-25 wall time as generated content:** the v2 row text is pinned.
 - **View transitions:** dropped, because the certificate loads asynchronously, so a stamp morph has no target.
 
 ## Proposed change (ONE, evidence-backed)
 Add to `orch-product-team` under "Limits and resuming": "If an agent stops on a usage limit and later phases do not depend on it, keep working and resume it with SendMessage after the reset. Never end the turn to report or ask." Evidence: item 1, which produced both interventions in this run.
+
+## Follow-up: compression and close-out (2026-11-20)
+- **Compression:** `GET /` is now gzipped (157,800 to 44,540 bytes) with an ETag, a 304 on revalidation, `Vary: Accept-Encoding` and `Cache-Control: no-cache`. Security headers are unchanged. API responses are not compressed.
+- **Final gate:** `verify.js` PASSED. Coverage is 99.82%, the holdout passed 40/40 and mutation killed 6 of 8.
+- **Browser QA after compression:** the regression walkthrough passed 42/42 and the redesign suite 21/21.
+- **Mutation sample:** the source change reseeded the sample, which exposed three survivors in files the redesign did not touch.
+  - Two were real gaps, now covered by new tests. A JSON `null` as certificate text would have thrown. A peer status of exactly 300 was not tested as a redirect. I confirmed both tests fail with the mutant applied.
+  - The other two are equivalent mutants. `battle.js:11` `||` to `&&` cannot differ because every greeting id has a unique text. On `certificates.js:20`, the second `||` turned into `&&` lets non-objects fall through, but the field checks that follow still return `unreadable`.

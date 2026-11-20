@@ -54,3 +54,10 @@ test('extra keys or whitespace are not Authentic', () => {
   assert.equal(s.verifyText(`${text} `).verdict, 'Forged');
   assert.equal(s.verifyText(JSON.stringify({ ...fields, signature, extra: 1 })).verdict, 'Forged');
 });
+
+test('verifyText treats JSON null, numbers, strings and arrays as unreadable instead of throwing', () => {
+  const s = createSigner('unit-secret');
+  for (const text of ['null', '5', '"text"', '[]', '[{"id":"a"}]']) {
+    assert.deepEqual(s.verifyText(text), { verdict: 'Forged', reason: 'unreadable' }, text);
+  }
+});

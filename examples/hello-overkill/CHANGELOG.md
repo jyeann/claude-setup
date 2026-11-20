@@ -25,6 +25,7 @@ All notable changes to this project are recorded here.
   - Layout is responsive from 320 px.
 - No dependencies are added. The page is still one inline style and one inline script, hashed in the CSP. The API, router and security headers are unchanged.
 - `src/page.js` now assembles parts from `src/page/` (tokens, geometry, icons, style, markup, script).
+- `GET /` is served gzip-compressed when the browser accepts it (about 158 KB down to about 44 KB). It carries an ETag and `Cache-Control: no-cache`, so repeat visits get a 304. API responses are unchanged.
 
 ## 1.0.0
 

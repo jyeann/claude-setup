@@ -14,6 +14,9 @@ const { createFederation } = require('./federation');
 const { createRateLimiter } = require('./rate-limiter');
 const { pickPair, leaderboard } = require('./battle');
 const page = require('./page');
+const { acceptsGzip, prepareAsset, etagMatches } = require('./compress');
+
+const PAGE = prepareAsset(page.html);
 const { PersistError } = require('./store');
 
 const MAX_BODY = 16 * 1024;
@@ -80,6 +83,17 @@ function createRouter({
     if (res.headersSent || res.writableEnded) return;
     res.writeHead(status, { 'content-type': type, 'content-length': Buffer.byteLength(text), ...SEC, ...extra });
     res.end(text);
+  }
+  // The page: gzip when the client accepts it, revalidated by ETag (no-cache), security headers unchanged.
+  function sendPage(req, res) {
+    const cacheHeaders = { vary: 'Accept-Encoding', etag: PAGE.etag, 'cache-control': 'no-cache' };
+    if (etagMatches(req.headers['if-none-match'], PAGE.etag)) {
+      res.writeHead(304, { ...SEC, ...cacheHeaders });
+      res.end();
+      return;
+    }
+    const gz = acceptsGzip(req.headers['accept-encoding']);
+    send(res, 200, gz ? PAGE.gzip : PAGE.identity, 'text/html; charset=utf-8', gz ? { ...cacheHeaders, 'content-encoding': 'gzip' } : cacheHeaders);
   }
   const json = (res, status, obj, extra) => send(res, status, JSON.stringify(obj), JSON_TYPE, extra);
   const err = (res, status, msg, extra) => json(res, status, { error: msg }, extra);
@@ -177,7 +191,7 @@ function createRouter({
     const only = (m) => { if (method === m) return true; req.resume(); methodNotAllowed(res, m); return false; };
 
     if (path === '/') {
-      if (only('GET')) send(res, 200, page.html, 'text/html; charset=utf-8');
+      if (only('GET')) sendPage(req, res);
       return undefined;
     }
     if (path === '/healthz') {
