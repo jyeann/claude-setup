@@ -42,7 +42,8 @@ How to read it: 9 of the 18 delegated runs before this retro ran longer than 120
 5. The guard blocked one read-only orchestrator command that only named a path under `.harness/` (documented false positive).
 6. A delegated agent left a server process running; the orchestrator's attempt to stop it was denied by the permission system.
 7. The gate was flaky once: the test helpers picked a free port and started the server afterwards, so under parallel load a test could fail with "Port N is in use". It showed as a failed mutation baseline on the final check and was fixed by the test authors (decision D29).
-8. This retro's own agent (`harness-improver`) reported that it did not run the report or open any of the evidence files it was pointed to, and proposed a `verify.js --only mutation` flag that does not exist. Its proposal below is kept because the orchestrator checked it against the run; the wording is corrected.
+8. The run stopped for 5.8 hours in phase 9. The trace has no records between 13:47 and 19:34 UTC; the session that started this run reports the cause as the account's 5-hour usage limit. The limit ended the orchestrator's turn mid-step, so the skill's "Limits and resuming" steps (write `status.md`, schedule a resume, continue) never ran and the run did not resume itself: it continued only when a "worker process was restarted" notice arrived. That notice is the second "human prompt" in the KPI.
+9. This retro's own agent (`harness-improver`) reported that it did not run the report or open any of the evidence files it was pointed to, and proposed a `verify.js --only mutation` flag that does not exist. Its proposal below is kept because the orchestrator checked it against the run; the wording is corrected.
 
 ## The one proposed change (not applied; a human merges it)
 

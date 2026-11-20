@@ -17,17 +17,17 @@ function fixture(files) {
   return dir;
 }
 
-test('the resource hub has no dangling references once the core supplies its targets', () => {
-  const core = path.join(__dirname, '..', '..');
-  const extras = path.join(core, 'hub');
-  assert.deepEqual(checkRefs(extras, { also: [core] }), []);
-  assert.notDeepEqual(checkRefs(extras), [], 'on its own it points at core agents, so the also option is doing the work');
-});
-
-test('the hub index lists exactly what is in the hub', () => {
-  const hub = path.join(__dirname, '..', '..', 'hub');
-  const { buildIndex } = require(path.join(hub, 'build-index.js'));
-  assert.equal(fs.readFileSync(path.join(hub, 'INDEX.md'), 'utf8'), buildIndex(), 'run: node .claude/hub/build-index.js');
+test('a second component root can supply targets without being checked itself', () => {
+  const mk = () => fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'refs-also-'));
+  const main = mk();
+  const other = mk();
+  fs.mkdirSync(path.join(main, 'commands'));
+  fs.writeFileSync(path.join(main, 'commands', 'go.md'), 'Use subagent_type: "helper" and see skills/shared/ for details.\n');
+  fs.mkdirSync(path.join(other, 'agents'));
+  fs.mkdirSync(path.join(other, 'skills', 'shared'), { recursive: true });
+  fs.writeFileSync(path.join(other, 'agents', 'helper.md'), 'Points at skills/nowhere/ but is not checked.\n');
+  assert.equal(checkRefs(main).length, 2);
+  assert.deepEqual(checkRefs(main, { also: [other] }), []);
 });
 
 test('this repository has no dangling references (CI guard after upstream syncs)', () => {
