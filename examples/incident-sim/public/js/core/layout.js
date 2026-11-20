@@ -19,11 +19,12 @@ const GAP_WANT = 72; // wanted gap between wide columns (room for an edge label)
 const PAD_X = 16;
 const PAD_TOP_WIDE = 52;
 const PAD_BOTTOM_WIDE = 32;
-const V_GAP = 28; // min vertical gap between nodes of one wide column
-const STACK_GAP = 40; // gap between stacked nodes (clients over lb, primary over replica)
+const V_GAP = 52; // min vertical gap between nodes of one wide column
+const STACK_GAP = 48; // gap between stacked nodes (clients over lb, primary over replica)
 const NODE_H_WIDE = 64;
 const NODE_H_TALL = 56;
-const ROW_GAP = 44; // tall: gap between rows (edge label room)
+const ROW_GAP = 44; // tall: min gap between rows (edge label room)
+const ROW_GAP_MAX = 110; // tall: rows spread up to this far apart to fill a taller container
 const PAD_TOP_TALL = 32;
 const PAD_BOTTOM_TALL = 24;
 const LABEL_W = 70; // worst-case "12.5k rps" at 13px mono
@@ -280,6 +281,19 @@ function wideLayout(A, W, Hin) {
       packColumn(items, area0, maxBottom);
     }
   }
+  // Spread the drawing vertically when the box is much taller than it needs: stretch distances about the middle (sizes stay).
+  {
+    let t0 = Infinity;
+    let b0 = -Infinity;
+    for (const items of colItems) for (const it of items) { t0 = Math.min(t0, it.top); b0 = Math.max(b0, it.top + it.h); }
+    const used = b0 - t0;
+    const room = Hin - PAD_TOP_WIDE - PAD_BOTTOM_WIDE;
+    if (used > 0 && used < 0.68 * room) {
+      const f = Math.min(2, (0.68 * room) / used);
+      const mid = (t0 + b0) / 2;
+      for (const items of colItems) for (const it of items) it.top = mid + (it.top + H / 2 - mid) * f - H / 2;
+    }
+  }
   // centre the whole drawing vertically
   let minT = Infinity;
   let maxB = -Infinity;
@@ -403,7 +417,7 @@ function finishEdge(e, kind, verts, obstacles, placed, bounds) {
 }
 
 // ---------------------------------------------------------------- tall template
-function tallLayout(A, W) {
+function tallLayout(A, W, Hmin) {
   let pad = 8;
   let colGap = 12;
   let nodeW = Math.floor((W - 2 * pad - colGap) / 2);
@@ -423,6 +437,8 @@ function tallLayout(A, W) {
     }
     flush();
   });
+  const spare = rows.length > 1 ? (Hmin - PAD_TOP_TALL - PAD_BOTTOM_TALL - rows.length * H) / (rows.length - 1) : ROW_GAP;
+  const rowGap = Math.round(Math.max(ROW_GAP, Math.min(ROW_GAP_MAX, spare)));
   const nodes = {};
   const rowOf = {};
   const colOf = {};
@@ -442,12 +458,12 @@ function tallLayout(A, W) {
     for (const id of row) {
       const c = colOf[id];
       const x = round1(pad + c * (nodeW + colGap));
-      const y = round1(PAD_TOP_TALL + r * (H + ROW_GAP));
+      const y = round1(PAD_TOP_TALL + r * (H + rowGap));
       nodes[id] = { id, type: typeOf(id), x, y, w: nodeW, h: H, cx: round1(x + nodeW / 2), cy: round1(y + H / 2), col: c, row: r };
     }
   });
   const order = rows.flat();
-  const height = PAD_TOP_TALL + rows.length * H + Math.max(0, rows.length - 1) * ROW_GAP + PAD_BOTTOM_TALL;
+  const height = PAD_TOP_TALL + rows.length * H + Math.max(0, rows.length - 1) * rowGap + PAD_BOTTOM_TALL;
   const L = { mode: 'tall', width: W, height, nodeW, nodeH: H, nodes, order, cols: 2, gap: colGap };
   // channel requests per row gap
   const plans = [];
@@ -474,8 +490,8 @@ function tallLayout(A, W) {
   }
   gapReq.forEach((list, r) => {
     list.sort((a, b) => a.plan.s.cx - b.plan.s.cx || a.plan.t.cx - b.plan.t.cx || a.plan.e.key.localeCompare(b.plan.e.key));
-    const top = PAD_TOP_TALL + r * (H + ROW_GAP) + H;
-    list.forEach((q, i) => { q.ch.y = round1(top + (ROW_GAP * (i + 1)) / (list.length + 1)); });
+    const top = PAD_TOP_TALL + r * (H + rowGap) + H;
+    list.forEach((q, i) => { q.ch.y = round1(top + (rowGap * (i + 1)) / (list.length + 1)); });
   });
   const gutterX = pad + nodeW + colGap / 2;
   gutterReq.forEach((plan, i) => { plan.gx = round1(gutterX + (i - (gutterReq.length - 1) / 2) * Math.min(3, colGap / Math.max(1, gutterReq.length))); });
@@ -510,7 +526,7 @@ function topologyOf(src) {
 export function layoutKey(top, width, height, mode) {
   const ids = Object.keys(top.nodes).join(',');
   const edges = top.edges.map((e) => `${e.from}>${e.to}`).join(',');
-  return `${mode}|${width}|${mode === 'wide' ? height : 0}|${ids}|${edges}`;
+  return `${mode}|${width}|${height}|${ids}|${edges}`;
 }
 
 export function computeLayout(src, { width, height, mode } = {}) {
@@ -522,7 +538,7 @@ export function computeLayout(src, { width, height, mode } = {}) {
   const hitCache = cache.get(key);
   if (hitCache) return hitCache;
   const A = analyse(top);
-  const L = m === 'wide' ? wideLayout(A, W, Hin) : tallLayout(A, W);
+  const L = m === 'wide' ? wideLayout(A, W, Hin) : tallLayout(A, W, Hin);
   if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value);
   cache.set(key, L);
   return L;
@@ -549,7 +565,7 @@ export function nearest(layout, fromId, dir) {
     const perp = Math.abs(dx * d[1] - dy * d[0]);
     if (along <= 0 || perp > along) continue; // outside the 90 degree cone
     const angle = Math.atan2(perp, along); // 0..pi/4
-    const score = Math.hypot(dx, dy) * (1 + angle / (Math.PI / 4));
+    const score = Math.hypot(dx, dy) * (1 + (3 * angle) / (Math.PI / 4));
     if (score < bestScore - 1e-9) { best = id; bestScore = score; }
   }
   return best;

@@ -1,5 +1,5 @@
 // Live regions. Messages are cleared and then set after 50 ms so a repeated message is read again.
-import { tid } from './dom.js';
+import { tid } from './shell.js';
 
 export function createLive(doc = document) {
   const polite = doc.querySelector(tid('status-live'));

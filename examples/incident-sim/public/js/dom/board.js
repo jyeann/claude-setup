@@ -1,9 +1,18 @@
 // Incident board, not-found and the shared banner pieces of the non-play screens.
-import { h, icon } from './dom.js';
+import { h, icon } from './shell.js';
 import { bests } from '../core/progress.js';
 import { parseSeed } from '../core/routes.js';
 import { mmss } from '../core/format.js';
-import { errorLine, sortScenarios } from './scenarios.js';
+import { formatError } from '../engine/validate.js';
+
+export const errorLine = (e) => `${formatError(e)} Fix the file and restart the server.`;
+
+// Board order: by difficulty, then the shipped order, then id.
+const SHIPPED = ['cache-stampede', 'thundering-herd', 'retry-storm', 'hot-partition', 'queue-backlog', 'n-plus-one', 'connection-pool-exhaustion', 'expiring-certificate', 'split-brain', 'cascading-failure'];
+export function sortScenarios(map) {
+  const rank = (id) => { const i = SHIPPED.indexOf(id); return i < 0 ? SHIPPED.length : i; };
+  return [...map.values()].sort((a, b) => a.difficulty - b.difficulty || rank(a.id) - rank(b.id) || (a.id < b.id ? -1 : 1));
+}
 
 const STATE_TEXT = { new: 'New', resolved: 'Resolved', 'out-of-budget': 'Out of budget' };
 

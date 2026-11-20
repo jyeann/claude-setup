@@ -1,5 +1,5 @@
 // Native <dialog> helpers: showModal traps focus, Escape closes, focus returns to the opener.
-import { h, icon } from './dom.js';
+import { h } from './shell.js';
 
 let counter = 0;
 
@@ -34,8 +34,6 @@ export function openDialog({
   });
 }
 
-export const confirmDialog = (opts) => openDialog({ ...opts, buttons: opts.buttons }).then((v) => v === 'yes');
-
 const KEYS = [
   ['Tab', 'Move through controls in the usual order.'],
   ['Arrow keys', 'On the map: move to the nearest node. In the action list: Up and Down.'],
@@ -69,4 +67,3 @@ export function openKeysDialog(opener) {
   });
 }
 
-export const dialogIcon = icon;

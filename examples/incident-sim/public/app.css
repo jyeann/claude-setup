@@ -678,3 +678,64 @@ svg text.mono-text, svg text.node-metric, svg text.badge-text, svg text.edge-lab
   .node-body { stroke: CanvasText; }
   .btn-primary { forced-color-adjust: none; background: ButtonText; color: ButtonFace; }
 }
+
+/* ---------- map additions (builder P3): edge label and breaker tag anchors, new-page tag, canvas hit-testing ---------- */
+.edge-label-end { text-anchor: end; }
+.edge-tag.edge-tag-start { text-anchor: start; }
+.node[data-new="true"] .node-tag { display: block; }
+
+/* ---------- play shell additions (builder P2): title overlay, map wrapper, banner slot, small fixes ---------- */
+.map-wrap { position: relative; min-width: 0; min-height: 0; display: grid; }
+.map-wrap > .map, .map-wrap > .text-view { min-height: 0; }
+.text-view { overflow: auto; }
+.play-title { font-size: var(--fs-body); line-height: var(--lh-tight); margin: 0; max-inline-size: var(--measure); }
+.map-wrap > .play-title { position: absolute; z-index: 3; inset-block-start: var(--sp-3); inset-inline-start: var(--sp-4); max-inline-size: min(34rem, 55%); pointer-events: none; }
+.text-view .play-title { margin-bottom: var(--sp-3); font-size: var(--fs-lead); }
+.map-banner { position: absolute; z-index: 7; inset-inline: var(--sp-4); inset-block-end: var(--sp-4); }
+.spark-value { flex-wrap: nowrap; min-width: 0; }
+.spark-node { margin-inline-start: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-label); }
+.dialog-keys { max-block-size: 90dvh; overflow: auto; }
+.hint-text { padding: var(--sp-2) var(--sp-3); border: var(--bw-1) dashed var(--c-line-ui); border-radius: var(--r-2); }
+.notice-wrap { padding: var(--sp-2) var(--sp-4) 0; }
+@media (max-width: 719px) {
+  .map-banner { position: static; margin-top: var(--sp-3); }
+  .map-wrap > .play-title { position: static; max-inline-size: none; pointer-events: auto; margin-bottom: var(--sp-2); }
+  .map-wrap { display: block; }
+}
+.play-grid { padding-block: var(--sp-3); }
+.play-main { gap: var(--sp-3); }
+@media (max-width: 1023px) { .play-grid { block-size: auto; } }
+@media (min-width: 1024px) {
+  .rail { grid-template-rows: auto minmax(14rem, 1fr) auto; gap: var(--sp-3); }
+  .rail > .panel.pages { max-block-size: 8.5rem; }
+  .rail > .panel.actions { max-block-size: 16rem; }
+  .rail > .panel { padding: var(--sp-3); }
+  .rail .panel-head { margin-bottom: var(--sp-2); }
+  .action-row { padding: var(--sp-1) var(--sp-3); }
+  .action-effect { font-size: var(--fs-label); }
+  .action-group { gap: var(--sp-1); margin-bottom: var(--sp-2); }
+  .toast-region { left: auto; right: var(--sp-4); transform: none; top: var(--sp-3); inline-size: min(18rem, calc(100% - var(--sp-6))); }
+  .toast { padding-block: var(--sp-1); }
+}
+/* debrief additions (builder P3): scrub cursor and divergence connector, left column stack */
+.recorder-col { display: grid; gap: var(--sp-4); min-width: 0; }
+.lanes-link { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; pointer-events: none; overflow: visible; }
+.lanes-connector { stroke: var(--c-text-muted); stroke-width: var(--bw-1); }
+.lanes-cursor, .trace-cursor { stroke: var(--c-focus); stroke-width: var(--bw-1); }
+.trace-cursor { stroke-dasharray: 2 3; }
+.recorder .lanes { margin-block-start: var(--sp-6); }
+.lane[data-lane="optimal"] { border-inline: 0; border-style: dashed none; }
+@media (max-width: 719px) {
+  .recorder .lane-label { inset-inline: 0 auto; }
+}
+@media (max-width: 479px) {
+  .steps caption { display: block; }
+}
+@media (min-width: 720px) {
+  .incident-row { grid-template-columns: minmax(0, 1fr) auto auto auto auto; }
+  .incident-row > .btn { justify-self: end; min-inline-size: 5rem; }
+}
+@media (max-width: 719px) { .toast-region { top: 4.5rem; } }
+@media (max-width: 719px) {
+  .recorder .lane-label { inset-block-start: auto; inset-block-end: calc(-1 * var(--sp-5)); }
+}

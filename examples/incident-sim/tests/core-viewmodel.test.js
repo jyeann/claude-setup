@@ -231,6 +231,15 @@ test('sparkPath maps values into the fixed 164 x 56 box and skips nulls', () => 
   assert.equal(V.sparkPath([0.5], 1).startsWith('M162 '), true, 'a short series hugs the right edge');
 });
 
+test('sparkArea closes the line down to the baseline', () => {
+  assert.equal(V.sparkArea([], 1), '');
+  const full = Array.from({ length: 60 }, () => 0.5);
+  const a = V.sparkArea(full, 1);
+  assert.ok(a.startsWith('M2 29'));
+  assert.ok(a.endsWith('L162 52 L2 52 Z'));
+  assert.deepEqual(V.sparkPoints([null, 0], 1).length, 1);
+});
+
 test('summaryNodes and banner copy', () => {
   const s = run(12);
   const nodes = V.summaryNodes(s, scenario);

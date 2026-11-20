@@ -63,6 +63,7 @@ export function createParticles({ seed = 1, cap = DOT_CAP, speed = DOT_SPEED } =
   let n = 0;
   let scale = 1;
   let acc = 0;
+  let pileCount = 0; // dots standing in piles (they count against the cap)
 
   const node = (id) => {
     let o = nodes.get(id);
@@ -89,7 +90,7 @@ export function createParticles({ seed = 1, cap = DOT_CAP, speed = DOT_SPEED } =
   }
 
   function spawn(i, kind, atEnd) {
-    if (n >= capNow || n >= hardMax) return;
+    if (n + pileCount >= capNow || n >= hardMax) return;
     ei[n] = i;
     ds[n] = atEnd ? edges[i].len : 0;
     dk[n] = kind;
@@ -110,6 +111,8 @@ export function createParticles({ seed = 1, cap = DOT_CAP, speed = DOT_SPEED } =
       const d = o.pileTarget - o.pileShown;
       o.pileShown += d > 0 ? Math.min(d, 36 * dt) : Math.max(d, -18 * dt);
     }
+    pileCount = 0;
+    if (enabled) for (const o of nodes.values()) pileCount += Math.round(o.pileShown);
     if (enabled) {
       for (let i = 0; i < edges.length; i++) {
         const e = edges[i];

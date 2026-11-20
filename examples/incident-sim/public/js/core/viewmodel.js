@@ -311,16 +311,30 @@ export function sparkVms(state, scenario) {
 // Y coordinate (0..56 box) for a value inside the fixed range; 52 is the baseline, 6 is the ceiling.
 export const sparkY = (v, max) => 52 - clamp(v / max, 0, 1) * 46;
 
-export function sparkPath(series, max) {
+const r1 = (n) => Math.round(n * 10) / 10;
+
+// [x, y] points inside the 164 x 56 box; a short series hugs the right edge, nulls are skipped.
+export function sparkPoints(series, max) {
   const n = SPARK_WINDOW;
-  const pts = [];
   const offset = n - series.length;
+  const pts = [];
   for (let i = 0; i < series.length; i++) {
     if (series[i] === null) continue;
-    const x = 2 + ((i + offset) / (n - 1)) * 160;
-    pts.push(`${Math.round(x * 10) / 10} ${Math.round(sparkY(series[i], max) * 10) / 10}`);
+    pts.push([r1(2 + ((i + offset) / (n - 1)) * 160), r1(sparkY(series[i], max))]);
   }
-  return pts.length ? `M${pts.join(' L')}` : '';
+  return pts;
+}
+
+export function sparkPath(series, max) {
+  const pts = sparkPoints(series, max);
+  return pts.length ? `M${pts.map((p) => `${p[0]} ${p[1]}`).join(' L')}` : '';
+}
+
+// The same line closed down to the baseline, for the 12% area fill.
+export function sparkArea(series, max) {
+  const pts = sparkPoints(series, max);
+  if (pts.length === 0) return '';
+  return `${sparkPath(series, max)} L${pts[pts.length - 1][0]} 52 L${pts[0][0]} 52 Z`;
 }
 
 // ---------------------------------------------------------------- summary and banners

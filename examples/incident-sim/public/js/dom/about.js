@@ -1,5 +1,5 @@
 // About: attribution, licence, privacy and the scenario file format.
-import { h, icon } from './dom.js';
+import { h, icon } from './shell.js';
 
 const ATTRIBUTION = "Incident Simulator teaches reliability patterns using the guides in ByteByteGo's system-design-101. We link to the guides and wrote every scenario, debrief and label ourselves; we copied no guide text or images. system-design-101 is licensed CC BY-NC-ND 4.0, so this project is for non-commercial use.";
 

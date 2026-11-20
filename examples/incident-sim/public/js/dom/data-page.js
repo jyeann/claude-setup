@@ -1,5 +1,5 @@
 // Your data: summary, export, import (strict importer, confirm on overwrite), clear.
-import { h, icon, clear } from './dom.js';
+import { h, icon, clear } from './shell.js';
 import { openDialog } from './dialogs.js';
 import {
   bests, resolvedCount, parseProgress, serialiseProgress, exportFilename, MAX_BYTES,
