@@ -1,0 +1,12 @@
+{
+  "name": "constellation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first Markdown notebook drawn as a night sky: every note is a star, every [[link]] joins stars into constellations. No dependencies.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test \"acceptance/*.test.js\" \"tests/*.test.js\""
+  },
+  "engines": { "node": ">=22" }
+}
