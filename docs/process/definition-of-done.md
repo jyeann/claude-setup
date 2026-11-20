@@ -23,6 +23,17 @@ The testing and the product-team process are **complete for this scope**: small,
 - **Does not support:** anything about other models, larger codebases, or products that handle money, logins or personal data. One product went through the whole process. Effort results are 1 to 2 trials per cell and most graders check coverage by keyword. High-effort build failed the holdout twice, one diagnosed.
 - **Confidence:** moderate inside the scope above, low outside it.
 
+## Update, 2026-11-20: the decision is reopened
+Reopen triggers 2 and 5 fired: `orch-product-team` and the gate changed (whole-pipeline stop gate, browser journeys and a type check inside `verify.js`, TypeScript support), and more products went through the process (`packing-list`, see `docs/product/packing-list/retro.md`; `wiki`, see `docs/product/wiki/`). The table above describes the state on 2026-11-18 and its counts are out of date (the harness suite is now 325 tests).
+
+What the packing-list run added:
+- **Held:** one idea to a working product with no human prompt; product gate green (175 tests, hidden 25/25, browser journeys 25/25, mutation 8/8); independent QA found a real defect the gate's tests missed, and it was fixed.
+- **Did not hold (condition 5):** the account usage limit stopped the run for 5.8 hours and it did not resume itself.
+- **Did not hold (condition 6):** half the delegated agents were moved to the background after 120 seconds and their cost was not recorded; the KPI figures were completed by hand.
+- **New, open:** the pipeline's document checks pass on filler text, so only the build phase is a real gate; the stop gate was never exercised because the agent never tried to stop; journey tests are not in the frozen set; two guard-hook crashes failed open. `packing-list` and `wiki` are not gated in CI.
+
+Until those are fixed and one run passes without them, treat the process as: **builds a working small product unattended, with cost reporting and resume after a usage limit not yet reliable.**
+
 ## Reopen the decision when any of these happens
 1. A required check fails on `main`.
 2. The model, an agent definition, or `orch-product-team` changes: re-run the per-phase comparison (`node examples/retro-board/tune/run.js --phases discover,ux,design,tests,build,review,qa,release --levels low,medium,high`, about $20 and 2.5 hours; the self-test in CI is the cheap check in between).
