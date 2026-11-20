@@ -495,7 +495,8 @@ const contrast = (loc, prop, bgFrom) => loc.first().evaluate(contrastIn, { prop,
   // ---------- RC8 ----------
   await check('RC8', 'v1 focus rules survive', async () => {
     const out = [];
-    const p = await newPage(browser);
+    // clipboard granted so Copy succeeds; a blocked clipboard legitimately selects the textarea (ux-redesign.md section 5)
+    const p = await newPage(browser, { permissions: ['clipboard-read', 'clipboard-write'] });
     await p.goto(s.url + '/');
     await greet(p, 'Ada', 'en', 'formal');
     await tid(p, 'greeting-text').waitFor({ timeout: 5000 });

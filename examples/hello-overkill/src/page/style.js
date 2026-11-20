@@ -102,7 +102,7 @@ main>section:not([hidden]){animation:rise var(--d-base) var(--ease-out) backward
 .annex-head{display:flex;align-items:baseline;justify-content:space-between;gap:var(--s-3);margin-bottom:var(--s-3);padding-top:var(--s-4);border-top:1px solid var(--line)}
 .annex-label{font:600 1.125rem/1.3 var(--font-display)}
 .annex nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--s-2)}
-.annex nav a{position:relative;display:flex;flex-direction:column;justify-content:center;gap:2px;min-height:60px;padding:var(--s-2) var(--s-3) var(--s-2) 3rem;border:1px solid var(--line);border-radius:var(--r-1);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:600;line-height:1.25;box-shadow:var(--sh-1);transition:background-color var(--d-fast) var(--ease-out),transform var(--d-instant) var(--ease-out),box-shadow var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
+.annex nav a{position:relative;min-width:0;overflow-wrap:anywhere;display:flex;flex-direction:column;justify-content:center;gap:2px;min-height:60px;padding:var(--s-2) var(--s-3) var(--s-2) 3rem;border:1px solid var(--line);border-radius:var(--r-1);background:var(--surface);color:var(--ink);text-decoration:none;font-weight:600;line-height:1.25;box-shadow:var(--sh-1);transition:background-color var(--d-fast) var(--ease-out),transform var(--d-instant) var(--ease-out),box-shadow var(--d-fast) var(--ease-out),border-color var(--d-fast) var(--ease-out)}
 .annex nav a::after{content:attr(data-sub) / "";font:500 .6875rem/1.3 var(--font-mono);letter-spacing:.1em;color:var(--ink-2)}
 .annex nav a .ic{position:absolute;left:var(--s-3);top:50%;margin-top:-.75rem;width:1.5rem;height:1.5rem;color:var(--teal)}
 .annex nav a[aria-current=page]{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent),var(--sh-1)}
@@ -435,7 +435,8 @@ ${STAGGER}
 ${GUI_I}
 
 /* ---------- responsive ---------- */
-@media (max-width:479px){.form-actions .btn,.cert-tools .btn,.after-vote .btn{width:100%}.tabs a{padding:0 var(--s-2)}.greeting{padding-right:0;padding-top:4rem}}
+@media (max-width:359px){.tabs a .ic{display:none}}
+@media (max-width:479px){.cert-body{padding:10% 7% 8%}.form-actions .btn,.cert-tools .btn,.after-vote .btn{width:100%}.tabs a{padding:0 var(--s-2)}.greeting{padding-right:0;padding-top:4rem}}
 @media (min-width:640px){
 :root{--gutter:var(--s-6)}
 .letterhead{flex-direction:row;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
@@ -465,6 +466,8 @@ footer{grid-template-columns:minmax(0,1fr) auto;align-items:end}
 .check input:checked{background:Highlight;border-color:Highlight}
 .check .tick{stroke:HighlightText}
 .seg label:has(input:checked){outline:3px solid Highlight;outline-offset:-3px}
+.seg label:has(input:focus-visible){outline:3px dashed CanvasText;outline-offset:2px}
+select{forced-color-adjust:auto;appearance:auto;background-image:none;padding-right:12px}
 .meter span{background:Highlight}
 .lamp{border-color:CanvasText}
 
@@ -482,7 +485,7 @@ footer{grid-template-columns:minmax(0,1fr) auto;align-items:end}
 @keyframes tick{from{opacity:1}}@keyframes shake{from{opacity:1}}@keyframes wash{from{opacity:1}}@keyframes ink-in{from{opacity:0}}
 @keyframes press{from{opacity:0}}@keyframes ripple{from{opacity:0}}@keyframes grow{from{opacity:0}}@keyframes pop{from{opacity:0}}@keyframes flap{from{opacity:1}}
 *,*::before,*::after{animation-duration:150ms!important;animation-delay:0ms!important;transition-duration:0ms!important;scroll-behavior:auto!important}
-.pen,.spin-ring,.loading-line::before,.lamp,.cert-skeleton,.tray .scan,.fed-map .node{animation:none!important}
+.pen,.spin-ring,.loading-line::before,.lamp,.cert-skeleton,.ghost-letter,.tray .scan,.fed-map .node{animation:none!important}
 .btn:active,.opt:active,.tabs a:active,.annex nav a:active,.check input:active{transform:none}
 .opt.a,.opt.b,.done-letter.win,.done-letter.lose{transform:none}
 @media (hover:hover){.btn:hover,.opt:hover,.annex nav a:hover{transform:none}}
@@ -494,7 +497,9 @@ footer{grid-template-columns:minmax(0,1fr) auto;align-items:end}
 @media print{
 :root{color-scheme:light}
 html,body{background:#fff!important;color:#000}
-.airmail,header,.annex,footer,#status,.view-head,.cert-tools,button,.btn,textarea{display:none!important}
+.airmail,header,.annex,footer,#status,.view-head .eyebrow,.view-head .lede,.cert-tools,.eng-title,button,.btn,textarea{display:none!important}
+.view-head{margin:0 0 4mm;text-align:center}
+.view-head h1{font-size:20pt}
 *,*::before,*::after{animation:none!important;transition:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .frame{display:block;padding:0}
 .cert-stage{display:block}

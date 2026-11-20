@@ -111,7 +111,7 @@ ${CREST.replace('class="crest"', 'class="cert-crest"')}
 </dl>
 <p class="cert-serial" id="cert-serial" data-testid="cert-serial"></p>
 ${SEAL}
-<p class="cert-foot">To check this certificate, paste its certificate text into the Verify page of the issuing office.</p>
+<p class="cert-foot">To check this certificate, open it on the issuing office's site and use Verify.</p>
 </div>
 </div>
 <div class="cert-tools">

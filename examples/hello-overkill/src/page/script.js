@@ -157,6 +157,7 @@ var themeInput = $('theme-' + storedTheme());
 if (themeInput) themeInput.checked = true;
 syncThemeColor();
 themeSet.addEventListener('pointerdown', function () { themePointer = true; });
+themeSet.addEventListener('click', function () { setTimeout(function () { themePointer = false; }, 0); });
 themeSet.addEventListener('change', function (ev) {
   // Keyboard users already hear the native radio announcement; only pointer activation is announced.
   applyTheme(ev.target.value, themePointer);
@@ -496,7 +497,9 @@ function loadBattle(refocus) {
   bBox.appendChild(el('div', null, null, 'ghost-letter'));
   bBox.appendChild(el('p', null, 'Finding two greetings...', 'hint'));
   loadLb();
+  var stopSlow = slowSay('Finding two greetings...');
   api('GET', '/api/battle').then(function (res) {
+    stopSlow();
     if (my !== battleSeq || !isCur('battle')) return;
     clear(bBox);
     if (res.status !== 200 || !res.json || !res.json.a || !res.json.b) {
@@ -944,7 +947,9 @@ function loadFed(refocus) {
   busyBtn(fHBtn, true, 'Check peers', 'Checking...');
   fMap.classList.add('checking');
   fHErr.textContent = '';
+  var stopSlow = slowSay('Checking...');
   api('GET', '/api/federation').then(function (res) {
+    stopSlow();
     busyBtn(fHBtn, false, 'Check peers', 'Checking...');
     fMap.classList.remove('checking');
     if (!isCur('federation')) return;
