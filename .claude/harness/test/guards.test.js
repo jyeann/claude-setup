@@ -160,3 +160,10 @@ test('shell commands that mention a hidden path are blocked while a run is activ
   assert.equal(checkBash('cat src/a.js', hidden).block, false);
   assert.equal(checkBash('cat holdout/a.test.js', { ...hidden, active: false }).block, false);
 });
+
+test('an unbalanced or reversed glob bracket is not a secret and does not throw; a valid class still is', () => {
+  for (const arg of ['.env[', '.env[a-', '.e[z-a]nv', '.env*[']) assert.doesNotThrow(() => checkBash(`cat ${arg}`), arg);
+  assert.equal(checkBash('cat .env[').block, false);
+  assert.equal(checkBash('cat .e[n]v').block, true);
+  assert.equal(checkBash('cat .env*').block, true);
+});

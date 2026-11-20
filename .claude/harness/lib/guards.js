@@ -54,7 +54,10 @@ const SECRET_NAMES = ['.env', 'id_rsa', 'id_ed25519', '.npmrc', '.netrc'];
 // A glob such as `.env*` or `.e*` expands to a secret file; shells do not match leading dots with * or ?.
 function globMatchesSecret(base) {
   if (!/[*?[]/.test(base) || /^[*?[]/.test(base)) return false;
-  const re = new RegExp(`^${base.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`);
+  // `[` is kept as a character class (`.e[n]v`), so an unbalanced or reversed one (`.env[`, `[z-a]`) does not
+  // compile. The shell would not expand such a word either, so it cannot name a secret file.
+  let re;
+  try { re = new RegExp(`^${base.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`); } catch { return false; }
   return SECRET_NAMES.some((name) => re.test(name));
 }
 

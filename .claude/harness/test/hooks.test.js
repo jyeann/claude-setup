@@ -38,6 +38,26 @@ test('pre-bash fails open (exit 1, not 2) when its input is malformed', () => {
   assert.equal(r.status, 1);
 });
 
+test('pre-bash does not crash on an unbalanced glob bracket, and still blocks a valid secret glob', () => {
+  const dir = project();
+  for (const command of ['cat .env[', 'cat .env[a-', 'cat .e[z-a]nv', 'cat {[', 'echo {"a": [1,']) {
+    const r = bash(dir, command);
+    assert.equal(r.status, 0, `${command}: ${r.stderr}`);
+    assert.doesNotMatch(r.stderr, /internal error/);
+  }
+  assert.equal(bash(dir, 'cat .e[n]v').status, 2);
+  assert.equal(bash(dir, 'cat .env*').status, 2);
+});
+
+test('pre-bash does not crash when the command is not a string or the event is not an object', () => {
+  const dir = project();
+  for (const input of [{ tool_input: { command: { a: 1 } } }, { tool_input: { command: 123 } }, { tool_input: { command: ['ls'] } }, { tool_input: null }]) {
+    const r = run(path.join(HOOKS, 'pre-bash.js'), dir, input);
+    assert.equal(r.status, 0, `${JSON.stringify(input)}: ${r.stderr}`);
+  }
+  assert.equal(run(path.join(HOOKS, 'pre-bash.js'), dir, null).status, 0);
+});
+
 test('stop hook is inert when no run was started', () => {
   const r = stop(project());
   assert.equal(r.status, 0);

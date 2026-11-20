@@ -6,7 +6,8 @@ const { recordHookError } = require('./trace');
 
 function readEvent() {
   const raw = fs.readFileSync(0, 'utf8');
-  return raw.trim() ? JSON.parse(raw) : {};
+  const event = raw.trim() ? JSON.parse(raw) : {};
+  return event !== null && typeof event === 'object' && !Array.isArray(event) ? event : {};
 }
 
 const projectDirOf = (event) => process.env.CLAUDE_PROJECT_DIR || event.cwd || process.cwd();

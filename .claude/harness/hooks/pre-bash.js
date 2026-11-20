@@ -21,7 +21,9 @@ function currentBranch(cwd) {
 
 async function main() {
   const event = readEvent();
-  const command = event.tool_input?.command ?? '';
+  const raw = event.tool_input?.command;
+  // The guards read text. A host that sends the command as a number or an object must not crash them.
+  const command = typeof raw === 'string' ? raw : raw === undefined || raw === null ? '' : JSON.stringify(raw);
   const projectDir = projectDirOf(event);
   current = { projectDir, event };
   const ctx = guardContext(projectDir);
