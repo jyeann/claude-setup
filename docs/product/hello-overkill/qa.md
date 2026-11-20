@@ -80,3 +80,19 @@ None found. All six views behaved per `v2/spec.md` in every check above.
 - Federation health is cached for 5 s on the server, so the stopped-peer check waits 5.3 s before refreshing. SLA polling: 0 `/api/sla` requests in the 11 s after leaving the view.
 - Chromium logs "Failed to load resource" lines for forced 400/422 responses (time machine, haiku, weather); these are excluded from the console check as in v1. 0 other console or page errors.
 - "More views" nav links are 44 to 50 px tall at 390 px; Tab order is the 8 original stops first, then the six new links.
+
+## Redesign QA (2026-11-20)
+
+Both suites ran in Chromium through Playwright against the final build.
+
+- **Regression:** `QA_SHOTS=../../docs/product/hello-overkill/qa-redesign/regression node qa/walkthrough.js` passed 42 of 42. It covers every v1 and v2 journey and UI check: J1-J10, UC1-UC11 and the six v2 views, including tab order, focus rules, 418/429/500, hostile input, 390 px, dark mode and console errors.
+  - The first run passed 38 of 42. All four failures were fixed in the UI:
+    - Battle letters rotated during the deal-in at 390 px, so they measured as not stacked. Narrow screens now slide them in without rotation.
+    - The certificate's read-only box had the same label as Verify's input. It is renamed "Text to paste into Verify".
+    - The body colour transition ran on system theme changes. It now runs only when the user changes the theme.
+    - The verify check mark was an SVG, but ux.md requires a glyph. It is a text glyph again.
+- **Redesign:** `node qa/redesign.js` passed 21 of 21. It runs RC1-RC12, RC13.1-6, the screenshots and a console check.
+  - The first run passed 19 of 21. RC3 failed because a loading pulse looped under reduced motion. RC4 failed because the certificate border draw took 2.3 s against a 1.5 s budget. Both were fixed in the UI: the loop is off under reduced motion and the draw now settles in about 1.4 s.
+  - The RC6 print check confirms one A4 page (`qa-redesign/cert-print-a4.pdf`) on white, with the certificate still light when the dark theme is set.
+
+Screenshots are in `docs/product/hello-overkill/qa-redesign/`, named `<view>-<390|1280>-<light|dark>.png`. The views are hello, certificate, verify-authentic, verify-forged, battle-voted, weather, wall, sla, time-machine, haiku and federation. The extras are hello-empty, hello-418, hello-429 and cert-print-preview. Results are in `qa-redesign/results.json`, and the regression screenshots are in `qa-redesign/regression/`.

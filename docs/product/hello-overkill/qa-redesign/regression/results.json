@@ -50,14 +50,14 @@
  {
   "id": "UC10c",
   "title": "390px viewport: no horizontal scroll (hello, battle, verify)",
-  "ok": false,
-  "evidence": "battle options not stacked"
+  "ok": true,
+  "evidence": "no overflow; touch heights 48,48,48,48; battle options stacked"
  },
  {
   "id": "UC11",
   "title": "keyboard, labels, dark/light 390",
-  "ok": false,
-  "evidence": "locator.waitFor: Error: strict mode violation: getByLabel('Certificate text') resolved to 2 elements:"
+  "ok": true,
+  "evidence": "tab order nav-hello>nav-battle>nav-verify>name-input>language-select>tone-select>chaos-toggle>say-hello; focus ring solid 3px; Enter submits; keyboard-only greeting incl. selects; labels found; dark+light 390 no overflow"
  },
  {
   "id": "UC-A11Y-route",
@@ -68,8 +68,8 @@
  {
   "id": "J1-dark",
   "title": "hello result in dark mode (colour scheme honoured)",
-  "ok": false,
-  "evidence": "light bg expected, got rgb(18, 22, 28)"
+  "ok": true,
+  "evidence": "dark body rgb(18, 22, 28); light body rgb(244, 238, 226)"
  },
  {
   "id": "UC4",
@@ -87,13 +87,13 @@
   "id": "UC5",
   "title": "certificate view (J4)",
   "ok": true,
-  "evidence": "id 2d5cbd52657631f6, date, 64-char signature, copy status \"Select the text and copy it yourself.\", print hides nav+buttons"
+  "evidence": "id a587bc82fa1c1526, date, 64-char signature, copy status \"Select the text and copy it yourself.\", print hides nav+buttons"
  },
  {
   "id": "UC6",
   "title": "verify Authentic then Forged (J5)",
-  "ok": false,
-  "evidence": "check glyph missing: Authentic"
+  "ok": true,
+  "evidence": "Authentic (glyph) -> one-char greeting edit Forged (glyph) -> signature edit Forged -> unreadable -> empty error -> >10000 chars message"
  },
  {
   "id": "J4b",
@@ -123,7 +123,7 @@
   "id": "UC8.3",
   "title": "chaos=delay shows loading then greeting",
   "ok": true,
-  "evidence": "loading visible, button disabled \"Greeting...\", greeting after 3114 ms"
+  "evidence": "loading visible, button disabled \"Greeting...\", greeting after 4125 ms"
  },
  {
   "id": "UC8.3b",
@@ -135,7 +135,7 @@
   "id": "UC8.4",
   "title": "mixed chaos=1 never blank / no page errors",
   "ok": true,
-  "evidence": "greeting after 1 attempt(s), error state seen=false, no page errors"
+  "evidence": "greeting after 3 attempt(s), error state seen=true, no page errors"
  },
  {
   "id": "UC8.5",
@@ -213,7 +213,7 @@
   "id": "V2-federation-down",
   "title": "stopped peer is isolated, others still work",
   "ok": true,
-  "evidence": "down row \"http://127.0.0.1:42929 Down: refused the connection\"; up row \"http://127.0.0.1:43975 Up (2 ms)\"; hello: \"This peer refused the connection.\" + 1 greeting; POST /hello still exact"
+  "evidence": "down row \"http://127.0.0.1:33835 Down: refused the connection\"; up row \"http://127.0.0.1:37011 Up (2 ms)\"; hello: \"This peer refused the connection.\" + 1 greeting; POST /hello still exact"
  },
  {
   "id": "V2-keyboard",
@@ -243,7 +243,7 @@
   "id": "CONSOLE",
   "title": "console errors = none (excluding browser resource-load lines for forced 4xx/5xx)",
   "ok": true,
-  "evidence": "0 console errors / page errors; 9 expected \"Failed to load resource\" lines from forced 418/429/500"
+  "evidence": "0 console errors / page errors; 11 expected \"Failed to load resource\" lines from forced 418/429/500"
  },
  {
   "id": "J10",

@@ -210,7 +210,7 @@ textarea{min-height:9rem;resize:vertical;overflow-wrap:anywhere;font-family:var(
 .cert-stage{display:grid;gap:var(--s-5);justify-items:center}
 .cert-sheet{position:relative;width:100%;max-width:34rem;aspect-ratio:566/800;border-radius:var(--r-2);background-color:var(--surface);background-image:repeating-linear-gradient(0deg,var(--grain) 0 1px,transparent 1px 4px),radial-gradient(ellipse at 50% 40%,transparent 55%,rgb(var(--shadow-rgb) / .06));box-shadow:0 1px 1px rgb(60 40 10 / .08),0 22px 44px -14px rgb(0 0 0 / .45);animation:rise-lg var(--d-slow) var(--ease-out) backwards;container-type:inline-size;display:flex;flex-direction:column}
 .cert-guilloche{position:absolute;inset:0;width:100%;height:100%;fill:none}
-.cert-guilloche path{stroke-dashoffset:0;stroke-dasharray:1;vector-effect:non-scaling-stroke;animation:draw 900ms var(--ease-io) backwards;animation-delay:calc(120ms + var(--i,0) * 70ms)}
+.cert-guilloche path{stroke-dashoffset:0;stroke-dasharray:1;vector-effect:non-scaling-stroke;animation:draw 700ms var(--ease-io) backwards;animation-delay:calc(120ms + var(--i,0) * 30ms)}
 .cert-guilloche .rule{stroke:var(--ink);stroke-width:1.6}
 .cert-guilloche .rule2{stroke:var(--teal);stroke-width:.75}
 .cert-guilloche .band{stroke:var(--teal);stroke-width:.7;opacity:.85}

@@ -49,3 +49,29 @@ Reviewers: security-reviewer, code-reviewer (read-only); browser QA 42/42 (see q
 | C6 | code | LOW | weather collapses tab/newline in place | RATIFIED (decisions.md) |
 | C7 | code | LOW | milestone priority differs from spec list order | RATIFY: code order is the spec; list order in spec updated, test pins it |
 | C8 | code | LOW | fixed `setTimeout(50)` in router-v2 test | FIX: poll with a deadline |
+
+## Redesign review (2026-11-20)
+
+The redesign had four reviewers working in parallel and read-only: code-reviewer, security-reviewer, a11y-architect (reviewing the build) and performance-optimizer. Each was given `ux.md` and `redesign/ux-redesign.md` as hard requirements. None found a CRITICAL issue, and the only HIGH was P1, which is deferred.
+
+| ID | From | Sev | Finding | Disposition |
+|---|---|---|---|---|
+| F1 | code | MED | A failed response-body read could leave buttons busy forever | FIX: `api()` resolves `{status:0}` on body-read failure |
+| F2 | code | MED | Time machine error after an earlier success left a random postmark year; the year roll was not cancelled | FIX: restore the previous year on error; cancel the roll with a sequence token |
+| F3 | code | MED | No stale-response guard on battle or leaderboard; a late vote could steal focus | FIX: `battleSeq` guard and `isCur('battle')` |
+| F4 | code | MED | Restoring from the back/forward cache left wall and SLA dead | FIX: re-route on `pageshow` when persisted |
+| F5 | code | MED | A second option could vote while the first vote was pending | FIX: both options are `aria-disabled` while a vote is pending |
+| F6 | code | LOW | Stale announcements after leaving a view | FIX: `slowSay` checks the view. ACCEPTED: the 429 countdown keeps running so "You can say hello again." is still announced, which is correct for the shared limit |
+| F7-F9, F11, F12 | code | LOW | Certificate retry focus; dots timer; SLA samples kept across visits; string-replace pattern; stale federation output | FIX |
+| F10 | code | LOW | `const` in ES5-style script | FIX |
+| S1-S4 | security | LOW/INFO | `lang` not validated; same-origin text not cleaned; `cleanText` missing U+00AD and U+061C; server error text shown raw | FIX: `langOf`, `cleanText` at render, extra characters, cleaned error and hint |
+| P1 | perf | HIGH | Page served uncompressed (156 KB; 44 KB gzip, 33 KB brotli) | DEFERRED: needs a router change (content negotiation and ETag) outside the UI redesign, in code whose responses the acceptance tests pin. The old page was not compressed either. Recommended in the retro. |
+| P2 | perf | MED | Loops (scan glow, pen, skeleton) | ACCEPTED: they run only while loading, and are off under reduced motion |
+| P6, P8 | perf | MED/LOW | Wall FLIP read before the trim; year flick not stopped on route change | FIX |
+| N1 | a11y | MED | `.ghost-letter` pulsed under reduced motion | FIX (also RC3 in QA) |
+| N2 | a11y | MED | Annex tiles and tabs at 320 px | FIX: `overflow-wrap`, `min-width:0`, tab icons hidden under 360 px |
+| N3, N5-N8 | a11y | LOW | Silent battle and peer loading; forced-colours focus versus selection; theme pointer flag; certificate padding at 320 px; select arrow under forced colours | FIX |
+| N4 | a11y | LOW | Wall reconnect flip-flop announcements | ACCEPTED: the EventSource retry cadence is the browser's (about 3 s), so each state change is real |
+| 24 | a11y | LOW | Print had no heading | FIX: print shows the real h1 and hides the decorative title; footnote reworded |
+
+The a11y reviewer verified every section-9 fix in code except two. 07 (loops in normal motion) is accepted as above. 25 (wall time as generated content) is accepted in decisions.md.

@@ -142,12 +142,17 @@ These were on the idea list in `docs/product/hello-overkill/brief.md` and are no
 
 Also left out: user accounts, an HTTPS listener, external translation APIs and databases.
 
+## The page
+
+The page is styled as "The Overkill Greeting Office", a fictional ministry of correspondence. There are three counters (Hello, Battle, Verify) and six other departments: Weather, Wall, SLA, Time machine, Haiku and Federation. The footer has an Appearance control that switches between System, Light and Dark and remembers the choice in this browser. Certificates print on one page from the Print certificate button. The design spec is in `docs/product/hello-overkill/redesign/ux-redesign.md`.
+
 ## Layout
 
-- `src/` - server, router, store, certificates, battle, chaos, page (the single HTML page)
+- `src/` - server, router, store, certificates, battle, chaos, page (the single HTML page, assembled from `src/page/`: tokens, geometry, icons, style, markup, script)
 - `test/` - unit tests, written with this project
 - `acceptance/` - acceptance tests (human-written, read-only during a harness run)
 - `holdout/` - hidden holdout tests used by the verify gate
-- `qa/walkthrough.js` - Playwright walkthrough
+- `qa/walkthrough.js` - Playwright walkthrough of every v1/v2 journey (`QA_SHOTS=<dir>` changes where screenshots go)
+- `qa/redesign.js` - Playwright checks for the redesign: theme, reduced motion, 390 px, print, contrast, focus and order, plus screenshots at 390 and 1280 in light and dark
 - `spec.md`, `TASKS.md`, `verify.config.json` - harness inputs
 - `CHANGELOG.md` - version history

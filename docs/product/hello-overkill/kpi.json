@@ -1,14 +1,14 @@
 {
-  "generatedAt": 1795018285413,
+  "generatedAt": 1795158718854,
   "totals": {
     "agents": 36,
-    "active": 0,
-    "idle": 36,
-    "runs": 0,
+    "active": 8,
+    "idle": 28,
+    "runs": 9,
     "failed": 0,
-    "unreported": 0,
-    "tokens": 0,
-    "durationMs": 0
+    "unreported": 8,
+    "tokens": 23845,
+    "durationMs": 47429
   },
   "rows": [
     {
@@ -16,16 +16,20 @@
       "role": "Accessibility Architect specializing in WCAG 2.2 compliance for Web and Native platforms. Use when designing UI components, establishing des",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 2,
       "failed": 0,
-      "unreported": 0,
+      "unreported": 2,
       "successRate": null,
       "tokens": null,
       "durationMs": null,
       "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "models": {
+        "default": 2
+      },
+      "efforts": {
+        "low": 2
+      },
+      "lastRun": 1795157977331
     },
     {
       "agent": "agent-evaluator",
@@ -48,16 +52,20 @@
       "role": "Software architecture specialist for system design, scalability, and technical decision-making. Use when planning new features, refactoring ",
       "configuredModel": "opus",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 1,
       "failed": 0,
       "unreported": 0,
-      "successRate": null,
-      "tokens": null,
-      "durationMs": null,
-      "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "successRate": 1,
+      "tokens": 23845,
+      "durationMs": 47429,
+      "toolUses": 4,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795095631502
     },
     {
       "agent": "build-error-resolver",
@@ -112,16 +120,20 @@
       "role": "Expert code review specialist. Reviews code for quality, security, and maintainability. Use immediately after writing or modifying code.",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 1,
       "failed": 0,
-      "unreported": 0,
+      "unreported": 1,
       "successRate": null,
       "tokens": null,
       "durationMs": null,
       "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795157967480
     },
     {
       "agent": "code-simplifier",
@@ -224,16 +236,20 @@
       "role": "End-to-end testing specialist using Vercel Agent Browser (preferred) with Playwright fallback. Use for generating, maintaining, and running ",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 1,
       "failed": 0,
-      "unreported": 0,
+      "unreported": 1,
       "successRate": null,
       "tokens": null,
       "durationMs": null,
       "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795095818277
     },
     {
       "agent": "gan-evaluator",
@@ -336,16 +352,20 @@
       "role": "Performance analysis and optimization specialist. Use for identifying bottlenecks, optimizing slow code, reducing bundle sizes, and improvin",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 1,
       "failed": 0,
-      "unreported": 0,
+      "unreported": 1,
       "successRate": null,
       "tokens": null,
       "durationMs": null,
       "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795157982429
     },
     {
       "agent": "planner",
@@ -448,16 +468,20 @@
       "role": "Security vulnerability detection and remediation specialist. Use after writing code that handles user input, authentication, API endpoints, ",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 1,
       "failed": 0,
-      "unreported": 0,
+      "unreported": 1,
       "successRate": null,
       "tokens": null,
       "durationMs": null,
       "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795157972096
     },
     {
       "agent": "seo-specialist",
@@ -512,16 +536,20 @@
       "role": "Test-Driven Development specialist enforcing write-tests-first methodology. Use when writing new features, fixing bugs, or refactoring code.",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 1,
       "failed": 0,
-      "unreported": 0,
+      "unreported": 1,
       "successRate": null,
       "tokens": null,
       "durationMs": null,
       "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "medium": 1
+      },
+      "lastRun": 1795095805953
     },
     {
       "agent": "type-design-analyzer",
@@ -560,16 +588,20 @@
       "role": "UX and interface designer for web and CLI products. Turns a product brief into user journeys, screen states, copy and UI acceptance checks t",
       "configuredModel": "sonnet",
       "configuredEffort": null,
-      "runs": 0,
+      "runs": 1,
       "failed": 0,
-      "unreported": 0,
+      "unreported": 1,
       "successRate": null,
       "tokens": null,
       "durationMs": null,
       "toolUses": null,
-      "models": {},
-      "efforts": {},
-      "lastRun": null
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795094829299
     },
     {
       "agent": "vue-reviewer",
@@ -589,13 +621,172 @@
     }
   ],
   "human": {
-    "sessions": 0,
-    "prompts": 0,
-    "interventions": 0,
-    "recordedPrompts": 0,
+    "sessions": 1,
+    "prompts": 3,
+    "interventions": 2,
+    "recordedPrompts": 13,
     "unclassified": 0
   },
-  "byPhase": [],
-  "byEffort": [],
-  "recent": []
+  "byPhase": [
+    {
+      "phase": "ux",
+      "runs": 2,
+      "unreported": 2,
+      "failed": 0,
+      "tokens": 0,
+      "durationMs": 0
+    },
+    {
+      "phase": "design",
+      "runs": 1,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 23845,
+      "durationMs": 47429
+    },
+    {
+      "phase": "plan",
+      "runs": 2,
+      "unreported": 2,
+      "failed": 0,
+      "tokens": 0,
+      "durationMs": 0
+    },
+    {
+      "phase": "review",
+      "runs": 4,
+      "unreported": 4,
+      "failed": 0,
+      "tokens": 0,
+      "durationMs": 0
+    }
+  ],
+  "byEffort": [
+    {
+      "model": "default",
+      "effort": "low",
+      "runs": 8,
+      "failed": 0,
+      "tokens": 23845,
+      "durationMs": 47429
+    },
+    {
+      "model": "default",
+      "effort": "medium",
+      "runs": 1,
+      "failed": 0,
+      "tokens": 0,
+      "durationMs": 0
+    }
+  ],
+  "recent": [
+    {
+      "ts": 1795157982429,
+      "agent": "performance-optimizer",
+      "phase": "review",
+      "task": "[phase:review] performance review redesign",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    },
+    {
+      "ts": 1795157977331,
+      "agent": "a11y-architect",
+      "phase": "review",
+      "task": "[phase:review] a11y review of build",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    },
+    {
+      "ts": 1795157972096,
+      "agent": "security-reviewer",
+      "phase": "review",
+      "task": "[phase:review] security review redesign",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    },
+    {
+      "ts": 1795157967480,
+      "agent": "code-reviewer",
+      "phase": "review",
+      "task": "[phase:review] code review redesign",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    },
+    {
+      "ts": 1795095818277,
+      "agent": "e2e-runner",
+      "phase": "plan",
+      "task": "[phase:plan] Playwright RC suite for redesign",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    },
+    {
+      "ts": 1795095805953,
+      "agent": "tdd-guide",
+      "phase": "plan",
+      "task": "[phase:plan] unit tests for redesign",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    },
+    {
+      "ts": 1795095631502,
+      "agent": "architect",
+      "phase": "design",
+      "task": "[phase:design] page.js architecture",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 23845,
+      "durationMs": 47429,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795095554956,
+      "agent": "a11y-architect",
+      "phase": "ux",
+      "task": "[phase:ux] a11y review of redesign",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    },
+    {
+      "ts": 1795094829299,
+      "agent": "ux-designer",
+      "phase": "ux",
+      "task": "[phase:ux] redesign UX lead",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": null,
+      "durationMs": null,
+      "outcomeReported": false
+    }
+  ]
 }

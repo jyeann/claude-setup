@@ -14,14 +14,14 @@
  {
   "id": "RC3",
   "title": "reduced motion: keyframes are opacity-only, no infinite loops, no view transition",
-  "ok": false,
-  "evidence": "battle: infinite animation [{\"name\":\"pulse\",\"keys\":[\"composite\",\"computedOffset\",\"easing\",\"offset\",\"opacity\"],\"inf\":true}]"
+  "ok": true,
+  "evidence": "views hello:6 certificate:3 verify:0 battle:2 haiku:1 time-machine:0; 0 view transitions (CSSTransition instances excluded, view-transition pseudos excluded)"
  },
  {
   "id": "RC4",
   "title": "default motion completes; nothing left invisible",
-  "ok": false,
-  "evidence": "certificate: 12 animations still running"
+  "ok": true,
+  "evidence": "hello, certificate, verify, haiku, weather, time machine: every rendered testid fully opaque, no finite animation running, stamp overlaps card"
  },
  {
   "id": "RC5",
@@ -44,8 +44,8 @@
  {
   "id": "RC8",
   "title": "v1 focus rules survive",
-  "ok": false,
-  "evidence": "(f) focus stays on copy: got \"cert-text\" expected \"cert-copy\""
+  "ok": true,
+  "evidence": "sub-checks a,e,d,c,f,b"
  },
  {
   "id": "RC9",
@@ -63,7 +63,7 @@
   "id": "RC11",
   "title": "certificate artifact structure",
   "ok": true,
-  "evidence": "19 guilloche paths, 26 ring glyphs, Serial 68AB-03B6-5A25-23C9"
+  "evidence": "19 guilloche paths, 26 ring glyphs, Serial 2BF8-F620-628F-C9F9"
  },
  {
   "id": "RC12",
@@ -87,7 +87,7 @@
   "id": "RC13.3",
   "title": "time machine 1987-05-02 state and timing",
   "ok": true,
-  "evidence": "default 401 ms, reduced 65 ms; era e4, year 1987, marker 3"
+  "evidence": "default 275 ms, reduced 53 ms; era e4, year 1987, marker 3"
  },
  {
   "id": "RC13.4",
@@ -111,7 +111,7 @@
   "id": "SHOTS",
   "title": "review screenshots: 11 views x {390,1280} x {light,dark}",
   "ok": true,
-  "evidence": "44 screenshots"
+  "evidence": "47 screenshots"
  },
  {
   "id": "SHOTS-extra",
