@@ -84,7 +84,13 @@ Read this carefully: most graders check coverage by keyword, so "all passed" mea
 
 ## Limits and resuming
 
-When a usage limit stops an agent, write the state to `docs/product/<slug>/status.md` (phase, what is done, what is next), schedule a resume with `send_later` at the reset time, and continue with `SendMessage` to the stopped agent. Do not wait for a human to say "try again".
+A usage limit ends the turn before the agent can act, so nothing written after the limit hits will ever run. The resume has to be set up **at the start of the run**, and the state has to be on disk before any limit.
+
+- **Write `docs/product/<slug>/status.md` at every phase boundary**, not when a limit is noticed: the phase just finished, what is done, the next phase, open decisions and the current round-trip count (of 3). A resumed session reads it first.
+- **When the `create_trigger` or `send_later` tools exist (cloud sessions), create an hourly scheduled task into your own session right after `harness.js init`.** Use `create_trigger` with no `persistent_session_id` (it fires into this session), an hourly cron, and a prompt such as: "Run `node .claude/harness/bin/pipeline.js check --product examples/<p> --docs docs/product/<p>`. If it prints PIPELINE COMPLETE, do nothing. Otherwise read `docs/product/<slug>/status.md` and continue the run from the phase it names. Do not ask a human." Keep the returned `trigger_id` in `status.md`.
+- **After `PIPELINE COMPLETE`, delete that scheduled task** (`delete_trigger`) and note it in `status.md`. Delete it also if the run is halted on purpose (3 round trips used, or the harness halted), so it does not keep firing into a finished run.
+- **Where those tools do not exist** (a local terminal session, a headless run), nothing can wake the run after a limit. Write `status.md` all the same and say in the final message that a human, or an outer loop that re-runs the same `pipeline.js check` and restarts the session, must resume it. Some hosts continue by themselves after a limit resets (Claude Code has an auto-continue setting); do not rely on that.
+- When a usage limit stops a delegated agent but not the orchestrator, continue it with `SendMessage` after the reset. Do not wait for a human to say "try again".
 
 ## KPI proof
 
