@@ -59,6 +59,11 @@ export function sortCards(cards, byVotes) {
   return cards.slice().sort(byVotes ? compareByVotes : compareByAge);
 }
 
+// Add, vote and delete-own answer from the participant routes, so their view always says role "participant",
+// even on the facilitator page. The page's role comes from loading and polling the board; a write response
+// must not change it (it used to remove Delete from other people's cards for the facilitator).
+export const withPageRole = (view, pageRole) => (view && pageRole && view.role !== pageRole ? { ...view, role: pageRole } : view);
+
 // Compare the cards we show with a fresh list. `ownIds` are excluded from "from others".
 export function diffCards(prevCards, nextCards) {
   const prev = new Set(prevCards.map((c) => c.id));

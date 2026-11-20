@@ -1,7 +1,7 @@
 import { boardApi, ApiError } from './api.js';
 import {
   COLUMNS, MAX_CARD, columnLabel, counterText, validateCardText, votesLeftLabel, voteButtonLabel,
-  sortCards, pollAnnouncements, nextDelay, parseBoardPath, addFailureOutcome, pollFailureKind, shareStartsOpen,
+  sortCards, withPageRole, pollAnnouncements, nextDelay, parseBoardPath, addFailureOutcome, pollFailureKind, shareStartsOpen,
 } from './logic.js';
 import { announcePolite, announceAssertive, toast, focusEl, focusHeading, flashLabel, copyText, selectContents } from './live.js';
 
@@ -62,6 +62,7 @@ async function load(isRetry = false) {
   try {
     const r = await api.get();
     state.view = r.data;
+    state.role = r.data.role;
     state.etag = r.etag;
     state.version = r.data.version;
     if (r.data.role !== 'facilitator') api = boardApi(route.p, null);
@@ -389,7 +390,7 @@ async function addCard(key) {
     const out = addFailureOutcome(err, text, alive ? c.ta.value : '');
     if (alive && out.restore) { c.ta.value = text; c.ta.dispatchEvent(new Event('input')); }
     if (!alive || out.rescue) rescueText(text);
-    if (out.applyBoard) applyView(out.applyBoard, { announce: true });
+    if (out.applyBoard) applyView(withPageRole(out.applyBoard, state.role), { announce: true });
     if (out.message) showError(key, out.message);
     if (cols[key].form === form) c.ta.focus();
     render(state.view);
@@ -407,7 +408,7 @@ function applyOwn(r) {
     state.version = r.data.version;
     state.etag = r.etag;
     const prev = state.view;
-    state.view = r.data;
+    state.view = withPageRole(r.data, state.role);
     render(prev);
   }
 }
@@ -452,7 +453,7 @@ async function toggleVote(id) {
       announcePolite('That card was removed.');
     } else if (err instanceof ApiError && err.board) {
       state.view = before; state.version = Math.min(state.version, before.version);
-      applyView(err.board);
+      applyView(withPageRole(err.board, state.role));
       toast('Could not save your vote. Try again.');
       announceAssertive('Could not save your vote. Try again.');
     } else {
@@ -509,7 +510,7 @@ async function confirmDelete(el) {
       announcePolite('Card deleted');
     } else {
       state.view = before;
-      if (err instanceof ApiError && err.board) applyView(err.board); else render(next);
+      if (err instanceof ApiError && err.board) applyView(withPageRole(err.board, state.role)); else render(next);
       toast('Could not delete the card. Try again.');
       announceAssertive('Could not delete the card. Try again.');
       pollSoon();
@@ -628,7 +629,7 @@ async function poll() {
     state.failures = 0;
     try {
       const wasOffline = state.offline;
-      if (r.status !== 304) applyView(r.data, { announce: !wasOffline, etag: r.etag });
+      if (r.status !== 304) { state.role = r.data.role; applyView(r.data, { announce: !wasOffline, etag: r.etag }); }
       if (wasOffline) { setOffline(false); announcePolite('Back online. Board updated.'); }
     } catch (err) {
       console.error(err);

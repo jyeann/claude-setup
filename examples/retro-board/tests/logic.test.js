@@ -148,3 +148,14 @@ test('the share panel starts collapsed on a phone for an existing board, expande
   assert.equal(L.shareStartsOpen({ stored: 'hidden', narrow: false, justCreated: false }), false);
   assert.equal(L.shareStartsOpen({ stored: 'shown', narrow: true, justCreated: false }), true);
 });
+
+test('a write response never changes the page role: the facilitator keeps facilitator after add or vote', () => {
+  const fromWrite = { role: 'participant', version: 4, cards: [{ id: '1' }] };
+  const kept = L.withPageRole(fromWrite, 'facilitator');
+  assert.equal(kept.role, 'facilitator');
+  assert.deepEqual(kept.cards, fromWrite.cards);
+  assert.equal(fromWrite.role, 'participant', 'the response object is not mutated');
+  assert.equal(L.withPageRole(fromWrite, 'participant'), fromWrite, 'unchanged when the roles already agree');
+  assert.equal(L.withPageRole(fromWrite, undefined), fromWrite, 'unchanged before the page role is known');
+  assert.equal(L.withPageRole(null, 'facilitator'), null);
+});

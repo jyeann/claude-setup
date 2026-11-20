@@ -21,7 +21,16 @@ const freePort = () => new Promise((resolve, reject) => {
 });
 
 // Start the product exactly as the README says (`node src/server.js`) and wait for the address line.
-async function startApp({ dataDir, port } = {}) {
+async function startApp(opts = {}) {
+  // Picking a free port and binding it later can race with a parallel test; retry unless the port was asked for.
+  for (let attempt = 1; ; attempt += 1) {
+    try { return await startAppOnce(opts); } catch (err) {
+      if (opts.port || attempt >= 5 || !/in use|EADDRINUSE/i.test(err.message)) throw err;
+    }
+  }
+}
+
+async function startAppOnce({ dataDir, port } = {}) {
   const dir = dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'retro-journey-'));
   const p = port || await freePort();
   const child = spawn(process.execPath, ['src/server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(p), DATA_DIR: dir }, stdio: ['ignore', 'pipe', 'pipe'] });
