@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Packing list</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+<main id="main" tabindex="-1">
+<h1>Packing list</h1>
+<p class="lead">Make a list, share the link, tick things off together.</p>
+<form id="create-form" aria-labelledby="create-heading" novalidate>
+<h2 id="create-heading">New packing list</h2>
+<label for="trip-name">Trip name</label>
+<input id="trip-name" name="name" type="text" autocomplete="off" aria-describedby="trip-name-error">
+<p id="trip-name-error" class="error" role="alert"></p>
+<button id="create-button" type="submit">Create list</button>
+</form>
+<noscript><p>This app needs JavaScript. Turn it on in your browser and reload.</p></noscript>
+</main>
+<script src="/assets/js/logic.js" defer></script>
+<script src="/assets/js/api.js" defer></script>
+<script src="/assets/js/home.js" defer></script>
+</body>
+</html>

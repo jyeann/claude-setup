@@ -23,15 +23,18 @@ function coveredChars(length, processes) {
 }
 
 // processes: one `functions` array per process that loaded the file. Returns line-level coverage.
-function lineCoverage(rawSource, processes) {
+// erasedSource (TypeScript): the same text with types blanked out; a line that is blank there is type-only
+// (interface, type alias, import type) and is not executable, so it can neither inflate nor lower the score.
+function lineCoverage(rawSource, processes, { erasedSource } = {}) {
   const source = rawSource.replace(/^\uFEFF/, ''); // Node strips the BOM before compiling, so V8 offsets exclude it
+  const erasedLines = erasedSource === undefined ? null : erasedSource.replace(/^\uFEFF/, '').split('\n');
   const covered = coveredChars(source.length, processes);
   let executable = 0;
   let hit = 0;
   const uncoveredLines = [];
   let offset = 0;
   source.split('\n').forEach((line, i) => {
-    if (!isCommentOrBlank(line)) {
+    if (!isCommentOrBlank(line) && !(erasedLines && isCommentOrBlank(erasedLines[i] ?? ''))) {
       executable += 1;
       let lineHit = false;
       for (let j = 0; j < line.length && !lineHit; j += 1) lineHit = !/\s/.test(line[j]) && covered[offset + j] === 1;

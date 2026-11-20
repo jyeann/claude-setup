@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Packing list</title>
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+<main id="main" tabindex="-1">
+<h1 id="list-title" tabindex="-1">Packing list</h1>
+<section class="share" aria-label="Share">
+<label for="share-link">Share link</label>
+<div class="share-row">
+<input id="share-link" type="text" readonly>
+<button id="copy-button" type="button">Copy</button>
+</div>
+<p class="note">Anyone with this link can edit.</p>
+</section>
+<section class="progress" aria-label="Progress">
+<p id="progress" aria-live="polite">0 of 0 packed</p>
+<div id="progress-bar" role="progressbar" aria-label="Packing progress" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0"><div id="progress-fill" class="bar-fill"></div></div>
+</section>
+<form id="add-form" novalidate>
+<label for="new-item">New item</label>
+<div class="add-row">
+<input id="new-item" name="text" type="text" autocomplete="off" aria-describedby="form-error">
+<button id="add-button" type="submit">Add</button>
+</div>
+<p id="form-error" class="error" role="alert"></p>
+</form>
+<div id="status" role="status"></div>
+<p id="empty">No items yet</p>
+<ul id="items" aria-label="Items"></ul>
+<noscript><p>This app needs JavaScript. Turn it on in your browser and reload.</p></noscript>
+</main>
+<script src="/assets/js/logic.js" defer></script>
+<script src="/assets/js/api.js" defer></script>
+<script src="/assets/js/list.js" defer></script>
+</body>
+</html>

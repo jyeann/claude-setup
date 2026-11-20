@@ -9,14 +9,14 @@ const { preflightForProject } = require('../lib/preflight');
 
 const USAGE = `harness <command>
   init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--verify-timeout SECONDS] [--lint "<cmd>"] [--no-commit-gate]
-        [--no-checkpoint] [--checkpoint-push] [--require-sandbox]\n        [--hide <paths>] [--no-diagnosis]\n        [--max-minutes N] [--no-progress N]
+        [--no-checkpoint] [--checkpoint-push] [--require-sandbox]\n        [--hide <paths>] [--no-diagnosis] [--open-gate-files]\n        [--max-minutes N] [--no-progress N]
   checkpoint    snapshot the worktree to refs/harness/wip/<branch> now (the Stop hook does this every iteration)
   restore       copy the latest checkpoint's files back into the worktree (fetches from origin if needed)
   status        show the current run
   verify        run the verify command once (does not change state)
   off           deactivate the run (humans only; blocked for the agent while a run is active)`;
 
-const BOOLEAN_FLAGS = new Set(['no-commit-gate', 'no-checkpoint', 'checkpoint-push', 'no-diagnosis', 'require-sandbox']);
+const BOOLEAN_FLAGS = new Set(['open-gate-files', 'no-commit-gate', 'no-checkpoint', 'checkpoint-push', 'no-diagnosis', 'require-sandbox']);
 
 function parseFlags(argv) {
   const flags = {};
@@ -58,6 +58,7 @@ async function main([command, ...rest]) {
         noProgressLimit: toInt(f['no-progress'], 'no-progress') ?? null,
         protectedPaths: f.protect ? f.protect.split(',').map((p) => p.trim()).filter(Boolean) : [],
         commitGate: !f['no-commit-gate'],
+        gateFilesOpen: Boolean(f['open-gate-files']),
         verifyTimeoutMs: f['verify-timeout'] ? toInt(f['verify-timeout'], 'verify-timeout') * 1000 : undefined,
         lintCommand: f.lint,
         projectDir,

@@ -51,7 +51,7 @@ function withGatePaths(entries) {
   return [...entries, ...GATE_PATHS.filter((p) => !entries.includes(p))];
 }
 
-function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, hiddenPaths = [], maxMinutes = null, noProgressLimit = null, startedAt = Date.now(), checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, verifyTimeoutMs, lintCommand, projectDir }) {
+function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, hiddenPaths = [], maxMinutes = null, noProgressLimit = null, startedAt = Date.now(), checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, gateFilesOpen = false, verifyTimeoutMs, lintCommand, projectDir }) {
   if (!verifyCommand || !verifyCommand.trim()) {
     throw new Error('A non-empty verify command is required: it is the objective definition of done.');
   }
@@ -78,7 +78,9 @@ function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, 
     bestFailing: null,
     sinceImprovement: 0,
     hiddenPaths: hidden,
-    protectedPaths: withGatePaths([...new Set([...normaliseProtected(protectedPaths, projectDir), ...hiddenInside])]),
+    // gateFilesOpen: a whole-pipeline run has to write the spec and acceptance tests itself; pipeline.js
+    // freezes them by hash once the plan phase is complete instead.
+    protectedPaths: ((list) => (gateFilesOpen ? list : withGatePaths(list)))([...new Set([...normaliseProtected(protectedPaths, projectDir), ...hiddenInside])]),
     commitGate,
     ...(verifyTimeoutMs ? { verifyTimeoutMs } : {}),
     ...(lintCommand?.trim() ? { lintCommand: lintCommand.trim() } : {}),

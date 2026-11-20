@@ -1,6 +1,6 @@
 # Agents
 
-Agents live in `.claude/agents/` and are called through the Agent tool by name (for example `planner`, `code-reviewer`, `security-reviewer`, `tdd-guide`, `build-error-resolver`). List them with `ls .claude/agents`.
+Agents live in `.claude/agents/` and are called through the Agent tool by name (for example `planner`, `code-reviewer`, `security-reviewer`, `tdd-guide`, `e2e-runner`). List them with `ls .claude/agents`.
 
 - Delegate when it earns its cost: independent work that can run in parallel, or a review that needs fresh context. Do not delegate trivial edits.
 - Run independent agents in parallel.

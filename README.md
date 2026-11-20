@@ -1,41 +1,72 @@
 # claude-setup
 
-My Claude Code configuration, built on **ECC (Everything Claude Code)**
-v2.2.3 (upstream commit b38be6a), MIT licensed.
+A product team for Claude Code. One idea goes in; a team of agents scopes it, designs it, builds it under an
+objective gate, reviews it, walks it in a browser and documents it, with no human input until final acceptance.
+The harness, not the agent, decides when it is done.
 
-Included under `.claude/`:
-- `agents/`: 34 specialist subagents for web apps (planner, code-reviewer, security-reviewer, ...)
-- `commands/`: 46 slash commands
-- `skills/`: 55 skills, trimmed for web apps (JS/TS, React/Next.js, frontend, testing, general workflow)
-  plus the `orch-*` feature/bugfix/refactor workflows. Re-add any others from upstream `skills/`.
-- `rules/ecc-common/`: five short always-loaded rules (agents, git, performance/model, security, testing), rewritten for the harness. The generic upstream ones were removed or moved to the on-demand `skills/engineering-reference` (patterns, hooks, development-workflow, code-review) to keep the base context small.
+Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/README.md`.
 
-Not included: ECC hooks. This repo ships its own `.claude/harness/` hooks instead (pre-bash and pre-write guards, a post-edit lint hook, and a Stop-time verify loop).
+## What is here
 
-## Workflow additions (local, not from ECC)
-- `skills/grill-me`: interview-until-aligned step before planning (`orch-pipeline` phase 1.5, standard and large tasks).
-- `skills/plan-to-tasks` + `harness/templates/tasks.md`: backlog of vertical slices with `blocked-by` and `AFK`/`HITL`.
-  `node .claude/harness/bin/next-task.js TASKS.md` picks the next ready AFK task; the loop runbook uses it.
-- Status line (`harness/bin/statusline.js`): exact context token count, warns past ~100K ("dumb zone").
-- Pruned: non-web language agents/commands, and commands that need ECC scripts this repo does not ship
-  (`continuous-learning-v2`, instincts, sessions). Restore any of them from upstream if needed.
+| Path | What it is |
+|---|---|
+| `.claude/skills/orch-product-team/` | The nine-phase workflow: discover, UX, design, plan, build, review, QA, release, retro. |
+| `.claude/agents/` | The 15 agents the workflow calls (14 team roles plus `harness-optimizer`). |
+| `.claude/skills/` | 10 skills: the workflow, `plan-to-tasks`, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference). |
+| `.claude/commands/` | `/harness-build` and `/harness-improve`. |
+| `.claude/rules/ecc-common/` | Five short always-loaded rules. |
+| `.claude/harness/` | Guard hooks, the verify gate (tests, type check, coverage, test quality, hidden holdout, browser journeys, mutation), the whole-pipeline stop gate, tracing and KPI roll-up. Dependency-free, with its own test suite. |
+| `examples/`, `docs/product/` | Products the team built and the specs used to test the gate. `link-shortener` and `retro-board` are gated in CI; `retro-board/tune/` is the per-phase effort comparison; `packing-list` and `wiki` are the latest full runs; `todo-api`, `sheet-engine` and `slug-ts` are small gate examples the harness README points to. |
+| `docs/process/definition-of-done.md` | What has been proven about the process, and when to re-check it. |
 
-## Use it in another project
-Copy the `.claude/` folder into that repo, or open a Claude Code session on this repo.
+## Run the team
+In a session on this repo (or a project with the plugin and harness installed), give it an idea and tell it to use
+`orch-product-team`. The skill starts the harness with the whole pipeline as the definition of done, so the Stop
+hook sends the agent back to the next unfinished phase instead of letting it stop to ask.
 
-## Update from upstream
-```bash
-git clone --depth 1 https://github.com/affaan-m/everything-claude-code /tmp/ecc
-# Do NOT use --delete: it would restore everything pruned above and drop the local skills.
-rsync -a /tmp/ecc/{agents,commands,skills} .claude/   # then re-run the prune, or copy only what you want
-# Do NOT sync rules/common/ over .claude/rules/ecc-common/: those five files are customised.
+## Install in another project
+Claude Code 2.1.275 or later:
+```
+/plugin install product-team --marketplace jyeann/claude-setup
+```
+or from a shell: `claude plugin marketplace add jyeann/claude-setup && claude plugin install product-team@jyeann`.
+
+To share with a team, declare it in the project's `.claude/settings.json`:
+```json
+{
+  "extraKnownMarketplaces": { "jyeann": { "source": { "source": "github", "repo": "jyeann/claude-setup" } } },
+  "enabledPlugins": { "product-team@jyeann": true }
+}
 ```
 
-## Pruned for being unrunnable here
-Commands, skills and agents that need upstream ECC scripts, MCP servers or skills this repo does not ship were removed, because
-an agent that picks them fails and wastes tool calls (the `efficiency` scorer would flag it). Removed: the instinct/learning stack
-(`/evolve`, `/instinct-*`, `/projects`, `/promote`, `/prune`, `/skill-health`; replaced by `/harness-improve`), `/epic-*`,
-`/multi-*`, `/astra-review`, `/santa-loop`, `/plan-canvas`, `/sessions`, `/quality-gate`, `/harness-audit` (the `harness-optimizer` agent stays; it runs the harness tests and `tune.js` instead),
-`/auto-update`, `/project-init`, `/setup-pm`, `/skill-host-compat`, `/issue-review`, `/jira`, `/token-card`, `/cost-report` (its metrics log is never written here), the `ecc-guide`,
-`plan-canvas` and `documentation-lookup` skills, and the `docs-lookup` agent (needs a Context7 MCP server). Re-add from upstream
-only together with the scripts they call. Rule: after any upstream sync, run the reference check in `.claude/harness/README.md`.
+The plugin does **not** activate the harness: a plugin cannot ship deny rules, sandbox settings, a status line or
+always-loaded rules, and the guards expect to live in the project. Add them with `/product-team:harness-install`, or:
+```bash
+node .claude/harness/bin/install.js /path/to/project --dry-run   # from a clone of this repo; drop --dry-run to write
+```
+It copies `.claude/harness/` (without this repo's own test suite), `.claude/rules/` and `.claude/plans/`, merges hooks,
+permissions, sandbox and status line into the project's `.claude/settings.json` without removing anything already there,
+and adds `.harness/` to `.gitignore`. Re-run it to update.
+
+## Where the agents came from
+Twelve of the 15 agents and six of the skills are taken from **ECC (Everything Claude Code)** v2.2.3 (upstream commit
+b38be6a, MIT, see `.claude/ECC-LICENSE`); the rest is local. Only what the team calls is kept. The rest of the ECC
+catalogue (web-framework skills, extra reviewers, slash commands) and the `orch-*` single-feature workflows were removed
+on 2026-11-20 after a full product run used none of them. To get any of it back, take it from upstream
+(https://github.com/affaan-m/everything-claude-code) or from this repo's history before that date, one file at a time,
+then run the checks below.
+
+The team's measured results hold for these exact agent files. A change to an agent the team uses is a change to the
+team: re-run the checks in `docs/process/definition-of-done.md` before taking it.
+
+## Checks
+```bash
+node --test .claude/harness/test/*.test.js     # harness suite, 90% line floor in CI
+node .claude/harness/bin/check-refs.js         # no agent, skill or command points at something missing
+claude plugin validate .
+```
+
+## Manifests
+`.claude-plugin/marketplace.json` (marketplace `jyeann`) and `.claude/.claude-plugin/plugin.json` (`product-team`).
+Plugin names starting with `claude-` are reserved. No `version` is set on purpose: installs track the latest commit on
+`main`, and a pinned version would hold users on a stale copy until someone remembered to bump it.

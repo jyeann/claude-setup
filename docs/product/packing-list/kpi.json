@@ -1,0 +1,672 @@
+{
+  "generatedAt": 1795117676124,
+  "totals": {
+    "agents": 15,
+    "active": 14,
+    "idle": 1,
+    "runs": 21,
+    "failed": 0,
+    "unreported": 0,
+    "tokens": 871900,
+    "durationMs": 4182129
+  },
+  "rows": [
+    {
+      "agent": "a11y-architect",
+      "role": "Accessibility Architect specializing in WCAG 2.2 compliance for Web and Native platforms. Use when designing UI components, establishing des",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 2,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 60147,
+      "durationMs": 97766,
+      "toolUses": 17,
+      "models": {
+        "default": 2
+      },
+      "efforts": {
+        "low": 2
+      },
+      "lastRun": 1795094373659
+    },
+    {
+      "agent": "architect",
+      "role": "Software architecture specialist for system design, scalability, and technical decision-making. Use when planning new features, refactoring ",
+      "configuredModel": "opus",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 37165,
+      "durationMs": 95588,
+      "toolUses": 3,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795092161048
+    },
+    {
+      "agent": "code-reviewer",
+      "role": "Expert code review specialist. Reviews code for quality, security, and maintainability. Use immediately after writing or modifying code.",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 66001,
+      "durationMs": 69392,
+      "toolUses": 9,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795094371530
+    },
+    {
+      "agent": "doc-updater",
+      "role": "Documentation and codemap specialist. Use for updating codemaps and documentation. Generates docs/CODEMAPS/*, updates READMEs and guides. Ba",
+      "configuredModel": "haiku",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 25599,
+      "durationMs": 23644,
+      "toolUses": 4,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795095967988
+    },
+    {
+      "agent": "e2e-runner",
+      "role": "End-to-end testing specialist using Vercel Agent Browser (preferred) with Playwright fallback. Use for generating, maintaining, and running ",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 2,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 64096,
+      "durationMs": 809533,
+      "toolUses": 23,
+      "models": {
+        "default": 2
+      },
+      "efforts": {
+        "medium": 2
+      },
+      "lastRun": 1795092435839
+    },
+    {
+      "agent": "gan-evaluator",
+      "role": "GAN Harness — Evaluator agent. Tests the live running application via Playwright, scores against rubric, and provides actionable feedback to",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 69306,
+      "durationMs": 422377,
+      "toolUses": 37,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795094980597
+    },
+    {
+      "agent": "gan-generator",
+      "role": "GAN Harness — Generator agent. Implements features according to the spec, reads evaluator feedback, and iterates until quality threshold is ",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 4,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 253412,
+      "durationMs": 1652619,
+      "toolUses": 57,
+      "models": {
+        "default": 4
+      },
+      "efforts": {
+        "medium": 4
+      },
+      "lastRun": 1795095445906
+    },
+    {
+      "agent": "harness-improver",
+      "role": "Reads the harness score report and session traces, finds recurring failures, and proposes ONE small, evidence-backed change to a skill, rule",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 14399,
+      "durationMs": 15387,
+      "toolUses": 2,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795096026330
+    },
+    {
+      "agent": "harness-optimizer",
+      "role": "Improve local agent-harness configuration reliability and cost using eval-driven grading (pass@k/pass^k) against the harness's own tests and",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 0,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": null,
+      "tokens": null,
+      "durationMs": null,
+      "toolUses": null,
+      "models": {},
+      "efforts": {},
+      "lastRun": null
+    },
+    {
+      "agent": "performance-optimizer",
+      "role": "Performance analysis and optimization specialist. Use for identifying bottlenecks, optimizing slow code, reducing bundle sizes, and improvin",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 39383,
+      "durationMs": 166176,
+      "toolUses": 5,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795094422213
+    },
+    {
+      "agent": "planner",
+      "role": "Expert planning specialist for complex features and refactoring. Use when users request feature implementation, architectural changes, or co",
+      "configuredModel": "opus",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 33857,
+      "durationMs": 37571,
+      "toolUses": 5,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795092229916
+    },
+    {
+      "agent": "product-scoper",
+      "role": "Product scoping and requirements specialist. Turns a one-line idea into a short product brief before anything is designed or built - the pro",
+      "configuredModel": "opus",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 18186,
+      "durationMs": 35722,
+      "toolUses": 3,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795091946794
+    },
+    {
+      "agent": "security-reviewer",
+      "role": "Security vulnerability detection and remediation specialist. Use after writing code that handles user input, authentication, API endpoints, ",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 62598,
+      "durationMs": 234609,
+      "toolUses": 23,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "high": 1
+      },
+      "lastRun": 1795094422174
+    },
+    {
+      "agent": "tdd-guide",
+      "role": "Test-Driven Development specialist enforcing write-tests-first methodology. Use when writing new features, fixing bugs, or refactoring code.",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 3,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 106539,
+      "durationMs": 474472,
+      "toolUses": 32,
+      "models": {
+        "default": 3
+      },
+      "efforts": {
+        "medium": 3
+      },
+      "lastRun": 1795092435841
+    },
+    {
+      "agent": "ux-designer",
+      "role": "UX and interface designer for web and CLI products. Turns a product brief into user journeys, screen states, copy and UI acceptance checks t",
+      "configuredModel": "sonnet",
+      "configuredEffort": null,
+      "runs": 1,
+      "failed": 0,
+      "unreported": 0,
+      "successRate": 1,
+      "tokens": 21212,
+      "durationMs": 47273,
+      "toolUses": 3,
+      "models": {
+        "default": 1
+      },
+      "efforts": {
+        "low": 1
+      },
+      "lastRun": 1795092010516
+    }
+  ],
+  "human": {
+    "sessions": 1,
+    "prompts": 2,
+    "interventions": 1,
+    "recordedPrompts": 23,
+    "unclassified": 0
+  },
+  "byPhase": [
+    {
+      "phase": "discover",
+      "runs": 1,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 18186,
+      "durationMs": 35722
+    },
+    {
+      "phase": "ux",
+      "runs": 2,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 42654,
+      "durationMs": 73529
+    },
+    {
+      "phase": "design",
+      "runs": 1,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 37165,
+      "durationMs": 95588
+    },
+    {
+      "phase": "plan",
+      "runs": 6,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 204492,
+      "durationMs": 1321576
+    },
+    {
+      "phase": "build",
+      "runs": 4,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 253412,
+      "durationMs": 1652619
+    },
+    {
+      "phase": "review",
+      "runs": 4,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 206687,
+      "durationMs": 541687
+    },
+    {
+      "phase": "qa",
+      "runs": 1,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 69306,
+      "durationMs": 422377
+    },
+    {
+      "phase": "release",
+      "runs": 1,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 25599,
+      "durationMs": 23644
+    },
+    {
+      "phase": "retro",
+      "runs": 1,
+      "unreported": 0,
+      "failed": 0,
+      "tokens": 14399,
+      "durationMs": 15387
+    }
+  ],
+  "byEffort": [
+    {
+      "model": "default",
+      "effort": "low",
+      "runs": 11,
+      "failed": 0,
+      "tokens": 385255,
+      "durationMs": 1010896
+    },
+    {
+      "model": "default",
+      "effort": "medium",
+      "runs": 9,
+      "failed": 0,
+      "tokens": 424047,
+      "durationMs": 2936624
+    },
+    {
+      "model": "default",
+      "effort": "high",
+      "runs": 1,
+      "failed": 0,
+      "tokens": 62598,
+      "durationMs": 234609
+    }
+  ],
+  "recent": [
+    {
+      "ts": 1795096026330,
+      "agent": "harness-improver",
+      "phase": "retro",
+      "task": "[phase:retro] packing-list harness improvement proposal",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 14399,
+      "durationMs": 15387,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795095967988,
+      "agent": "doc-updater",
+      "phase": "release",
+      "task": "[phase:release] packing-list README and CHANGELOG",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 25599,
+      "durationMs": 23644,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795095445906,
+      "agent": "gan-generator",
+      "phase": "build",
+      "task": "[phase:build] packing-list QA defect fixes",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": 36962,
+      "durationMs": 484815,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795094980597,
+      "agent": "gan-evaluator",
+      "phase": "qa",
+      "task": "[phase:qa] packing-list first-time-user walkthrough",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 69306,
+      "durationMs": 422377,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795094688433,
+      "agent": "gan-generator",
+      "phase": "build",
+      "task": "[phase:build] packing-list review fix round",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": 40030,
+      "durationMs": 243023,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795094422213,
+      "agent": "performance-optimizer",
+      "phase": "review",
+      "task": "[phase:review] performance review packing-list",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 39383,
+      "durationMs": 166176,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795094422174,
+      "agent": "security-reviewer",
+      "phase": "review",
+      "task": "[phase:review] security review packing-list",
+      "ok": true,
+      "model": null,
+      "effort": "high",
+      "tokens": 62598,
+      "durationMs": 234609,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795094373659,
+      "agent": "a11y-architect",
+      "phase": "review",
+      "task": "[phase:review] accessibility review packing-list",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 38705,
+      "durationMs": 71510,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795094371530,
+      "agent": "code-reviewer",
+      "phase": "review",
+      "task": "[phase:review] code review packing-list",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 66001,
+      "durationMs": 69392,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795093680579,
+      "agent": "gan-generator",
+      "phase": "build",
+      "task": "[phase:build] packing-list browser UI",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": 79190,
+      "durationMs": 503651,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795093238621,
+      "agent": "gan-generator",
+      "phase": "build",
+      "task": "[phase:build] packing-list server and API",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": 97230,
+      "durationMs": 421130,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795092435841,
+      "agent": "tdd-guide",
+      "phase": "plan",
+      "task": "[phase:plan] spec, acceptance and hidden tests",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": 106539,
+      "durationMs": 335170,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795092435839,
+      "agent": "e2e-runner",
+      "phase": "plan",
+      "task": "[phase:plan] browser journey tests",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": 64096,
+      "durationMs": 714455,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795092229916,
+      "agent": "planner",
+      "phase": "plan",
+      "task": "[phase:plan] packing-list implementation plan",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 33857,
+      "durationMs": 37571,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795092161048,
+      "agent": "architect",
+      "phase": "design",
+      "task": "[phase:design] packing-list system design",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 37165,
+      "durationMs": 95588,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795092044646,
+      "agent": "a11y-architect",
+      "phase": "ux",
+      "task": "[phase:ux] a11y review of ux.md",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 21442,
+      "durationMs": 26256,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795092010516,
+      "agent": "ux-designer",
+      "phase": "ux",
+      "task": "[phase:ux] packing-list UX design",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 21212,
+      "durationMs": 47273,
+      "outcomeReported": true
+    },
+    {
+      "ts": 1795091946794,
+      "agent": "product-scoper",
+      "phase": "discover",
+      "task": "[phase:discover] packing-list brief",
+      "ok": true,
+      "model": null,
+      "effort": "low",
+      "tokens": 18186,
+      "durationMs": 35722,
+      "outcomeReported": true
+    },
+    {
+      "ts": 0,
+      "agent": "tdd-guide",
+      "phase": "plan",
+      "task": "[phase:plan] amend verify.config.json (resumed test author, via SendMessage)",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": null,
+      "durationMs": 90867,
+      "outcomeReported": true
+    },
+    {
+      "ts": 0,
+      "agent": "tdd-guide",
+      "phase": "plan",
+      "task": "[phase:plan] amend test helpers for the port race (resumed test author, via SendMessage)",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": null,
+      "durationMs": 48435,
+      "outcomeReported": true
+    },
+    {
+      "ts": 0,
+      "agent": "e2e-runner",
+      "phase": "plan",
+      "task": "[phase:plan] amend journeys/support.js for the port race (resumed journey author, via SendMessage)",
+      "ok": true,
+      "model": null,
+      "effort": "medium",
+      "tokens": null,
+      "durationMs": 95078,
+      "outcomeReported": true
+    }
+  ]
+}

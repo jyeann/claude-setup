@@ -1,8 +1,11 @@
 'use strict';
 
-const ASSERTION = /\bassert(?:\.\w+)?\s*\(|\bexpect\s*\(/g;
-const LITERAL = String.raw`(true|\d+|'[^']*'|"[^"]*")`;
-const TAUTOLOGY = new RegExp(String.raw`\bassert(?:\.\w+)?\(\s*${LITERAL}\s*(?:,\s*${LITERAL}\s*)?[,)]`, 'g');
+// TypeScript: `assert.deepStrictEqual<T>(...)` carries a type argument before the paren, and a literal can wear a cast
+// (`assert.ok(true as boolean)`); both must still be seen, or real tests are miscounted and placeholders slip through.
+const TYPE_ARGS = String.raw`(?:<[^<>()]*>)?`;
+const ASSERTION = new RegExp(String.raw`\bassert(?:\.\w+)?${TYPE_ARGS}\s*\(|\bexpect\s*\(`, 'g');
+const LITERAL = String.raw`(true|\d+|'[^']*'|"[^"]*")(?:\s+(?:as|satisfies)\s+[\w.]+)?`;
+const TAUTOLOGY = new RegExp(String.raw`\bassert(?:\.\w+)?${TYPE_ARGS}\(\s*${LITERAL}\s*(?:,\s*${LITERAL}\s*)?[,)]`, 'g');
 const EXPECT_TAUTOLOGY = /\bexpect\(\s*(true|\d+)\s*\)\.\w+\(\s*(?:\1)?\s*\)/;
 const SKIPPED = /\b(?:test|it|describe)\.(?:skip|todo)\b|\bx(?:it|describe)\(|\{\s*(?:skip|todo)\s*:\s*true/;
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
