@@ -4,6 +4,7 @@
 
 ### Added
 
+- **Design direction:** `design-director` agent, `design-direction` skill, `/design` command and `design-lint` (raw colors and banned patterns against `docs/design/tokens.json`). `orch-product-team` phase 2 starts with it and phase 6 includes a design review.
 - **packing-list** (`examples/packing-list`): a shareable trip packing checklist, built end to end by `orch-product-team` under the whole-pipeline gate. Run record in `docs/product/packing-list/`.
 - **Harness:** browser journeys and an optional type check inside `verify.js` (seven checks), TypeScript support for `node:test` projects, a whole-pipeline stop gate (`pipeline.js`), an installer (`install.js`), and plugin packaging as `product-team`.
 

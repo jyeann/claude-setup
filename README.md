@@ -10,10 +10,10 @@ Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/READ
 
 | Path | What it is |
 |---|---|
-| `.claude/skills/orch-product-team/` | The nine-phase workflow: discover, UX, design, plan, build, review, QA, release, retro. |
-| `.claude/agents/` | The 15 agents the workflow calls (14 team roles plus `harness-optimizer`). |
-| `.claude/skills/` | 10 skills: the workflow, `plan-to-tasks`, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference). |
-| `.claude/commands/` | `/harness-build` and `/harness-improve`. |
+| `.claude/skills/orch-product-team/` | The nine-phase workflow: discover, look and UX, design, plan, build, review, QA, release, retro. |
+| `.claude/agents/` | The 16 agents the workflow calls (15 team roles plus `harness-optimizer`). |
+| `.claude/skills/` | 11 skills: the workflow, `design-direction`, `plan-to-tasks`, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference). |
+| `.claude/commands/` | `/harness-build`, `/harness-improve` and `/design`. |
 | `.claude/rules/ecc-common/` | Five short always-loaded rules. |
 | `.claude/harness/` | Guard hooks, the verify gate (tests, type check, coverage, test quality, hidden holdout, browser journeys, mutation), the whole-pipeline stop gate, tracing and KPI roll-up. Dependency-free, with its own test suite. |
 | `examples/`, `docs/product/` | Products the team built and the specs used to test the gate. `link-shortener` and `retro-board` are gated in CI; `retro-board/tune/` is the per-phase effort comparison; `packing-list` and `wiki` are the latest full runs; `todo-api`, `sheet-engine` and `slug-ts` are small gate examples the harness README points to. |
@@ -49,7 +49,7 @@ permissions, sandbox and status line into the project's `.claude/settings.json` 
 and adds `.harness/` to `.gitignore`. Re-run it to update.
 
 ## Where the agents came from
-Twelve of the 15 agents and six of the skills are taken from **ECC (Everything Claude Code)** v2.2.3 (upstream commit
+Twelve of the 16 agents and six of the skills are taken from **ECC (Everything Claude Code)** v2.2.3 (upstream commit
 b38be6a, MIT, see `.claude/ECC-LICENSE`); the rest is local. Only what the team calls is kept. The rest of the ECC
 catalogue (web-framework skills, extra reviewers, slash commands) and the `orch-*` single-feature workflows were removed
 on 2026-11-20 after a full product run used none of them. To get any of it back, take it from upstream
