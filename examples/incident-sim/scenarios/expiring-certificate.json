@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "id": "expiring-certificate",
+  "title": "Checkout has started refusing to shake hands with half of its customers",
+  "difficulty": 1,
+  "summary": "Customers see security errors at checkout. Nothing was deployed. The calendar, however, had plans.",
+  "budget": 6,
+  "seed": 8,
+  "labels": { "lb": "Checkout LB", "service-1": "Orders", "db-primary": "Orders DB" },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 1200 },
+      "lb": { "capacity": 6000, "baseMs": 2 },
+      "service-1": { "capacity": 4000, "baseMs": 12 },
+      "db-primary": { "capacity": 6000, "baseMs": 6 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb", "retries": 2 },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "db-primary" }
+    ]
+  },
+  "workload": [[0, 1]],
+  "sparks": { "p99": "lb", "errors": "lb", "saturation": "service-1", "queue": null, "cache-hit": null },
+  "faults": [
+    {
+      "id": "cert-expired",
+      "trigger": { "atTick": 5 },
+      "effects": [ { "path": "node:lb.errorBase", "op": "set", "value": 0.62 } ]
+    }
+  ],
+  "alerts": [
+    { "id": "checkout-errors", "severity": 2, "text": "checkout errors > 5%", "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.05 } },
+    { "id": "handshake-failures", "severity": 3, "text": "TLS handshake failures above 30%", "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.3 } }
+  ],
+  "logs": [
+    {
+      "node": "lb", "level": "error",
+      "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.05 },
+      "text": "TLS handshake failed: certificate expired, still failing at tick {tick}"
+    },
+    {
+      "node": "lb", "level": "warn", "every": 3,
+      "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.05 },
+      "text": "client {rand:100-999} gave up after 3 handshake attempts"
+    }
+  ],
+  "deploys": [
+    { "tick": -7200, "node": "service-1", "text": "Orders v88: tooltip wording, tests green" }
+  ],
+  "diagnostics": {
+    "deploy-history": { "lines": ["Nothing was released in the last two hours. Whatever broke, it was not a deploy."] },
+    "trace-request": { "lines": ["Handshake rejections at the LB: {m:lb.errorRate|pct} of attempts."] }
+  },
+  "actions": {
+    "renew-cert": {
+      "cost": 2,
+      "effects": { "lb": [ { "path": "node:lb.errorBase", "op": "set", "value": 0 } ] }
+    },
+    "rollback": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "node:service-1.capFactor", "op": "set", "value": 0.2 },
+          { "path": "node:service-1.capFactor", "op": "set", "value": 1, "ramp": 20 }
+        ]
+      }
+    }
+  },
+  "hint": "Errors began with no release. What on the load balancer has a date on it?",
+  "rootCause": "The TLS certificate on the load balancer expired. Strict clients refuse the handshake and retry, so the failures also triple the handshake traffic. The application behind the balancer is perfectly healthy, which is why nothing in the service or the database looks wrong.",
+  "rootCauseNode": "lb",
+  "concept": "Certificates are a dependency with a deadline. A TLS handshake needs a valid, unexpired certificate to succeed, so an expiry looks like a sudden outage with no change to blame. Renew before the date, and alert on days left instead of waiting for customers to tell you.",
+  "harmfulWhy": {
+    "rollback": "Rolling back Orders restarted a healthy service with cold workers while clients were still retrying. The TLS problem sat in front of it, so nothing improved and capacity dipped just when the retries needed it."
+  },
+  "optimalPath": [ { "id": "renew-cert", "node": "lb" } ],
+  "optimalSummary": { "timeToMitigate": 14, "cost": 2 },
+  "guideUrl": "https://bytebytego.com/guides/how-does-https-work",
+  "guideTitle": "How secure web traffic works"
+}

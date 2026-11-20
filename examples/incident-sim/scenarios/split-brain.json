@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "id": "split-brain",
+  "title": "Two databases both believe they are in charge, and both are taking orders",
+  "difficulty": 3,
+  "summary": "A network partition left two writers. Load looks mild, but orders are quietly colliding.",
+  "budget": 8,
+  "seed": 9,
+  "labels": { "lb": "Checkout LB", "service-1": "Orders", "db-primary": "Orders DB", "db-replica": "Orders DB replica" },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 1500 },
+      "lb": { "capacity": 8000, "baseMs": 2 },
+      "service-1": { "capacity": 3000, "baseMs": 12 },
+      "db-primary": { "capacity": 5000, "baseMs": 6 },
+      "db-replica": { "capacity": 1400, "baseMs": 6 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb" },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "db-primary" },
+      { "from": "service-1", "to": "db-replica", "share": 0.6 },
+      { "from": "db-primary", "to": "db-replica", "calls": 0.2 }
+    ]
+  },
+  "workload": [[0, 1]],
+  "sparks": { "p99": "lb", "errors": "lb", "saturation": "db-primary", "queue": null, "cache-hit": null },
+  "faults": [
+    {
+      "id": "partition",
+      "trigger": { "atTick": 5 },
+      "effects": [
+        { "path": "node:db-primary.writers", "op": "set", "value": 2 },
+        { "path": "node:db-replica.writers", "op": "set", "value": 2 },
+        { "path": "node:db-primary.conflictRate", "op": "set", "value": 0.08 },
+        { "path": "node:db-replica.conflictRate", "op": "set", "value": 0.08 }
+      ]
+    }
+  ],
+  "alerts": [
+    { "id": "checkout-errors", "severity": 2, "text": "checkout errors > 5%", "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.05 } },
+    { "id": "two-writers", "severity": 3, "text": "More than one database accepting writes", "when": { "path": "node:db-replica.writers", "op": "gt", "value": 1 } }
+  ],
+  "logs": [
+    {
+      "node": "db-primary", "level": "error",
+      "when": { "node": "db-primary", "metric": "errorRate", "op": "gt", "value": 0.02 },
+      "text": "write conflict on order {rand:10000-99999}: two primaries accepted different versions"
+    },
+    {
+      "node": "db-replica", "level": "warn", "every": 4,
+      "when": { "path": "node:db-replica.writers", "op": "gt", "value": 1 },
+      "text": "replication link down, no heartbeat from the primary, this node promoted itself"
+    },
+    {
+      "node": "service-1", "level": "warn", "every": 3,
+      "when": { "node": "service-1", "metric": "errorRate", "op": "gt", "value": 0.05 },
+      "text": "{m:service-1.errorRate|pct} of order writes are failing with conflict errors"
+    }
+  ],
+  "deploys": [
+    { "tick": 1, "node": "db-primary", "text": "Network team: inter-zone link maintenance window opened" }
+  ],
+  "diagnostics": {
+    "compare-dashboards": { "lines": ["Nodes accepting writes: primary {p:node:db-primary.writers}, replica {p:node:db-replica.writers}. A healthy pair has exactly one."] }
+  },
+  "actions": {
+    "shed-load": {
+      "cost": 2,
+      "effects": { "lb": [ { "path": "node:lb.shed", "op": "set", "value": 0.3 } ] }
+    },
+    "failover": {
+      "cost": 2,
+      "effects": {
+        "db-replica": [
+          { "path": "node:db-primary.writers", "op": "set", "value": 1 },
+          { "path": "node:db-replica.writers", "op": "set", "value": 1 },
+          { "path": "node:db-primary.conflictRate", "op": "set", "value": 0 },
+          { "path": "node:db-replica.conflictRate", "op": "set", "value": 0 },
+          { "path": "node:db-replica.capFactor", "op": "set", "value": 0.25, "if": { "path": "node:lb.shed", "op": "lt", "value": 0.2 } }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "node:service-1.instances", "op": "add", "value": 1 },
+          { "path": "node:db-primary.conflictRate", "op": "add", "value": 0.04 },
+          { "path": "node:db-replica.conflictRate", "op": "add", "value": 0.04 }
+        ]
+      }
+    }
+  },
+  "hint": "Error rate is up but nothing is saturated. Ask which databases are accepting writes, and ease the load before you pick a winner.",
+  "rootCause": "A network partition cut the link between the primary and its replica. The replica stopped hearing heartbeats and promoted itself, so two nodes accepted writes for the same orders and produced conflicting versions. Fencing one of them (failover) restores a single writer, but the survivor has to carry everything, so the load must be reduced first.",
+  "rootCauseNode": "db-primary",
+  "concept": "Split brain is what a partition does to a system that keeps accepting writes on both sides. The CAP trade-off says that during a partition you either refuse some requests to stay consistent or accept them and reconcile later. Here consistency matters, so shed load, fence the extra writer, and only then promote.",
+  "harmfulWhy": {
+    "failover": "The replica was promoted while it still faced full traffic. It had to replay its log and serve every request at once, so it fell behind, and the errors moved from conflicts to overload. Easing the load first gives the promoted node room to catch up.",
+    "scale-service": "More Orders instances means more concurrent writers racing on the same orders, so the conflict rate went up. Scaling the stateless tier cannot fix a data problem, and here it made the data problem bigger."
+  },
+  "optimalPath": [ { "id": "shed-load", "node": "lb" }, { "id": "failover", "node": "db-replica" } ],
+  "optimalSummary": { "timeToMitigate": 16, "cost": 4 },
+  "guideUrl": "https://bytebytego.com/guides/cap-theorem-one-of-the-most-misunderstood-terms",
+  "guideTitle": "The CAP theorem, properly understood"
+}

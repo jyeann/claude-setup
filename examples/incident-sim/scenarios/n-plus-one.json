@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "id": "n-plus-one",
+  "title": "The order page now asks the database twelve questions instead of one",
+  "difficulty": 2,
+  "summary": "A release made every order page fire one query per line item, and the database is drowning in politeness.",
+  "budget": 6,
+  "seed": 6,
+  "labels": { "lb": "Checkout LB", "service-1": "Orders", "db-primary": "Orders DB" },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 1200 },
+      "lb": { "capacity": 6000, "baseMs": 2 },
+      "service-1": { "capacity": 2500, "baseMs": 12 },
+      "db-primary": { "capacity": 8000, "baseMs": 5, "backlogMax": 3000 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb" },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "db-primary" }
+    ]
+  },
+  "workload": [[0, 1]],
+  "sparks": { "p99": "lb", "errors": "lb", "saturation": "db-primary", "queue": "db-primary", "cache-hit": null },
+  "faults": [
+    {
+      "id": "line-items-release",
+      "trigger": { "atTick": 4 },
+      "effects": [ { "path": "edge:service-1>db-primary.calls", "op": "set", "value": 12 } ]
+    }
+  ],
+  "alerts": [
+    { "id": "checkout-p99", "severity": 2, "text": "checkout p99 > 2 s", "when": { "node": "lb", "metric": "p99", "op": "gt", "value": 2000 } },
+    { "id": "db-hot", "severity": 3, "text": "Orders DB saturation above 90%", "when": { "node": "db-primary", "metric": "saturation", "op": "gte", "value": 0.9 } }
+  ],
+  "logs": [
+    {
+      "node": "service-1", "level": "warn", "every": 2,
+      "when": { "node": "service-1", "metric": "p99", "op": "gt", "value": 1000 },
+      "text": "order page for order {rand:10000-99999}: line item {rand:1-12} of 12 loaded with its own query"
+    },
+    {
+      "node": "db-primary", "level": "warn", "every": 2,
+      "when": { "node": "db-primary", "metric": "rps", "op": "gt", "value": 5000 },
+      "text": "{m:db-primary.rps|int} queries/s arriving for {m:lb.rps|int} checkout requests/s"
+    },
+    {
+      "node": "db-primary", "level": "error", "every": 3,
+      "when": { "node": "db-primary", "metric": "queue", "op": "gt", "value": 1000 },
+      "text": "query queue holds {m:db-primary.queue|int} waiting statements"
+    }
+  ],
+  "deploys": [
+    { "tick": -5400, "node": "lb", "text": "lb config tidy-up, no behaviour change" },
+    { "tick": 3, "node": "service-1", "text": "Orders v212: order page now shows line items" }
+  ],
+  "diagnostics": {
+    "trace-request": { "lines": ["{p:edge:service-1>db-primary.calls} x SELECT * FROM line_items WHERE order_id = ?"] },
+    "compare-dashboards": { "lines": ["Checkout traffic is {m:lb.rps|int} requests/s. The database is serving {m:db-primary.rps|int} queries/s."] }
+  },
+  "actions": {
+    "rollback": {
+      "cost": 2,
+      "effects": { "service-1": [ { "path": "edge:service-1>db-primary.calls", "op": "set", "value": 1 } ] }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "node:service-1.instances", "op": "add", "value": 1 },
+          { "path": "node:db-primary.capFactor", "op": "mul", "value": 0.7 }
+        ]
+      }
+    },
+    "add-index": {
+      "cost": 2,
+      "effects": {
+        "db-primary": [
+          { "path": "node:db-primary.capacity", "op": "mul", "value": 1.3 },
+          { "path": "node:db-primary.baseMs", "op": "mul", "value": 0.7 }
+        ]
+      }
+    }
+  },
+  "hint": "Put the database's queries per second next to the checkout requests per second. Which release changed that ratio?",
+  "rootCause": "Orders v212 loads each line item with its own query. One order page used to cost one query and now costs twelve, so the same traffic sends twelve times the work to a database that was sized for one.",
+  "rootCauseNode": "service-1",
+  "concept": "The N+1 query problem: one query for the list plus one more per row. Indexes and bigger servers only shave the cost per query. The fix is to stop asking so many questions, with a join or a batched fetch, and to find it by comparing request rate with query rate.",
+  "harmfulWhy": {
+    "scale-service": "More Orders instances means more workers firing the same twelve queries at a database that is already past its limit. The extra concurrency makes the lock and queue waits worse, so even less gets through and more requests fail. The bottleneck was never the service tier."
+  },
+  "optimalPath": [ { "id": "rollback", "node": "service-1" } ],
+  "optimalSummary": { "timeToMitigate": 13, "cost": 2 },
+  "guideUrl": "https://bytebytego.com/guides/7-must-know-strategies-to-scale-your-database",
+  "guideTitle": "Strategies for scaling a database"
+}

@@ -1,0 +1,134 @@
+{
+  "schema": 1,
+  "id": "retry-storm",
+  "title": "A payments partner hiccups and our own retries finish the job",
+  "difficulty": 2,
+  "summary": "The payment partner is only a bit sick. Our retries are what knocked it over.",
+  "budget": 6,
+  "seed": 3,
+  "labels": {
+    "lb": "Checkout LB",
+    "service-1": "Checkout",
+    "db-primary": "Orders DB",
+    "third-party": "Payments partner"
+  },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 1000 },
+      "lb": { "capacity": 9000, "baseMs": 2 },
+      "service-1": { "capacity": 1600, "baseMs": 12 },
+      "db-primary": { "capacity": 3000, "baseMs": 6 },
+      "third-party": { "capacity": 600, "baseMs": 30 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb" },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "third-party", "share": 0.4, "retries": 5 },
+      { "from": "service-1", "to": "db-primary" }
+    ]
+  },
+  "workload": [[0, 1]],
+  "sparks": {
+    "p99": "lb",
+    "errors": "lb",
+    "saturation": "third-party",
+    "queue": null,
+    "cache-hit": null
+  },
+  "faults": [
+    {
+      "id": "partner-degraded",
+      "trigger": { "atTick": 5 },
+      "effects": [
+        { "path": "node:third-party.errorBase", "op": "set", "value": 0.5 },
+        { "path": "node:third-party.extraMs", "op": "set", "value": 600 }
+      ]
+    },
+    {
+      "id": "partner-recovers",
+      "trigger": {
+        "when": {
+          "all": [
+            { "fault": "partner-degraded" },
+            { "tickGte": 12 },
+            { "node": "third-party", "metric": "saturation", "op": "lt", "value": 0.8 }
+          ]
+        }
+      },
+      "effects": [
+        { "path": "node:third-party.errorBase", "op": "set", "value": 0, "ramp": 8 },
+        { "path": "node:third-party.extraMs", "op": "set", "value": 0, "ramp": 8 }
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "id": "checkout-p99",
+      "severity": 2,
+      "text": "checkout p99 > 2 s",
+      "when": { "node": "lb", "metric": "p99", "op": "gt", "value": 2000 }
+    },
+    {
+      "id": "payments-timeouts",
+      "severity": 2,
+      "text": "payments partner timeouts",
+      "when": { "node": "third-party", "metric": "saturation", "op": "gte", "value": 0.9 }
+    },
+    {
+      "id": "checkout-errors",
+      "severity": 3,
+      "text": "checkout errors > 5%",
+      "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.05 }
+    }
+  ],
+  "logs": [
+    {
+      "node": "service-1",
+      "level": "warn",
+      "when": { "node": "third-party", "metric": "errorRate", "op": "gt", "value": 0.2 },
+      "text": "payment call failed, retry {rand:2-5} of 5"
+    },
+    {
+      "node": "third-party",
+      "level": "error",
+      "when": { "node": "third-party", "metric": "saturation", "op": "gte", "value": 0.9 },
+      "every": 2,
+      "text": "429 too many requests: {m:third-party.rps|int} calls in 1 s from one client"
+    }
+  ],
+  "deploys": [
+    { "tick": -86400, "node": "service-1", "text": "service-1 v301 released, retries set to 5 for payments" }
+  ],
+  "actions": {
+    "backoff-jitter": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "edge:service-1>third-party.backoff", "op": "set", "value": true },
+          { "path": "edge:service-1>third-party.retries", "op": "set", "value": 1 }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "node:service-1.instances", "op": "add", "value": 1 },
+          { "path": "node:service-1.capFactor", "op": "set", "value": 0.1 },
+          { "path": "node:service-1.capFactor", "op": "set", "value": 1, "ramp": 30 }
+        ]
+      }
+    }
+  },
+  "hint": "Compare the traffic the partner receives with what clients actually sent.",
+  "rootCause": "The partner dipped to a 50% error rate, and our checkout retried every failed payment five times with no delay. That multiplied the load on a service that was already struggling, so it fell over and the failures fed the next round of retries.",
+  "rootCauseNode": "third-party",
+  "concept": "Retries multiply load exactly when a dependency is weakest. Capping the retry count and adding exponential backoff with jitter keeps the extra traffic small and lets the dependency recover.",
+  "harmfulWhy": {
+    "scale-service": "Scaling out rolled new pods that start cold, so Checkout had less usable capacity than before for a while. The partner was the problem, and adding callers to a struggling dependency does not help it."
+  },
+  "optimalPath": [{ "id": "backoff-jitter", "node": "service-1" }],
+  "optimalSummary": { "timeToMitigate": 21, "cost": 2 },
+  "guideUrl": "https://bytebytego.com/guides/how-do-we-retry-on-failures",
+  "guideTitle": "Retrying failed calls without making it worse"
+}

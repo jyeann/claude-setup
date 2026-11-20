@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "id": "connection-pool-exhaustion",
+  "title": "A flash sale found out how many database connections we really have",
+  "difficulty": 2,
+  "summary": "Orders is queueing for database connections that exist on paper only. More servers are a tempting answer and a wrong one.",
+  "budget": 6,
+  "seed": 7,
+  "labels": { "lb": "Checkout LB", "service-1": "Orders", "db-primary": "Orders DB" },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 600 },
+      "lb": { "capacity": 6000, "baseMs": 2 },
+      "service-1": { "capacity": 1000, "instances": 3, "baseMs": 12, "poolSize": 30 },
+      "db-primary": { "capacity": 4800, "baseMs": 20, "maxConnections": 120, "connOverhead": 0.001 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb" },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "db-primary" }
+    ]
+  },
+  "workload": [[0, 1], [4, 1], [5, 2.4]],
+  "sparks": { "p99": "lb", "errors": "lb", "saturation": "db-primary", "queue": null, "cache-hit": null },
+  "faults": [
+    {
+      "id": "flash-sale",
+      "trigger": { "atTick": 4 },
+      "effects": [ { "path": "node:db-primary.baseMs", "op": "set", "value": 45 } ]
+    }
+  ],
+  "alerts": [
+    { "id": "checkout-errors", "severity": 2, "text": "checkout errors > 5%", "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.05 } },
+    { "id": "db-refusing", "severity": 3, "text": "Orders DB is refusing connections", "when": { "node": "db-primary", "metric": "connections", "op": "gt", "value": 120 } }
+  ],
+  "logs": [
+    {
+      "node": "service-1", "level": "error", "every": 2,
+      "when": { "node": "service-1", "metric": "errorRate", "op": "gt", "value": 0.05 },
+      "text": "timeout waiting for a connection: all {p:node:service-1.poolSize} pooled connections on this instance are busy"
+    },
+    {
+      "node": "db-primary", "level": "error",
+      "when": { "node": "db-primary", "metric": "connections", "op": "gt", "value": 120 },
+      "text": "FATAL: too many connections ({m:db-primary.connections|int}/{p:node:db-primary.maxConnections})"
+    },
+    {
+      "node": "db-primary", "level": "info", "every": 5,
+      "when": { "node": "service-1", "metric": "errorRate", "op": "gt", "value": 0.05 },
+      "text": "{m:db-primary.connections|int} connections open, queries now take {m:db-primary.p50|ms} on average"
+    }
+  ],
+  "deploys": [
+    { "tick": -3600, "node": "service-1", "text": "Orders v87: banner copy for the sale" }
+  ],
+  "diagnostics": {
+    "compare-dashboards": { "lines": ["Each Orders instance holds {p:node:service-1.poolSize} database connections open. The database allows {p:node:db-primary.maxConnections} in total."] }
+  },
+  "actions": {
+    "raise-pool-size": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "node:service-1.poolSize", "op": "set", "value": 40, "if": { "path": "node:service-1.instances", "op": "lte", "value": 3 } },
+          { "path": "node:service-1.poolSize", "op": "set", "value": 20, "if": { "path": "node:service-1.instances", "op": "gt", "value": 3 } }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": { "service-1": [ { "path": "node:service-1.instances", "op": "add", "value": 3 } ] }
+    }
+  },
+  "hint": "Orders reports waiting for connections while the database itself is far from busy. Count the connections on each side.",
+  "rootCause": "Traffic jumped and each query got slower, so every request holds its database connection longer. Three Orders instances with 30 pooled connections each give 90, and the traffic now needs more than that, so requests queue in the pool and time out. The database can accept 120 connections, so the right move is to give each instance a bigger pool.",
+  "rootCauseNode": "service-1",
+  "concept": "A connection pool caps concurrency, and by Little's law the connections you need equal arrival rate times time per query. Slower queries or more traffic raise that number. A pool that is too small starves the service, but total connections across all instances must stay under what the database accepts.",
+  "harmfulWhy": {
+    "scale-service": "Every new Orders instance opens its own pool of connections, so six instances would ask for 180 connections from a database that accepts 120. It started refusing connections and the database, which had been fine, became the new bottleneck. More servers meant more connections, not more answers."
+  },
+  "optimalPath": [ { "id": "raise-pool-size", "node": "service-1" } ],
+  "optimalSummary": { "timeToMitigate": 14, "cost": 2 },
+  "guideUrl": "https://bytebytego.com/guides/7-must-know-strategies-to-scale-your-database",
+  "guideTitle": "Strategies for scaling a database"
+}

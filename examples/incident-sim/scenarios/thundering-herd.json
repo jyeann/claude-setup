@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "id": "thundering-herd",
+  "title": "The cache restart that clients answer with a stampede of retries",
+  "difficulty": 2,
+  "summary": "A cache restart began it. Every client retrying in lockstep is what keeps it going.",
+  "budget": 6,
+  "seed": 7,
+  "labels": {
+    "lb": "Storefront LB",
+    "service-1": "Storefront",
+    "cache": "Catalogue cache",
+    "db-primary": "Catalogue DB"
+  },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 800 },
+      "lb": { "capacity": 9000, "baseMs": 2 },
+      "service-1": { "capacity": 1800, "baseMs": 12 },
+      "cache": { "capacity": 6000, "baseMs": 1, "hitRate": 0.95 },
+      "db-primary": { "capacity": 1600, "baseMs": 8, "backlogMax": 3000 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb", "retries": 4 },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "cache" },
+      { "from": "cache", "to": "db-primary" }
+    ]
+  },
+  "workload": [[0, 1], [5, 1], [6, 5], [18, 5], [20, 1.25]],
+  "sparks": {
+    "p99": "lb",
+    "errors": "lb",
+    "saturation": "db-primary",
+    "queue": "db-primary",
+    "cache-hit": "cache"
+  },
+  "faults": [
+    {
+      "id": "cache-restart",
+      "trigger": { "atTick": 4 },
+      "effects": [
+        { "path": "node:cache.hitRate", "op": "set", "value": 0 }
+      ]
+    },
+    {
+      "id": "cache-refill",
+      "trigger": {
+        "when": {
+          "all": [
+            { "fault": "cache-restart" },
+            { "tickGte": 30 },
+            { "node": "db-primary", "metric": "errorRate", "op": "lt", "value": 0.02 },
+            { "node": "db-primary", "metric": "queue", "op": "lt", "value": 200 }
+          ]
+        }
+      },
+      "effects": [
+        { "path": "node:cache.hitRate", "op": "set", "value": 0.95, "ramp": 8 }
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "id": "checkout-errors",
+      "severity": 2,
+      "text": "storefront errors > 5%",
+      "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.05 }
+    },
+    {
+      "id": "db-saturated",
+      "severity": 3,
+      "text": "Catalogue DB saturated",
+      "when": { "node": "db-primary", "metric": "saturation", "op": "gte", "value": 0.9 }
+    },
+    {
+      "id": "cache-hit",
+      "severity": 3,
+      "text": "Cache hit rate under 80%",
+      "when": { "node": "cache", "metric": "hitRate", "op": "lt", "value": 0.8 }
+    }
+  ],
+  "logs": [
+    {
+      "node": "cache",
+      "level": "warn",
+      "when": { "node": "cache", "metric": "hitRate", "op": "lt", "value": 0.5 },
+      "text": "cold cache: {m:cache.missRps|int} misses per second"
+    },
+    {
+      "node": "lb",
+      "level": "warn",
+      "when": { "node": "lb", "metric": "errorRate", "op": "gt", "value": 0.2 },
+      "every": 2,
+      "text": "retry wave: {m:lb.rps|int} requests in 1 s, {m:lb.errorRate|pct} failed"
+    },
+    {
+      "node": "db-primary",
+      "level": "error",
+      "when": { "node": "db-primary", "metric": "queue", "op": "gt", "value": 500 },
+      "every": 3,
+      "text": "query queue at {m:db-primary.queue|int}, shedding new connections"
+    }
+  ],
+  "deploys": [
+    { "tick": 3, "node": "cache", "text": "cache nodes restarted for a kernel patch" },
+    { "tick": -7200, "node": "service-1", "text": "service-1 v88 released" }
+  ],
+  "actions": {
+    "backoff-jitter": {
+      "cost": 2,
+      "effects": {
+        "clients": [
+          { "path": "edge:clients>lb.backoff", "op": "set", "value": true },
+          { "path": "edge:clients>lb.retries", "op": "set", "value": 2 }
+        ]
+      }
+    },
+    "shed-load": {
+      "cost": 2,
+      "effects": {
+        "lb": [
+          { "path": "node:lb.shed", "op": "set", "value": 0.2 }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "node:service-1.instances", "op": "add", "value": 1 }
+        ]
+      }
+    }
+  },
+  "hint": "The cache is already gone. Ask what the clients are doing about it.",
+  "rootCause": "A cache restart left every key cold, and the clients all retried on the same schedule. Each retry wave landed on a database that was already behind, so failures kept feeding the next wave and the cache never had a quiet moment to refill.",
+  "rootCauseNode": "cache",
+  "concept": "A thundering herd is many clients acting at the same instant, here retrying together. Exponential backoff with random jitter spreads the retries out, which gives the backend room to recover and the cache room to warm.",
+  "harmfulWhy": {
+    "scale-service": "Scaling the service let more of the retry wave through to a cold cache. That sent more misses to a database that was already saturated, so errors grew instead of shrinking."
+  },
+  "optimalPath": [{ "id": "backoff-jitter", "node": "clients" }],
+  "optimalSummary": { "timeToMitigate": 43, "cost": 2 },
+  "guideUrl": "https://bytebytego.com/guides/things-to-consider-when-using-cache",
+  "guideTitle": "What to weigh before you lean on a cache"
+}
