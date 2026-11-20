@@ -53,6 +53,10 @@ A fix after review or QA changes the source hash, so `pipeline.js check` sends t
 
 All nine phases run inside the one harness run. The product gate is re-run on every check from phase 5 on, so a review fix that breaks a test or a journey sends the pipeline back to phase 5 by itself. A failing phase 6 or 7 goes back to 5 with the finding as the task. Cap the loop at 3 round trips, then halt and report.
 
+## Instructions to put in every builder and QA agent prompt
+
+- **Stop any server you start (SIGTERM) before handing back**, and check the process is gone. A builder left a server running in the packing-list run and the orchestrator was not allowed to kill it. Builders (phase 5) and QA agents (phase 7, `e2e-runner`, `gan-evaluator`) start servers; this line goes in their prompts. `gan-evaluator` has no MCP browser: it drives Playwright through Bash scripts.
+
 ## Test author rules (phase 4)
 
 Wrong hidden tests failed the gate in two runs because their author never ran them. Before any builder starts, the test author must:

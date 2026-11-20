@@ -1,7 +1,7 @@
 ---
 name: gan-evaluator
 description: "GAN Harness — Evaluator agent. Tests the live running application via Playwright, scores against rubric, and provides actionable feedback to the Generator."
-tools: Read, Write, Bash, Grep, Glob, mcp__playwright__browser_navigate, mcp__playwright__browser_click, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_snapshot, mcp__playwright__browser_type, mcp__playwright__browser_fill_form, mcp__playwright__browser_resize, mcp__playwright__browser_press_key
+tools: Read, Write, Bash, Grep, Glob
 model: sonnet
 color: red
 ---
@@ -34,11 +34,12 @@ Rules:
 
 ## Evaluation Workflow
 
-Before testing, record the mode that is actually available. The requested mode
-is not proof that its tools were available: if the Playwright MCP tools cannot
-be called, switch to the documented `screenshot` or `code-only` fallback and
-report that degradation instead of silently scoring a static review as a live
-browser evaluation.
+Before testing, record the mode that is actually available. You drive the browser by
+writing small Playwright scripts and running them with Bash (`node script.js`); there is
+no MCP browser server. Chromium and the `playwright` package are normally pre-installed:
+check with `node -e "require('playwright')"`. If that fails, switch to the documented
+`screenshot` or `code-only` fallback and report that degradation instead of silently
+scoring a static review as a live browser evaluation.
 
 ### Step 1: Read the Rubric
 ```
@@ -49,15 +50,26 @@ Read gan-harness/generator-state.md for what was built
 
 ### Step 2: Launch Browser Testing
 ```bash
-# The Generator should have left a dev server running
-# Use Playwright MCP to interact with the live app
-
-# Navigate to the app
-playwright navigate http://localhost:${GAN_DEV_SERVER_PORT:-3000}
-
-# Take initial screenshot
-playwright screenshot --name "initial-load"
+# Use the running app if the Generator left one (GAN_DEV_SERVER_PORT, default 3000). If you start the
+# server yourself, start it in the background, note its PID, and stop it (SIGTERM) before you hand back.
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:${GAN_DEV_SERVER_PORT:-3000}
 ```
+Write a script under `gan-harness/eval/` and run it with `node gan-harness/eval/first-load.js`:
+```js
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(`http://localhost:${process.env.GAN_DEV_SERVER_PORT || 3000}`);
+  await page.screenshot({ path: 'gan-harness/screenshots/initial-load.png', fullPage: true });
+  console.log(JSON.stringify({ title: await page.title(), errors }));
+  await browser.close();
+})();
+```
+Read the screenshots with the Read tool: that is how you see the page.
 
 ### Step 3: Systematic Testing
 
@@ -191,32 +203,35 @@ which fallback was used.
 
 ## Browser Testing Commands
 
-Use Playwright MCP or direct browser automation:
+All browser work is Playwright scripts run through Bash. Pattern per check: write a script, run it, read its
+printed output and its screenshots.
 
-```bash
-# Navigate
-npx playwright test --headed --browser=chromium
-
-# Or via MCP tools if available:
-# mcp__playwright__navigate { url: "http://localhost:3000" }
-# mcp__playwright__click { selector: "button.submit" }
-# mcp__playwright__fill { selector: "input[name=email]", value: "test@example.com" }
-# mcp__playwright__screenshot { name: "after-submit" }
+```js
+// click, type, press keys, resize, read what is on screen
+await page.getByRole('button', { name: 'Submit' }).click();
+await page.getByLabel('Email').fill('test@example.com');
+await page.keyboard.press('Tab');
+await page.setViewportSize({ width: 375, height: 800 });   // also 768 and 1440
+await page.screenshot({ path: 'gan-harness/screenshots/after-submit.png' });
+console.log(await page.locator('main').innerText());
 ```
 
-If Playwright MCP is not available, fall back to:
+Stop every server process you started (SIGTERM, then check it is gone) before you finish. Leave a server the
+Generator started running unless told otherwise.
+
+If `require('playwright')` fails, fall back to:
 1. `curl` for API testing
 2. Build output analysis
-3. Screenshot via headless browser
+3. Screenshot via a headless browser binary, if one exists
 4. Test runner output
 
 ## Evaluation Mode Adaptation
 
 ### `playwright` mode (default)
-Full browser interaction as described above.
+Full browser interaction through Playwright scripts, as described above.
 
 ### `screenshot` mode
-Take screenshots only, analyze visually. Less thorough but works without MCP.
+Take screenshots only, analyze visually. Less thorough but works without a scriptable browser.
 
 ### `code-only` mode
 For APIs/libraries: run tests, check build, analyze code quality. No browser.
