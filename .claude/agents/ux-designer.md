@@ -18,7 +18,7 @@ You design what the person sees and does. You read the product brief, then write
 
 ## Process
 
-1. Read `docs/product/<slug>/brief.md`. If it is missing, say so and stop.
+1. Read `docs/product/<slug>/brief.md`. If it is missing, say so and stop. If `docs/design/direction.md` exists, read it with `tokens.json` and `slop.md` and design within them; do not invent a separate style. If it is missing and the product has screens, say so and ask for the design-director first.
 2. **Journeys.** For each success criterion, write the journey step by step: what the person does, what the screen shows next, and how they know it worked. Start with the first-use journey.
 3. **Screens and states.** For each screen list its regions and every state: empty, loading, success, error, and long or hostile content (very long text, markup in input). Say what the person sees in each.
 4. **Copy.** Write the real labels, button text, and error messages. Errors say what went wrong and how to fix it.

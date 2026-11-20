@@ -40,11 +40,11 @@ Start the harness **before phase 1**, with the whole pipeline as the definition 
 | # | Phase tag | Who | Output (under `docs/product/<slug>/`) | Exit check |
 |---|-----------|-----|----------------------------------------|------------|
 | 1 | `discover` | `product-scoper` | `brief.md` | build/adopt/extend decided; success criteria are user-visible and testable |
-| 2 | `ux` | `ux-designer` (+ `a11y-architect` for review) | `ux.md` | every success criterion has a journey and a UI acceptance check |
+| 2 | `look`, `ux` | `design-director` first (screens only; `design-direction` skill), then `ux-designer` (+ `a11y-architect` for review) | `docs/design/`, `ux.md` | direction, tokens and slop list recorded; every success criterion has a journey and a UI acceptance check that follows the direction |
 | 3 | `design` | `architect`, `api-design` skill; record choices with `architecture-decision-records` | `design.md`, `adr/` | interfaces, data, failure modes, security notes written; ADR per real choice; `architect` is read-only, so save its text verbatim (a writer agent given the exact text, a diff-free check, or give it Write). Never retype or shorten it: a dropped caveat reached the holdout author and failed a gate |
 | 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec, acceptance tests, hidden tests, browser journey tests (`journeys/`, from `harness/templates/journeys.test.js`), `verify.config.json` with `holdout` and `journeys` | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder; the author of the visible and the hidden tests has run every file (see Test author rules) |
 | 5 | `build` | `tdd-guide` / `gan-generator` under `/harness-build` | code, unit tests | `verify.js` exits 0 (tests, type check, coverage, test quality, holdout, browser journeys, mutation) |
-| 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer` in parallel, foreground | `reviews.md`, containing the line `Open: CRITICAL 0, HIGH 0` with the true counts after the fix round | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason; every reviewer is given `ux.md` as a hard requirement list, and a finding that contradicts it is escalated, not applied |
+| 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer`, and `design-director` (review mode, screens only) in parallel, foreground | `reviews.md`, containing the line `Open: CRITICAL 0, HIGH 0` with the true counts after the fix round | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason; every reviewer is given `ux.md` as a hard requirement list, and a finding that contradicts it is escalated, not applied |
 | 7 | `qa` | `e2e-runner` (Playwright) or `gan-evaluator` | `qa.md`, screenshots | an agent that did not write the journey tests walks the product as a first-time user and records what the scripted journeys miss; defects go back to phase 5 |
 | 8 | `release` | `doc-updater` | README with run steps, `CHANGELOG` entry | someone with only the README can run it |
 | 9 | `retro` | `harness-improver` + the KPI roll-up | `retro.md` | one evidence-backed change proposed; KPI file refreshed |
@@ -71,7 +71,7 @@ From the per-phase comparison on the retro board (`docs/product/retro-board/effo
 
 | Phase | Default | Why |
 |---|---|---|
-| discover, ux, design, release | `low` | All levels passed; `high` cost 1.4x to 2.0x for no measured gain |
+| discover, look, ux, design, release | `low` | All levels passed; `high` cost 1.4x to 2.0x for no measured gain |
 | review, qa | `low` | All levels passed the seeded-defect graders; `high` cost 1.5x. Use `high` for auth, input, files and money on judgment: the data does not show it helps |
 | tests (test owner) | `medium` | `low` passed 1 of 2; `high` cost 2x `medium` with the same pass |
 | build | `low` or `medium`, with the full gate including the hidden holdout | `high` failed the gate 2 of 2: in the one run diagnosed, it missed a rule from the design that no visible test covered (control characters in card text) |
