@@ -1,0 +1,40 @@
+{
+  "testCommand": "node --test \"acceptance/*.test.js\" \"tests/*.test.js\"",
+  "timeoutMs": 600000,
+  "minTests": 60,
+  "srcDirs": [
+    "src",
+    "public/js/engine",
+    "public/js/core"
+  ],
+  "coverage": {
+    "minLines": 80,
+    "minFileLines": 60,
+    "exclude": []
+  },
+  "testQuality": {
+    "dirs": [
+      "tests"
+    ],
+    "minAssertionsPerFile": 3
+  },
+  "holdout": {
+    "command": "node --test \"${HARNESS_HIDDEN_DIR:-holdout}/*.test.js\"",
+    "minTests": 14
+  },
+  "mutation": {
+    "samples": 8,
+    "minKillRate": 0.6,
+    "copy": [
+      "package.json",
+      "src",
+      "public/js/engine",
+      "public/js/core",
+      "public",
+      "scenarios",
+      "tests",
+      "acceptance"
+    ],
+    "timeoutMs": 900000
+  }
+}

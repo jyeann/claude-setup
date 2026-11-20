@@ -1,0 +1,28 @@
+// Every data-testid value of the ux.md contract table (docs/product/incident-sim/ux.md), embedded so acceptance tests
+// need nothing outside the project folder. Served HTML plus JS must contain each one as a literal string.
+export const TESTIDS = [
+  "skip-link", "nav-incidents", "nav-data", "nav-about", "status-live", "alert-live",
+  "boot-loading", "app-error", "app-retry", "app-reload", "storage-warning", "test-banner",
+  "not-found", "not-found-back", "picker-view", "daily-card", "daily-start", "seed-input",
+  "seed-error", "incident-list", "incident-row", "incident-start", "picker-empty", "scenario-errors",
+  "scenario-error-item", "play-view", "seed-chip", "mission-clock", "pager-lamps", "pager-lamp",
+  "pager-text", "pause-button", "step-button", "step-5-button", "run-button", "hint-button",
+  "mode-toggle", "shortcuts-toggle", "help-button", "system-map", "map-canvas", "map-node",
+  "map-node-badge", "map-node-ring", "map-edge", "edge-label", "toast-region", "alert-toast",
+  "text-view", "text-row", "alerts-panel", "alert-item", "alerts-empty", "panel-tabs",
+  "inspect-panel", "inspect-empty", "inspect-title", "inspect-status", "inspect-metrics", "metric-value",
+  "log-list", "log-line", "log-empty", "log-latest", "diag-result", "action-panel",
+  "action-item", "action-cost", "action-reason", "action-feedback", "history-list", "history-item",
+  "metrics-strip", "spark", "spark-status", "out-of-budget-banner", "resolved-banner", "open-debrief",
+  "hint-dialog", "hint-confirm", "hint-cancel", "hint-text", "shortcuts-dialog", "shortcuts-close",
+  "debrief-view", "result-title", "result-card", "score-value", "result-tier", "score-time",
+  "score-pager", "score-collateral", "run-fingerprint", "replay", "replay-lane-you", "replay-lane-optimal",
+  "replay-mark", "replay-slider", "replay-play", "replay-map", "replay-narration", "replay-unavailable",
+  "steps-table", "step-row", "harmful-badge", "step-why", "root-cause", "concept",
+  "guide-link", "copy-result", "copy-status", "share-text", "retry-seed", "back-to-board",
+  "data-view", "data-summary", "data-run-row", "export-button", "import-input", "import-status",
+  "import-error", "import-confirm-dialog", "import-confirm", "import-cancel", "clear-button", "clear-dialog",
+  "clear-confirm", "clear-cancel", "about-view", "attribution-text", "attribution-link", "license-link",
+  "about-privacy", "schema-docs", "tab-alerts", "tab-inspect", "tab-actions", "tab-metrics",
+  "replay-node",
+];
