@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "id": "hot-partition",
+  "title": "One celebrity key puts a single database shard under all the load",
+  "difficulty": 2,
+  "summary": "The database dashboard says there is plenty of headroom. One shard disagrees.",
+  "budget": 6,
+  "seed": 11,
+  "labels": {
+    "lb": "Feed LB",
+    "service-1": "Feed API",
+    "db-primary": "Posts DB (4 shards)"
+  },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 2400 },
+      "lb": { "capacity": 9000, "baseMs": 2 },
+      "service-1": { "capacity": 1500, "instances": 3, "baseMs": 8, "poolSize": 1000 },
+      "db-primary": { "capacity": 4000, "baseMs": 40, "shards": 4, "hotShare": 0.25, "maxConnections": 3500 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb" },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "db-primary" }
+    ]
+  },
+  "workload": [[0, 1]],
+  "sparks": {
+    "p99": "lb",
+    "errors": "lb",
+    "saturation": "db-primary",
+    "queue": null,
+    "cache-hit": null
+  },
+  "faults": [
+    {
+      "id": "celebrity-key",
+      "trigger": { "atTick": 4 },
+      "effects": [
+        { "path": "node:db-primary.hotShare", "op": "set", "value": 0.7, "ramp": 4 }
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "id": "feed-p99",
+      "severity": 2,
+      "text": "feed p99 > 2 s",
+      "when": { "node": "lb", "metric": "p99", "op": "gt", "value": 2000 }
+    },
+    {
+      "id": "db-saturated",
+      "severity": 3,
+      "text": "Posts DB saturated",
+      "when": { "node": "db-primary", "metric": "saturation", "op": "gte", "value": 0.9 }
+    }
+  ],
+  "logs": [
+    {
+      "node": "db-primary",
+      "level": "warn",
+      "when": { "node": "db-primary", "metric": "saturation", "op": "gte", "value": 0.9 },
+      "text": "shard 3 is handling {rand:68-72}% of writes for key user:9001"
+    },
+    {
+      "node": "db-primary",
+      "level": "info",
+      "when": { "node": "db-primary", "metric": "saturation", "op": "gte", "value": 0.9 },
+      "every": 4,
+      "text": "shards 0 to 2 idle at under 10% each, shard 3 queueing"
+    }
+  ],
+  "deploys": [
+    { "tick": -86400, "node": "db-primary", "text": "posts table resharded by user id, 4 shards" }
+  ],
+  "diagnostics": {
+    "compare-dashboards": {
+      "lines": [
+        "Averaged across shards the database reads {m:db-primary.saturation|pct}. The average hides the one shard that is on fire."
+      ]
+    }
+  },
+  "actions": {
+    "shard-rekey": {
+      "cost": 2,
+      "effects": {
+        "db-primary": [
+          { "path": "node:db-primary.hotShare", "op": "set", "value": 0.27, "ramp": 2 }
+        ]
+      }
+    },
+    "add-index": {
+      "cost": 2,
+      "effects": {
+        "db-primary": [
+          { "path": "node:db-primary.baseMs", "op": "mul", "value": 0.9 }
+        ]
+      }
+    },
+    "failover": {
+      "cost": 2,
+      "effects": {
+        "db-primary": [
+          { "path": "node:db-primary.capFactor", "op": "set", "value": 0.2 },
+          { "path": "node:db-primary.capFactor", "op": "set", "value": 1, "ramp": 15 }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          { "path": "node:service-1.instances", "op": "add", "value": 2 }
+        ]
+      }
+    }
+  },
+  "hint": "Averages lie. Look at how the load is spread across shards, not how much there is.",
+  "rootCause": "A single viral post made one key take about 70% of the traffic. The shard key sent all of it to one shard, so that shard was overloaded while the other three sat nearly idle and the database total looked fine.",
+  "rootCauseNode": "db-primary",
+  "concept": "Sharding only helps if load spreads evenly. A hot key or a bad shard key concentrates traffic on one shard, and no amount of total capacity helps. Re-keying or splitting the hot key spreads it across shards again.",
+  "harmfulWhy": {
+    "scale-service": "More app pods opened more connections to a database that was already at its limit. The hot shard stayed hot and the database started refusing connections as well.",
+    "failover": "The replica has the same shard layout, so the hot key followed it. Promotion also dropped capacity for a while, so the database got slower on top of an overloaded shard."
+  },
+  "optimalPath": [{ "id": "shard-rekey", "node": "db-primary" }],
+  "optimalSummary": { "timeToMitigate": 15, "cost": 2 },
+  "guideUrl": "https://bytebytego.com/guides/a-crash-course-in-database-sharding",
+  "guideTitle": "A short course on sharding a database"
+}

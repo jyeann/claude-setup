@@ -18,11 +18,11 @@
   "topology": {
     "nodes": {
       "clients": { "rps": 2000 },
-      "lb": { "capacity": 6000, "baseMs": 2 },
-      "service-1": { "capacity": 2500, "instances": 2, "baseMs": 10 },
+      "lb": { "capacity": 6000, "baseMs": 2, "timeoutMs": 8000 },
+      "service-1": { "capacity": 2500, "instances": 2, "baseMs": 10, "timeoutMs": 8000 },
       "service-2": { "capacity": 1000, "baseMs": 10 },
       "cache": { "capacity": 4500, "baseMs": 1, "missCost": 1, "hitRate": 0.95, "backlogMax": 20000 },
-      "db-primary": { "capacity": 1200, "baseMs": 8, "backlogMax": 20000 },
+      "db-primary": { "capacity": 1200, "baseMs": 8, "backlogMax": 20000, "timeoutMs": 8000 },
       "db-replica": { "capacity": 1000, "baseMs": 20 },
       "third-party": { "capacity": 500, "baseMs": 30 }
     },
@@ -86,6 +86,13 @@
     { "tick": -90, "node": "service-1", "text": "service-1 v12 released" },
     { "tick": -3600, "node": "cache", "text": "cache warmed with a 60 s TTL on every hot key" }
   ],
+  "diagnostics": {
+    "trace-request": {
+      "lines": [
+        "Cache hit rate is {m:cache.hitRate|pct}, so almost every request continues to the Orders DB, which is now {m:db-primary.queue|int} queries behind."
+      ]
+    }
+  },
   "actions": {
     "add-ttl-jitter": {
       "cost": 1,
@@ -114,7 +121,7 @@
     }
   },
   "hint": "Look at which node left ok first. The database is a victim, not the culprit.",
-  "rootCause": "Every hot key was cached with the same TTL, so they all expired in the same second. Each request fell through to the database, which could serve about a fifth of the traffic it suddenly got.",
+  "rootCause": "Every hot key was cached with the same TTL, so they all expired in the same second. Each request fell through to the database, which was suddenly asked for far more than it can serve.",
   "rootCauseNode": "cache",
   "concept": "A cache stampede happens when many entries expire together and every request becomes a miss. Adding a random jitter to each TTL spreads the expiries out, so the database never sees the whole herd at once.",
   "harmfulWhy": {

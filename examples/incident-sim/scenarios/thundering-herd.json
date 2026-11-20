@@ -106,6 +106,13 @@
     { "tick": 3, "node": "cache", "text": "cache nodes restarted for a kernel patch" },
     { "tick": -7200, "node": "service-1", "text": "service-1 v88 released" }
   ],
+  "diagnostics": {
+    "trace-request": {
+      "lines": [
+        "The load balancer is taking {m:lb.rps|int} requests a second. Many are retries of requests that already failed, all sent on the same beat."
+      ]
+    }
+  },
   "actions": {
     "backoff-jitter": {
       "cost": 2,

@@ -99,6 +99,13 @@
   "deploys": [
     { "tick": -86400, "node": "service-1", "text": "service-1 v301 released, retries set to 5 for payments" }
   ],
+  "diagnostics": {
+    "trace-request": {
+      "lines": [
+        "The partner is receiving {m:third-party.rps|int} calls a second. Checkout only has about 400 new payments a second, so the rest is retries."
+      ]
+    }
+  },
   "actions": {
     "backoff-jitter": {
       "cost": 2,

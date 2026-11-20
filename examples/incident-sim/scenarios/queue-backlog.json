@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "id": "queue-backlog",
+  "title": "Order confirmations pile up behind a consumer that got slower after a deploy",
+  "difficulty": 1,
+  "summary": "Orders go in, confirmations come out late. The queue in the middle is filling up.",
+  "budget": 6,
+  "seed": 5,
+  "labels": {
+    "lb": "Orders LB",
+    "service-1": "Orders API",
+    "queue": "Confirmation queue",
+    "consumer": "Confirmation worker",
+    "db-primary": "Orders DB"
+  },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 2000 },
+      "lb": { "capacity": 12000, "baseMs": 2 },
+      "service-1": { "capacity": 4000, "baseMs": 8 },
+      "consumer": { "capacity": 3000, "baseMs": 6 },
+      "queue": { "capacity": 9000, "baseMs": 2, "maxDepth": 12000 },
+      "db-primary": { "capacity": 9000, "baseMs": 6 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb" },
+      { "from": "lb", "to": "service-1" },
+      { "from": "service-1", "to": "queue" },
+      { "from": "queue", "to": "consumer" },
+      { "from": "consumer", "to": "db-primary" }
+    ]
+  },
+  "workload": [[0, 1]],
+  "sparks": {
+    "p99": "lb",
+    "errors": "lb",
+    "saturation": "consumer",
+    "queue": "queue",
+    "cache-hit": null
+  },
+  "faults": [
+    {
+      "id": "slow-consumer",
+      "trigger": { "atTick": 4 },
+      "effects": [
+        { "path": "node:consumer.capFactor", "op": "set", "value": 0.1 },
+        { "path": "node:consumer.extraMs", "op": "set", "value": 150 }
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "id": "confirmations-delayed",
+      "severity": 2,
+      "text": "order confirmations delayed",
+      "when": { "node": "queue", "metric": "queue", "op": "gte", "value": 5000 }
+    },
+    {
+      "id": "queue-half-full",
+      "severity": 3,
+      "text": "Confirmation queue over half full",
+      "when": { "node": "queue", "metric": "saturation", "op": "gte", "value": 0.5 }
+    },
+    {
+      "id": "backlog-draining",
+      "severity": 3,
+      "text": "Confirmation backlog not yet drained",
+      "when": { "node": "queue", "metric": "queue", "op": "gte", "value": 300 }
+    }
+  ],
+  "logs": [
+    {
+      "node": "consumer",
+      "level": "warn",
+      "when": { "node": "consumer", "metric": "saturation", "op": "gte", "value": 0.9 },
+      "every": 2,
+      "text": "confirmation worker handled {m:consumer.rps|int} messages in 1 s, waiting on a synchronous web call"
+    },
+    {
+      "node": "queue",
+      "level": "info",
+      "when": { "node": "queue", "metric": "queue", "op": "gt", "value": 1500 },
+      "every": 3,
+      "text": "queue depth {m:queue.queue|int}, oldest message waiting for {rand:6-40} s"
+    },
+    {
+      "node": "queue",
+      "level": "error",
+      "when": { "node": "queue", "metric": "errorRate", "op": "gt", "value": 0.01 },
+      "every": 2,
+      "text": "queue full, dropping new confirmations"
+    }
+  ],
+  "deploys": [
+    { "tick": 3, "node": "consumer", "text": "confirmation worker v41 released: now calls a webhook for every message" },
+    { "tick": -86400, "node": "service-1", "text": "service-1 v77 released" }
+  ],
+  "diagnostics": {
+    "trace-request": {
+      "lines": [
+        "Orders are accepted fast. Then they wait: {m:queue.queue|int} messages are queued and the worker handles {m:consumer.rps|int} a second."
+      ]
+    }
+  },
+  "actions": {
+    "rollback": {
+      "cost": 2,
+      "effects": {
+        "consumer": [
+          { "path": "node:consumer.capFactor", "op": "set", "value": 1 },
+          { "path": "node:consumer.extraMs", "op": "set", "value": 0 }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "consumer": [
+          { "path": "node:consumer.instances", "op": "add", "value": 1 }
+        ]
+      }
+    }
+  },
+  "hint": "The producer is fine. Check how fast the other side of the queue is draining.",
+  "rootCause": "Version 41 of the confirmation worker started making a blocking web call for every message, and its throughput fell to a tenth of normal. Orders kept arriving at the same rate, so the queue grew until it was close to full.",
+  "rootCauseNode": "consumer",
+  "concept": "A queue decouples producers from consumers, but it does not create capacity. When consumers fall behind, depth grows without limit until something drops. Fix the slow consumer first, then add instances to burn down the backlog faster than it arrives.",
+  "harmfulWhy": {},
+  "optimalPath": [
+    { "id": "rollback", "node": "consumer" },
+    { "id": "scale-service", "node": "consumer" }
+  ],
+  "optimalSummary": { "timeToMitigate": 18, "cost": 4 },
+  "guideUrl": "https://bytebytego.com/guides/types-of-message-queue",
+  "guideTitle": "Types of message queue and how they behave"
+}

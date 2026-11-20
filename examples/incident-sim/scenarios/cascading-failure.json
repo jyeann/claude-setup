@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "id": "cascading-failure",
+  "title": "The recommendations widget is slow, and now checkout is falling over with it",
+  "difficulty": 3,
+  "summary": "A slow partner turns a side widget into a checkout outage. No single fix is enough, and the order matters.",
+  "budget": 8,
+  "seed": 10,
+  "labels": { "lb": "Checkout LB", "service-1": "Checkout", "service-2": "Recommendations", "cache": "Product cache", "db-primary": "Orders DB", "third-party": "Partner API" },
+  "topology": {
+    "nodes": {
+      "clients": { "rps": 1000 },
+      "lb": { "capacity": 12000, "baseMs": 2 },
+      "service-1": { "capacity": 1600, "baseMs": 12, "backlogMax": 6000 },
+      "service-2": { "capacity": 800, "baseMs": 15, "workers": 100 },
+      "cache": { "capacity": 8000, "baseMs": 1, "hitRate": 0.95 },
+      "db-primary": { "capacity": 3500, "baseMs": 6, "backlogMax": 2000 },
+      "third-party": { "capacity": 2000, "baseMs": 30, "timeoutMs": 2000 }
+    },
+    "edges": [
+      { "from": "clients", "to": "lb", "retries": 3 },
+      { "from": "lb", "to": "service-1" },
+      { "from": "lb", "to": "service-2", "share": 0.5 },
+      { "from": "service-1", "to": "cache" },
+      { "from": "service-1", "to": "db-primary", "share": 0.3 },
+      { "from": "service-2", "to": "third-party" }
+    ]
+  },
+  "workload": [[0, 1]],
+  "sparks": { "p99": "lb", "errors": "service-1", "saturation": "service-1", "queue": "service-1", "cache-hit": "cache" },
+  "faults": [
+    {
+      "id": "partner-slow",
+      "trigger": { "atTick": 5 },
+      "effects": [ { "path": "node:third-party.extraMs", "op": "set", "value": 4000 } ]
+    }
+  ],
+  "alerts": [
+    { "id": "checkout-errors", "severity": 1, "text": "checkout errors > 5%", "when": { "node": "service-1", "metric": "errorRate", "op": "gt", "value": 0.05 } },
+    { "id": "checkout-p99", "severity": 2, "text": "checkout p99 > 2 s", "when": { "node": "lb", "metric": "p99", "op": "gt", "value": 2000 } },
+    { "id": "reco-timeouts", "severity": 2, "text": "recommendations timeouts", "when": { "node": "service-2", "metric": "errorRate", "op": "gt", "value": 0.1 } },
+    { "id": "db-hot", "severity": 3, "text": "Orders DB saturation above 90%", "when": { "node": "db-primary", "metric": "saturation", "op": "gte", "value": 0.9 } }
+  ],
+  "logs": [],
+  "deploys": [],
+  "actions": {
+    "shed-load": { "cost": 2, "effects": { "lb": [ { "path": "node:lb.shed", "op": "set", "value": 0.4 } ] } },
+    "circuit-breaker": { "cost": 2, "effects": { "service-2": [ { "path": "edge:service-2>third-party.breaker", "op": "set", "value": true } ] } },
+    "scale-service": { "cost": 2, "effects": { "service-1": [ { "path": "node:service-1.instances", "op": "add", "value": 2 } ] } }
+  },
+  "hint": "x",
+  "rootCause": "x",
+  "rootCauseNode": "third-party",
+  "concept": "x",
+  "harmfulWhy": { "scale-service": "x" },
+  "optimalPath": [ { "id": "shed-load", "node": "lb" }, { "id": "circuit-breaker", "node": "service-2" }, { "id": "scale-service", "node": "service-1" } ],
+  "optimalSummary": { "timeToMitigate": 40, "cost": 6 },
+  "guideUrl": "https://bytebytego.com/guides/resiliency-patterns",
+  "guideTitle": "Resiliency patterns"
+}
