@@ -135,7 +135,7 @@ function planProblems({ product, docs }) {
 // AMEND line in decisions.md, so a wrong test can be corrected by its author without a human, on the record.
 function frozenFiles({ root, product, docs }) {
   const single = [path.join(product, 'spec.md'), path.join(product, 'verify.config.json'), path.join(docs, 'ux.md')];
-  const trees = ['acceptance', 'holdout'].flatMap((d) => filesUnder(path.join(product, d)));
+  const trees = ['acceptance', 'holdout', 'journeys'].flatMap((d) => filesUnder(path.join(product, d)));
   return Object.fromEntries([...single, ...trees].filter((f) => fs.existsSync(f)).map((f) => [rel(root, f), sha(fs.readFileSync(f))]));
 }
 

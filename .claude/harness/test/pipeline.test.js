@@ -267,6 +267,18 @@ test('--open-gate-files leaves spec and acceptance writable for a whole-pipeline
   assert.deepEqual(buildState({ ...base, gateFilesOpen: true, protectedPaths: ['keep/'] }).protectedPaths, ['keep/']);
 });
 
+test('journey tests are in the frozen set, so editing one after the plan phase needs an AMEND line', async () => {
+  const root = project();
+  assert.ok('app/journeys/walk.test.js' in frozenFiles({ root, product: path.join(root, 'app'), docs: path.join(root, 'docs') }));
+  await check(root);
+  fs.appendFileSync(path.join(root, 'app/journeys/walk.test.js'), "test('UC9: extra', () => {});\n");
+  const r = await check(root);
+  assert.equal(r.blocked, 'plan');
+  assert.match(r.phases[3].problems[0], /app\/journeys\/walk\.test\.js changed after the plan phase froze it/);
+  fs.appendFileSync(path.join(root, 'docs/decisions.md'), '- AMEND: app/journeys/walk.test.js - UC9 added\n');
+  assert.equal((await check(root)).pass, true);
+});
+
 test('a fix after review or QA changes the source hash and sends the pipeline back to review', async () => {
   const root = project({ 'app/src/math.js': MATH, 'app/public/index.html': '<h1>x</h1>' });
   const app = path.join(root, 'app');
