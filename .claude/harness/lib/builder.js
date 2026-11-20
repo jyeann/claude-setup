@@ -115,7 +115,7 @@ function recordOutcome(jobsRoot, id, outcome, { forbiddenHits = 0 } = {}) {
   if (forbiddenHits) parts.push(`${forbiddenHits} forbidden term hit(s)`);
   return jobs.recordAgent(jobsRoot, id, {
     agent: 'craft-anything', phase: 'build', task: parts.join('; '),
-    tokens: outcome.usage ? outcome.usage.tokens : null, durationMs: outcome.usage ? outcome.usage.workMs : null, ok,
+    tokens: outcome.usage ? outcome.usage.tokens : null, durationMs: outcome.usage ? outcome.usage.workMs : null, ok, source: 'builder',
   });
 }
 

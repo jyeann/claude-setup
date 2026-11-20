@@ -6,7 +6,10 @@
 //   job.js intake ID --from docs/jobs/ID/intake.md          (the intake agent's verdict file; see agents/intake.md)
 //   job.js intake ID --decision accept|reject|ask [--risk low|medium|high] [--surface a,b] [--reason R]
 //   job.js advance ID STAGE        job.js gate ID --passed true|false [--summary S]
-//   job.js agent ID --agent A --phase P [--effort E] [--model M] [--tokens N] [--duration-ms N] [--ok true|false] [--task T]
+//   job.js sync ID          pull this job's delegated-agent runs (tokens, time, outcome) from the hook trace; tag each agent
+//                           description [job:ID] (for example "[phase:build] [job:ID] Build it"). Safe to repeat.
+//   job.js agent ID --agent A --phase P --reason WHY [--effort E] [--model M] [--tokens N] [--duration-ms N] [--ok true|false] [--task T]
+//                           figures typed in by hand; the reason (why the trace lacks them) is required and shown in the summary
 //   job.js review ID --reviewer R --verdict pass|fail [--summary S]
 //   job.js needs-human ID --reason real-scenario-test|secrets-or-access|spend-legal-scope --detail TEXT
 //   job.js feedback ID --text T     job.js merge ID [--human] [--ref PR]     job.js show ID     job.js queue     job.js summary ID
@@ -14,6 +17,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const job = require('../lib/job');
 const { parseIntake } = require('../lib/intake');
+const { readSessions } = require('../lib/trace');
 
 const argv = process.argv.slice(2);
 const cmd = argv[0];
@@ -27,7 +31,8 @@ const bool = (name) => { const v = flag(name); if (v === undefined) return null;
 const list = (name) => (flag(name) ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 function run() {
-  const root = job.rootOf(process.env.CLAUDE_PROJECT_DIR || process.cwd());
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+  const root = job.rootOf(projectDir);
   const id = flag('id') ?? positional[0];
   const out = (v) => process.stdout.write(`${JSON.stringify(v, null, 2)}\n`);
   switch (cmd) {
@@ -41,7 +46,11 @@ function run() {
     case 'advance': return out(job.advance(root, id, positional[1]));
     case 'waive-ref-check': return out(job.waiveRefCheck(root, id, { reason: flag('reason') }));
     case 'gate': return out(job.recordGate(root, id, { passed: bool('passed') === true, summary: flag('summary') ?? '' }));
-    case 'agent': return out(job.recordAgent(root, id, { agent: flag('agent'), phase: flag('phase'), effort: flag('effort') ?? null, model: flag('model') ?? null, tokens: num('tokens'), durationMs: num('duration-ms'), ok: bool('ok'), task: flag('task') ?? '' }));
+    case 'sync': {
+      const r = job.syncAgents(root, id, { sessions: readSessions(projectDir) });
+      return out({ id, added: r.added, runs: r.job.agents.length, untagged: r.untagged.length, untaggedRuns: r.untagged.slice(0, 10) });
+    }
+    case 'agent': return out(job.recordAgent(root, id, { agent: flag('agent'), phase: flag('phase'), effort: flag('effort') ?? null, model: flag('model') ?? null, tokens: num('tokens'), durationMs: num('duration-ms'), ok: bool('ok'), task: flag('task') ?? '', reason: flag('reason') ?? '' }));
     case 'review': return out(job.recordReview(root, id, { reviewer: flag('reviewer'), verdict: flag('verdict'), summary: flag('summary') ?? '' }));
     case 'needs-human': return out(job.needsHuman(root, id, { reason: flag('reason'), detail: flag('detail') ?? '' }));
     case 'feedback': return out(job.feedback(root, id, { text: flag('text') }));

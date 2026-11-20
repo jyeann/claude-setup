@@ -180,7 +180,7 @@ test('the status report covers risk, gate, reviews, waiting, merge and cost, and
   jobs.intake(ctx.root, 'a', { decision: 'accept', risk: 'low', surfaces: ['network-egress'] });
   jobs.recordRefCheck(ctx.root, 'a', { expect: 'red', passed: true });
   jobs.advance(ctx.root, 'a', 'build');
-  jobs.recordAgent(ctx.root, 'a', { agent: 'tdd-guide', phase: 'build', tokens: 500, ok: null });
+  jobs.recordAgent(ctx.root, 'a', { agent: 'tdd-guide', phase: 'build', tokens: 500, ok: null, reason: 'test' });
   jobs.advance(ctx.root, 'a', 'gate');
   jobs.recordGate(ctx.root, 'a', { passed: true, summary: 'green' });
   jobs.advance(ctx.root, 'a', 'review');
@@ -189,7 +189,7 @@ test('the status report covers risk, gate, reviews, waiting, merge and cost, and
   assert.match(mid, /risk: medium \(raised: touches network-egress/);
   assert.match(mid, /gate: passed \(green\)/);
   assert.match(mid, /reviews: code-reviewer pass/);
-  assert.match(mid, /1 \(0 failed, 1 outcome unreported\), about 500 tokens/);
+  assert.match(mid, /1 \(0 failed, 1 outcome unreported\), about 500 tokens; 1 entered by hand/);
   jobs.needsHuman(ctx.root, 'a', { reason: 'spend-legal-scope', detail: 'paid API?' });
   assert.match(issues.report(jobs.read(ctx.root, 'a')), /waiting for the owner \(spend-legal-scope\): paid API\?/);
   jobs.feedback(ctx.root, 'a', { text: 'no' });

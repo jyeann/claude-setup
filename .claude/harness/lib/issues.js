@@ -164,7 +164,7 @@ function report(job) {
   if (job.reviews.length) lines.push(`- reviews: ${job.reviews.map((r) => `${r.reviewer} ${r.verdict}`).join(', ')}`);
   if (job.needsHuman) lines.push(`- waiting for the owner (${job.needsHuman.reason}): ${job.needsHuman.detail}`);
   if (job.merge) lines.push(`- merged ${job.merge.human ? 'by a human' : 'by the approver'}${job.merge.ref ? `: ${job.merge.ref}` : ''}`);
-  if (s.runs) lines.push(`- agent runs: ${s.runs} (${s.failed} failed, ${s.unreported} outcome unreported), about ${s.tokens} tokens`);
+  if (s.runs) lines.push(`- agent runs: ${s.runs} (${s.failed} failed, ${s.unreported} outcome unreported), about ${s.tokens} tokens${s.manual ? `; ${s.manual} entered by hand` : ''}`);
   return lines.join('\n');
 }
 

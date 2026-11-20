@@ -176,11 +176,51 @@ function recordGate(root, id, { passed, summary = '', by = 'gate' }) {
 }
 
 // outcome unreported (null) is kept distinct from failure so cost figures never count a lost agent as a success.
-function recordAgent(root, id, { agent, phase, effort = null, model = null, tokens = null, durationMs = null, ok = null, task = '' }) {
+// `source` says where the figures came from: "trace" (copied by sync from what the hooks recorded), "builder" (the builder
+// adapter read them from the tool's own files), or "manual" (typed in by whoever called this, which is the weakest).
+function recordAgent(root, id, { agent, phase, effort = null, model = null, tokens = null, durationMs = null, ok = null, task = '', source = 'manual', reason = '' }) {
   if (!agent || !phase) throw new Error('recordAgent needs --agent and --phase.');
+  if (source === 'manual' && !String(reason).trim()) throw new Error('Figures typed in by hand need a --reason (why the trace does not have them). Prefer tagging the agent [job:<id>] and running "job.js sync <id>".');
   return mutate(root, id, (job) => {
-    job.agents.push({ agent, phase, task, effort, model, tokens, durationMs, ok, ts: Date.now() });
-  }, { event: 'agent', by: agent, note: `${phase}${ok === false ? ' (failed)' : ok === null ? ' (outcome unreported)' : ''}` });
+    job.agents.push({ agent, phase, task, effort, model, tokens, durationMs, ok, source, ...(reason ? { reason } : {}), ts: Date.now() });
+  }, { event: 'agent', by: agent, note: `${phase}${ok === false ? ' (failed)' : ok === null ? ' (outcome unreported)' : ''}${source === 'manual' ? ' (entered by hand)' : ''}` });
+}
+
+const JOB_TAG = /\[job:([a-z0-9][a-z0-9-]{0,63})\]/;
+const PHASE_TAG = /\[phase:([\w-]{1,30})\]/;
+
+// Pulls the delegated-agent runs the hooks already recorded (lib/trace.js) into the job, so nobody retypes tokens or time.
+// A run belongs to a job when its description carries the tag [job:<id>], for example "[phase:build] [job:issue-1] Build it".
+// Safe to repeat: a run is identified by its session and timestamp and is added once. A run the hook saw but that reported no
+// figures stays "unreported", never a pass. Runs with no job tag are returned so a forgotten tag is visible, not silent.
+function syncAgents(root, id, { sessions }) {
+  const mine = [];
+  const untagged = [];
+  for (const session of sessions) {
+    for (const e of session.events) {
+      if (e.type !== 'agent') continue;
+      const tag = JOB_TAG.exec(String(e.task ?? ''));
+      if (!tag) { untagged.push({ agent: e.agent, task: e.task, session: session.id }); continue; }
+      if (tag[1] === id) mine.push({ session: session.id, event: e });
+    }
+  }
+  const keyOf = (m) => `${m.session}:${m.event.ts}`;
+  let added = 0;
+  const job = mutate(root, id, (j) => {
+    const have = new Set(j.agents.map((a) => a.key).filter(Boolean));
+    for (const m of mine) {
+      if (have.has(keyOf(m))) continue;
+      const e = m.event;
+      const unreported = (e.tokens ?? null) === null && (e.durationMs ?? null) === null;
+      j.agents.push({
+        agent: e.agent, phase: e.phase ?? (PHASE_TAG.exec(String(e.task ?? '')) ?? [])[1] ?? 'unknown', task: e.task ?? '',
+        effort: e.effort ?? null, model: e.model ?? null, tokens: e.tokens ?? null, durationMs: e.durationMs ?? null,
+        ok: unreported ? null : e.ok !== false, source: 'trace', key: keyOf(m), ts: e.ts ?? Date.now(),
+      });
+      added += 1;
+    }
+  }, { event: 'sync', by: 'sync', note: 'agent runs from the trace' });
+  return { job, added, untagged };
 }
 
 function recordReview(root, id, { reviewer, verdict, summary = '' }) {
@@ -255,6 +295,7 @@ function summary(job) {
     runs: job.agents.length,
     failed: all.reduce((n, p) => n + p.failed, 0),
     unreported: all.reduce((n, p) => n + p.unreported, 0),
+    manual: job.agents.filter((a) => (a.source ?? 'manual') === 'manual').length,
     tokens: all.reduce((n, p) => n + p.tokens, 0),
     durationMs: all.reduce((n, p) => n + p.durationMs, 0),
     byPhase,
@@ -263,6 +304,6 @@ function summary(job) {
 
 module.exports = {
   VERSION, STAGES, RISKS, KINDS, BUILDERS, HUMAN_REASONS, REVIEWERS, HUMAN_MERGE_SURFACES,
-  rootOf, fileOf, read, create, intake, advance, recordRefCheck, waiveRefCheck, recordNote, recordGate, recordAgent, recordReview, needsHuman, feedback,
+  rootOf, fileOf, read, create, intake, advance, recordRefCheck, waiveRefCheck, recordNote, recordGate, recordAgent, syncAgents, JOB_TAG, recordReview, needsHuman, feedback,
   mergeVerdict, merge, list, queue, summary,
 };

@@ -199,10 +199,10 @@ test('feedback is recorded and releases a job that was waiting for the owner', (
 test('summary rolls agent cost up by phase and counts failed and unreported agents instead of assuming success', () => {
   const root = tmp();
   accepted(root);
-  job.recordAgent(root, 'j1', { agent: 'architect', phase: 'design', effort: 'low', tokens: 1000, durationMs: 5000, ok: true });
-  job.recordAgent(root, 'j1', { agent: 'tdd-guide', phase: 'build', tokens: 3000, durationMs: 9000, ok: true });
-  job.recordAgent(root, 'j1', { agent: 'tdd-guide', phase: 'build', ok: null });
-  job.recordAgent(root, 'j1', { agent: 'code-reviewer', phase: 'review', tokens: 500, durationMs: 1000, ok: false });
+  job.recordAgent(root, 'j1', { agent: 'architect', phase: 'design', effort: 'low', tokens: 1000, durationMs: 5000, ok: true, reason: 'test' });
+  job.recordAgent(root, 'j1', { agent: 'tdd-guide', phase: 'build', tokens: 3000, durationMs: 9000, ok: true, reason: 'test' });
+  job.recordAgent(root, 'j1', { agent: 'tdd-guide', phase: 'build', ok: null, reason: 'test' });
+  job.recordAgent(root, 'j1', { agent: 'code-reviewer', phase: 'review', tokens: 500, durationMs: 1000, ok: false, reason: 'test' });
   throwsMsg(() => job.recordAgent(root, 'j1', { agent: 'x' }), /--agent and --phase/);
   const s = job.summary(job.read(root, 'j1'));
   assert.equal(s.runs, 4);
@@ -265,7 +265,7 @@ test('the CLI drives a whole job and prints JSON', () => {
   assert.match(cli(dir, 'waive-ref-check', 'x', '--reason', ' ').stderr, /needs a reason/);
   assert.equal(ok('waive-ref-check', 'x', '--reason', 'no stub exists for a one-file change').refCheckWaiver.by, 'orchestrator');
   ok('advance', 'x', 'build');
-  ok('agent', 'x', '--agent', 'tdd-guide', '--phase', 'build', '--tokens', '120', '--duration-ms', '800', '--ok', 'true', '--effort', 'medium');
+  ok('agent', 'x', '--agent', 'tdd-guide', '--phase', 'build', '--reason', 'cli test', '--tokens', '120', '--duration-ms', '800', '--ok', 'true', '--effort', 'medium');
   ok('advance', 'x', 'gate');
   ok('gate', 'x', '--passed', 'true', '--summary', 'green');
   ok('advance', 'x', 'review');
@@ -299,8 +299,8 @@ test('the CLI covers feedback, needs-human, a human merge, and bad input', () =>
   assert.equal(JSON.parse(run('merge', 'y', '--human').stdout).merge.by, 'human');
   assert.match(run('bogus').stderr, /Unknown command/);
   assert.match(run('show', 'nope').stderr, /No such job/);
-  assert.match(run('agent', 'y', '--agent', 'a', '--phase', 'p', '--tokens', 'x').stderr, /non-negative number/);
-  assert.match(run('agent', 'y', '--agent', 'a', '--phase', 'p', '--ok', 'maybe').stderr, /true or false/);
+  assert.match(run('agent', 'y', '--agent', 'a', '--phase', 'p', '--reason', 'r', '--tokens', 'x').stderr, /non-negative number/);
+  assert.match(run('agent', 'y', '--agent', 'a', '--phase', 'p', '--reason', 'r', '--ok', 'maybe').stderr, /true or false/);
   assert.match(run('create', '--id', 'z', '--title', 't', '--kind', 'rebuild').stderr, /requested-by/);
 });
 
@@ -351,4 +351,102 @@ test('going back to build after a failed gate does not repeat the ref-check requ
   job.advance(root, 'j1', 'build');
   job.advance(root, 'j1', 'gate');
   assert.equal(job.advance(root, 'j1', 'build').stage, 'build');
+});
+
+const agentEvent = (task, extra = {}) => ({ type: 'agent', ts: 1000, ok: true, agent: 'tdd-guide', phase: 'build', task, model: null, effort: 'medium', tokens: 500, durationMs: 2000, toolUses: 3, ...extra });
+const session = (id, events) => ({ id, events });
+
+test('sync copies the agent runs the hooks recorded for this job, with no figures typed in', () => {
+  const root = tmp();
+  accepted(root);
+  const sessions = [session('s1', [
+    agentEvent('[phase:build] [job:j1] Build it'),
+    agentEvent('[phase:review] [job:j1] Review it', { ts: 2000, agent: 'code-reviewer', phase: 'review', tokens: 900, durationMs: 4000, ok: false }),
+    agentEvent('[phase:build] [job:other] Not mine', { ts: 3000 }),
+    { type: 'tool', ts: 4000, tool: 'Bash' },
+  ])];
+  const r = job.syncAgents(root, 'j1', { sessions });
+  assert.equal(r.added, 2);
+  const agents = job.read(root, 'j1').agents;
+  assert.deepEqual(agents.map((a) => [a.agent, a.phase, a.tokens, a.durationMs, a.ok, a.source]), [['tdd-guide', 'build', 500, 2000, true, 'trace'], ['code-reviewer', 'review', 900, 4000, false, 'trace']]);
+  assert.equal(job.summary(job.read(root, 'j1')).manual, 0);
+  assert.ok(job.read(root, 'j1').history.some((h) => h.event === 'sync'));
+});
+
+test('sync is safe to repeat: a run is added once, even across later syncs with new runs', () => {
+  const root = tmp();
+  accepted(root);
+  const first = [session('s1', [agentEvent('[phase:build] [job:j1] a')])];
+  assert.equal(job.syncAgents(root, 'j1', { sessions: first }).added, 1);
+  assert.equal(job.syncAgents(root, 'j1', { sessions: first }).added, 0);
+  const more = [session('s1', [agentEvent('[phase:build] [job:j1] a'), agentEvent('[phase:review] [job:j1] b', { ts: 5000, phase: 'review' })]), session('s2', [agentEvent('[phase:build] [job:j1] a')])];
+  assert.equal(job.syncAgents(root, 'j1', { sessions: more }).added, 2);
+  assert.equal(job.read(root, 'j1').agents.length, 3);
+});
+
+test('a traced run with no figures stays unreported and is never counted as a pass', () => {
+  const root = tmp();
+  accepted(root);
+  job.syncAgents(root, 'j1', { sessions: [session('s1', [agentEvent('[phase:build] [job:j1] lost', { tokens: null, durationMs: null, ok: true })])] });
+  const a = job.read(root, 'j1').agents[0];
+  assert.equal(a.ok, null);
+  assert.equal(a.tokens, null);
+  assert.equal(job.summary(job.read(root, 'j1')).unreported, 1);
+});
+
+test('the phase comes from the trace, or from the description tag, or is "unknown"; the job tag must match exactly', () => {
+  const root = tmp();
+  accepted(root, 'j1');
+  accepted(root, 'j10');
+  const sessions = [session('s1', [
+    agentEvent('[job:j1] [phase:qa] tagged late', { phase: null, ts: 1 }),
+    agentEvent('[job:j1] no phase anywhere', { phase: null, ts: 2 }),
+    agentEvent('[phase:build] [job:j10] belongs to j10', { ts: 3 }),
+  ])];
+  job.syncAgents(root, 'j1', { sessions });
+  assert.deepEqual(job.read(root, 'j1').agents.map((a) => a.phase), ['qa', 'unknown']);
+  assert.equal(job.read(root, 'j10').agents.length, 0);
+});
+
+test('runs with no job tag are reported back so a forgotten tag is visible, and they are not added to the job', () => {
+  const root = tmp();
+  accepted(root);
+  const r = job.syncAgents(root, 'j1', { sessions: [session('s1', [agentEvent('[phase:build] forgot the tag'), agentEvent('[phase:build] [job:j1] ok', { ts: 9 })])] });
+  assert.equal(r.added, 1);
+  assert.equal(r.untagged.length, 1);
+  assert.equal(r.untagged[0].task, '[phase:build] forgot the tag');
+  assert.equal(job.read(root, 'j1').agents.length, 1);
+});
+
+test('figures typed in by hand need a reason, are marked manual in the record, and show in the summary', () => {
+  const root = tmp();
+  accepted(root);
+  throwsMsg(() => job.recordAgent(root, 'j1', { agent: 'a', phase: 'p', tokens: 5 }), /need a --reason/);
+  const j = job.recordAgent(root, 'j1', { agent: 'a', phase: 'p', tokens: 5, ok: true, reason: 'ran in another container' });
+  assert.equal(j.agents[0].source, 'manual');
+  assert.equal(j.agents[0].reason, 'ran in another container');
+  assert.match(j.history.at(-1).note, /entered by hand/);
+  assert.equal(job.summary(j).manual, 1);
+  job.syncAgents(root, 'j1', { sessions: [session('s1', [agentEvent('[phase:build] [job:j1] x')])] });
+  assert.equal(job.summary(job.read(root, 'j1')).manual, 1);
+});
+
+test('the CLI sync reads the hook traces under .harness/traces and reports untagged runs', () => {
+  const dir = tmp();
+  const run = (...a) => cli(dir, ...a);
+  assert.equal(run('create', '--id', 's', '--title', 't').status, 0);
+  const traces = path.join(dir, '.harness', 'traces');
+  fs.mkdirSync(traces, { recursive: true });
+  fs.writeFileSync(path.join(traces, 'sess1.jsonl'), [
+    agentEvent('[phase:intake] [job:s] Intake', { agent: 'intake', phase: 'intake', ts: 11 }),
+    agentEvent('[phase:build] stray agent', { ts: 12 }),
+    { type: 'tool', ts: 13, tool: 'Bash', ok: true },
+  ].map((e) => JSON.stringify(e)).join('\n'));
+  const first = JSON.parse(run('sync', 's').stdout);
+  assert.deepEqual([first.added, first.runs, first.untagged], [1, 1, 1]);
+  assert.equal(first.untaggedRuns[0].task, '[phase:build] stray agent');
+  assert.equal(JSON.parse(run('sync', 's').stdout).added, 0);
+  assert.equal(JSON.parse(run('summary', 's').stdout).tokens, 500);
+  assert.match(run('agent', 's', '--agent', 'a', '--phase', 'p').stderr, /need a --reason/);
+  assert.match(run('sync', 'nope').stderr, /No such job/);
 });

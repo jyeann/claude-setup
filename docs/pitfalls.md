@@ -13,7 +13,7 @@ Mistakes this team has already made, each with the rule that prevents a repeat. 
 
 - **Never re-type an agent's output.** A shortened `design.md` dropped a caveat and cost a failed gate. Hand the exact text to a writer agent, or give the author Write.
 - **Verify a claim before you relay it.** A builder said a check contained `|| true`; it did not.
-- **State changes go through `job.js`.** Hand-written status, decisions and cost figures drifted from reality.
+- **State changes go through `job.js`.** Hand-written status, decisions and cost figures drifted from reality. Tag every delegated agent `[job:<id>]` and run `job.js sync <id>`: usage comes from the hook trace. Untagged runs are listed by `sync`, and figures typed by hand need a reason and count as `manual`.
 
 ## The gate
 
