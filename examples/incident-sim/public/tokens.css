@@ -1,0 +1,187 @@
+/*
+  incident-sim design tokens. Single source of truth for colour, space, type, motion.
+  Hex values live ONLY in this file. Dark "ops console" is the default; "Daylight" is the light theme.
+  Numeric tokens read by JS (canvas) are unitless on purpose.
+  Theme switching: the page follows prefers-color-scheme. A wrapper element may force a theme with
+  data-theme="dark" or data-theme="light" (used by the design specimen).
+*/
+:root,
+[data-theme="dark"] {
+  color-scheme: dark light;
+
+  /* Surfaces (dark ops console is the default) */
+  --c-bg-0: #0b0f14;        /* page and map floor */
+  --c-bg-1: #121821;        /* panels */
+  --c-bg-2: #1a222d;        /* raised: nodes, menus, toasts, dialogs */
+  --c-line-soft: #2a3441;   /* decorative dividers only (not a UI boundary) */
+  --c-line-ui: #7a8aa0;     /* control borders, node outlines, 3:1 UI boundary */
+  --c-edge: #5d6c80;        /* map edges, spent lamp outline */
+
+  /* Text */
+  --c-text: #e8eef5;
+  --c-text-muted: #9fb0c3;
+  --c-text-disabled: #7a8aa0;
+
+  /* Identity: the one warm light */
+  --c-focus: #f4efe6;
+  --c-primary-bg: #f4efe6;
+  --c-primary-fg: #0b0f14;
+  --c-lamp-on: #f4efe6;
+
+  /* Status: colour-blind safe set (blue-green, amber, vermilion, sky). Always paired with a shape and a text label. */
+  --c-ok: #3ddbb0;
+  --c-warn: #f5b83d;
+  --c-crit: #ff6f59;
+  --c-recv: #6cb8ff;
+  --c-ok-tint: #183335;
+  --c-warn-tint: #322e25;
+  --c-crit-tint: #332529;
+  --c-recv-tint: #1f2e40;
+  --c-on-status: #0b0f14;   /* text on a solid status fill */
+
+  /* Traffic */
+  --c-dot: #cfe3f7;
+  --dot-r: 2.5;             /* unitless, canvas px */
+  --dot-r-error: 3.5;
+  --dot-speed: 140;         /* px per second along an edge */
+  --dot-rate-base: 8;       /* dots per second per edge at baseline load */
+  --dot-rate-max: 40;
+  --dot-cap: 500;           /* global live-dot ceiling */
+  --pile-max: 24;
+  --dim-alpha: 0.45;        /* dots on edges downstream of a crit node */
+
+  /* Signal glow (decorative; never the only cue) */
+  --glow-ok: 0 0 12px rgba(61, 219, 176, 0.30);
+  --glow-warn: 0 0 12px rgba(245, 184, 61, 0.35);
+  --glow-crit: 0 0 16px rgba(255, 111, 89, 0.45);
+  --glow-recv: 0 0 12px rgba(108, 184, 255, 0.35);
+  --glow-lamp: 0 0 8px rgba(244, 239, 230, 0.55);
+
+  /* Typography: system stacks only */
+  --font-ui: ui-sans-serif, "Avenir Next", "Segoe UI", system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --fw-regular: 400;
+  --fw-strong: 600;
+  --fw-heavy: 700;
+  --fs-label: 0.8125rem;    /* 13px: stencil labels, badges, axis ticks */
+  --fs-body: 1rem;          /* 16px: prose, logs, table cells */
+  --fs-lead: 1.125rem;      /* 18px */
+  --fs-h3: 1.25rem;         /* 20px */
+  --fs-h2: 1.5rem;          /* 24px */
+  --fs-h1: 2rem;            /* 32px */
+  --fs-clock: 2.5rem;       /* 40px mission clock */
+  --fs-score: 3.5rem;       /* 56px debrief score */
+  --lh-body: 1.5;
+  --lh-tight: 1.2;
+  --track-label: 0.12em;    /* uppercase mono labels */
+  --track-head: -0.01em;
+  --measure: 72ch;          /* debrief line length cap */
+
+  /* Space (4 px base) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 24px; --sp-6: 32px; --sp-7: 48px; --sp-8: 64px;
+
+  /* Layout */
+  --header-h: 56px;
+  --rail-w: 360px;
+  --node-w: 144px;
+  --node-h: 64px;
+  --hit-min: 44px;          /* phone target */
+  --hit-min-desktop: 32px;
+
+  /* Radii: squared, instrument-like */
+  --r-1: 2px;  --r-2: 4px;  --r-3: 8px;
+
+  /* Elevation (dark UI: lightness first, shadow second) */
+  --elev-0: none;
+  --elev-1: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 0 1px var(--c-line-soft);
+  --elev-2: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px rgba(0, 0, 0, 0.45);
+  --elev-3: 0 16px 48px rgba(0, 0, 0, 0.60);
+
+  /* Focus */
+  --focus-w: 3px;
+  --focus-offset: 2px;
+  --focus-ring: var(--focus-w) solid var(--c-focus);
+
+  /* Motion */
+  --dur-fast: 150ms;
+  --dur-base: 200ms;
+  --dur-slow: 250ms;
+  --dur-signal: 600ms;      /* pulse iteration (signal, not a transition) */
+  --dur-shake: 300ms;
+  --stagger-clear: 300ms;   /* between alerts clearing */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
+  --metric-step-reduced: 2;  /* sim seconds between metric repaints under reduced motion */
+
+  /* Additions used by components (not in the base contract; still tokens, still no hex outside this file) */
+  --c-backdrop: rgba(0, 0, 0, 0.7);
+  --hatch-alpha: 12%;        /* crit hatch fill strength */
+  --hatch-pitch: 4px;
+  --bw-1: 1px;  --bw-2: 2px;  --bw-3: 3px;
+  --lamp-size: 14px;
+  --ic-sm: 12px;  --ic-md: 16px;  --ic-lg: 20px;
+  --tick-len: 8px;            /* corner tick arm length */
+  --bar-h: 4px;               /* saturation bar and ribbon base */
+  --ribbon-h: 6px;
+  --spark-w: 164px;
+  --spark-h: 56px;
+  --lane-h: 40px;
+  --mark-size: 24px;
+  --clock-w: 8ch;
+  --toast-w: 22rem;
+  --dialog-w: 32rem;
+  --pulse-scale: 1.35;
+  --shake-dx: 3px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {  /* "Daylight": same structure, no glow */
+    --c-bg-0: #f4f1ea;  --c-bg-1: #fbf9f4;  --c-bg-2: #ffffff;
+    --c-line-soft: #d6d1c4;  --c-line-ui: #6b7686;  --c-edge: #6b7686;
+    --c-text: #14181e;  --c-text-muted: #4a5565;  --c-text-disabled: #6b7686;
+    --c-focus: #14181e;  --c-primary-bg: #14181e;  --c-primary-fg: #f4f1ea;  --c-lamp-on: #14181e;
+    --c-ok: #0a6f54;  --c-warn: #8a5a00;  --c-crit: #b3261e;  --c-recv: #0b5cad;
+    --c-ok-tint: #d8efe7;  --c-warn-tint: #f6e8c8;  --c-crit-tint: #f8dcd8;  --c-recv-tint: #d9e7f6;
+    --c-on-status: #ffffff;
+    --c-dot: #2d3a4b;
+    --glow-ok: none; --glow-warn: none; --glow-crit: none; --glow-recv: none; --glow-lamp: none;
+    --elev-1: 0 0 0 1px var(--c-line-soft);
+    --elev-2: 0 8px 24px rgba(20, 24, 30, 0.18);
+    --elev-3: 0 16px 48px rgba(20, 24, 30, 0.25);
+    --c-backdrop: rgba(20, 24, 30, 0.5);
+  }
+}
+
+/* Forced light theme for a wrapper element (same values as the media block above; a test keeps them equal). */
+[data-theme="light"] {
+  color-scheme: light;
+  --c-bg-0: #f4f1ea;  --c-bg-1: #fbf9f4;  --c-bg-2: #ffffff;
+  --c-line-soft: #d6d1c4;  --c-line-ui: #6b7686;  --c-edge: #6b7686;
+  --c-text: #14181e;  --c-text-muted: #4a5565;  --c-text-disabled: #6b7686;
+  --c-focus: #14181e;  --c-primary-bg: #14181e;  --c-primary-fg: #f4f1ea;  --c-lamp-on: #14181e;
+  --c-ok: #0a6f54;  --c-warn: #8a5a00;  --c-crit: #b3261e;  --c-recv: #0b5cad;
+  --c-ok-tint: #d8efe7;  --c-warn-tint: #f6e8c8;  --c-crit-tint: #f8dcd8;  --c-recv-tint: #d9e7f6;
+  --c-on-status: #ffffff;
+  --c-dot: #2d3a4b;
+  --glow-ok: none; --glow-warn: none; --glow-crit: none; --glow-recv: none; --glow-lamp: none;
+  --elev-1: 0 0 0 1px var(--c-line-soft);
+  --elev-2: 0 8px 24px rgba(20, 24, 30, 0.18);
+  --elev-3: 0 16px 48px rgba(20, 24, 30, 0.25);
+  --c-backdrop: rgba(20, 24, 30, 0.5);
+}
+
+@media (prefers-contrast: more) {
+  :root { --c-text-muted: #c4d0de; --c-line-soft: #7a8aa0; --c-edge: #8fa0b5; --focus-w: 4px; }
+}
+@media (prefers-contrast: more) and (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --c-text-muted: #2c3541; --c-line-soft: #6b7686; --c-edge: #4a5565; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+}
+@media (forced-colors: active) {
+  /* Status shapes and text labels carry meaning; system colours replace the palette. */
+  .node, .btn, .tab, .toast { forced-color-adjust: auto; border: 1px solid CanvasText; }
+}
