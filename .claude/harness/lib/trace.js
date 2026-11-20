@@ -60,6 +60,7 @@ function logAgentRun(projectDir, event, failed, now) {
   const tokens = num(out.totalTokens) ?? (num(usage.input_tokens) !== null || num(usage.output_tokens) !== null ? (num(usage.input_tokens) ?? 0) + (num(usage.output_tokens) ?? 0) : null);
   append(projectDir, event.session_id, {
     type: 'agent', ts: now, ok: !failed,
+    agentId: typeof out.agentId === 'string' ? redact(out.agentId) : null,
     agent: redact(input.subagent_type ?? 'general-purpose'),
     phase: (/^\[phase:([\w-]{1,30})\]/.exec(String(input.description ?? '')) ?? [])[1] ?? null,
     task: redact(input.description ?? ''),
@@ -67,6 +68,12 @@ function logAgentRun(projectDir, event, failed, now) {
     effort: redact(input.effort ?? process.env.CLAUDE_CODE_EFFORT_LEVEL ?? '') || null,
     tokens, durationMs: num(out.totalDurationMs), toolUses: num(out.totalToolUseCount),
   });
+}
+
+// One record per finished subagent from the SubagentStop hook. A resumed agent stops again and writes a newer
+// record for the same agentId; the KPI keeps the latest. `usage` is null when the transcript was unreadable.
+function logSubagentFinal(projectDir, event, usage, now = Date.now()) {
+  append(projectDir, event.session_id, { type: 'agent-final', ts: now, agentId: redact(event.agent_id), agent: redact(event.agent_type), ...(usage ?? { tokens: null, durationMs: null, toolUses: null }) });
 }
 
 function logBlocked(projectDir, event, reason, now = Date.now()) {
@@ -117,5 +124,5 @@ function readSessions(projectDir) {
 }
 
 module.exports = {
-  logToolEvent, logBlocked, logHuman, promptKind, logStop, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
+  logToolEvent, logSubagentFinal, logBlocked, logHuman, promptKind, logStop, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
 };

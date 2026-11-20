@@ -23,5 +23,11 @@ if (t > -1 && process.argv[t + 1]) kpi.tune = JSON.parse(fs.readFileSync(process
 const tp = process.argv.indexOf('--tune-phases');
 // effort-by-phase.json: per-phase model x effort pass rate, cost and time from the per-phase tune kit.
 if (tp > -1 && process.argv[tp + 1]) kpi.tunePhases = JSON.parse(fs.readFileSync(process.argv[tp + 1], 'utf8')).rows;
+if (kpi.unreportedRuns.length > 0) {
+  // Not an error: the totals are lower bounds, and the reader must know which runs are missing from them.
+  process.stderr.write(`WARNING: ${kpi.unreportedRuns.length} agent run(s) have no cost figures (no tokens, no time), so the token and time totals are lower bounds:\n`);
+  for (const r of kpi.unreportedRuns) process.stderr.write(`  - ${r.agent} [${r.phase ?? 'untagged'}] ${r.task}\n`);
+  process.stderr.write('  A background run is filled in from its SubagentStop record (hooks/subagent-stop.js); if that hook is not installed, or the host sent no transcript path, pass the figures from the completion notice with --finals.\n');
+}
 const json = JSON.stringify(kpi, null, 2);
 if (i > -1 && process.argv[i + 1]) fs.writeFileSync(process.argv[i + 1], json + '\n'); else process.stdout.write(json + '\n');

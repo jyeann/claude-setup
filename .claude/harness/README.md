@@ -23,6 +23,7 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | Self-protection | `lib/guards.js` | While a run is active, settings, harness files, `.harness/` and `--protect` paths are read-only, and the agent cannot run `harness off/init`. |
 
 | Session trace | `hooks/post-tool.js` + `lib/trace.js` | Records every tool call (ok or failed), guard block and stop to `.harness/traces/<session>.jsonl`. Redacted, truncated summaries only; never blocks. |
+| Agent cost (KPI) | `hooks/post-tool.js`, `hooks/subagent-stop.js`, `lib/subagent-usage.js`, `bin/agents-kpi.js` | Per agent, phase and model/effort: runs, tokens, time, human prompts. A foreground agent's figures come from the PostToolUse payload; a background agent's from its `SubagentStop` event (see "Cost of background agents" below). |
 | Scorers | `lib/score.js` | `efficiency` (failed or repeated tool calls), `verified-before-done` (a passing check after the last code edit), `guardrail-attempts`. |
 | Report + markers | `bin/report.js` + `lib/report.js` | Pass rates, last-10 vs previous-10 trend, most common failures, and before/after rates around changes you `--mark`. |
 | Improver | `agents/harness-improver.md`, `/harness-improve` | Read-only agent proposes ONE change from the evidence; a human merges it. |
@@ -100,6 +101,13 @@ What each phase must contain (the check prints what is missing; these are the ex
 `<hash>` is the digest of the product's source: every file under the `srcDirs` of `verify.config.json` (default `src`) plus `public/` if present, path and content, `node_modules` skipped. Print it with `node .claude/harness/bin/pipeline.js hash --product <dir>`. A review or QA record whose hash differs from the current one is incomplete: a fix after the review or the walkthrough must be re-reviewed or re-walked, then the line updated. Write the hash after the review or walk, never ahead of it, and never copy a hash into a record for work that was not done on that source.
 
 Limits: the document checks prove a phase was done against the current source, not that it was done well; the `Open:` counts are the agents' own; every stop attempt after the plan phase costs a full product gate run.
+
+## Cost of background agents (`hooks/subagent-stop.js`)
+The host moves any `Agent` call that runs longer than about 120 s to the background, even with `run_in_background: false`. The PostToolUse event for such a call has `status: "async_launched"` and no usage, so the trace has a run with no tokens and no time. Per the Claude Code hooks reference, no event carries a usage total for a finished subagent, but `SubagentStop` fires when it ends and gives `agent_id`, `agent_type` and `agent_transcript_path` (the subagent's own transcript). `subagent-stop.js` (registered under `SubagentStop` in `.claude/settings.json`) sums that transcript and writes an `agent-final` record; `agents-kpi.js` matches it to the launch by `agentId` (recorded from the `async_launched` payload), or by agent type when the launch has no id, and fills the run's tokens, time and tool calls.
+
+What the figures are: tokens are input + output + cache-creation + cache-read over every API request in the transcript, counted once per message id (the host's `totalTokens` for a foreground run counts the same four kinds but only for the final request, so the two are not comparable). Time is the first to the last transcript timestamp. A resumed agent stops again; the newest record for its `agentId` wins. A run that already has figures from PostToolUse keeps them.
+
+Limits, stated plainly: the transcript layout is the host's, not a documented contract, so a host change can make the sum come out null (the run then stays unreported); the hook needs a host recent enough to fire `SubagentStop` with `agent_transcript_path`; the orchestrator's own tokens are in no hook event and not in the KPI. `agents-kpi.js` prints a `WARNING` on stderr that names every run still without figures and lists them under `unreportedRuns` in the JSON, so the totals are known to be lower bounds. `--finals` (hand-typed completion-notice figures) still fills whatever is left.
 
 ## Holdout set (`--hide`)
 ```bash

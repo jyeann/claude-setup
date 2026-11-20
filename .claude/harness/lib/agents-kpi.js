@@ -31,9 +31,31 @@ function applyFinals(runs, finals) {
   return out;
 }
 
+// SubagentStop records ({agentId, agent, tokens, durationMs, toolUses}) fill the runs that have no figures: the
+// host moved them to the background, so the PostToolUse hook saw "async_launched" and nothing else. A run that
+// already has figures keeps them. The newest record per agentId wins (a resumed agent stops more than once).
+// A record with no matching launch (older trace, no agentId recorded) fills the oldest unreported run of that
+// agent type, and is added as its own run only when there is none.
+function applyHookFinals(runs, finals) {
+  const out = runs.map((r) => ({ ...r }));
+  const latest = new Map();
+  for (const f of [...finals].sort((a, b) => (a.ts ?? 0) - (b.ts ?? 0))) latest.set(f.agentId, f);
+  const unreported = (r) => r.tokens === null && r.durationMs === null;
+  for (const f of latest.values()) {
+    if (f.tokens === null && f.durationMs === null) continue;
+    const mine = out.find((r) => r.agentId && r.agentId === f.agentId);
+    const hit = mine ?? out.filter((r) => r.agent === f.agent && !r.agentId && unreported(r)).sort((a, b) => a.ts - b.ts)[0];
+    const filled = { tokens: f.tokens ?? null, durationMs: f.durationMs ?? null, toolUses: f.toolUses ?? null, agentId: f.agentId, fromHook: true };
+    if (hit && unreported(hit)) Object.assign(hit, filled);
+    else if (!hit) out.push({ type: 'agent', ts: f.ts ?? 0, agent: f.agent, task: '(no launch record)', phase: null, model: f.models?.[0] ?? null, effort: null, ok: true, session: f.session ?? 'hook', ...filled });
+  }
+  return out;
+}
+
 function buildKpi(projectDir, agentsDir, { finals = [] } = {}) {
   const traced = readSessions(projectDir).flatMap((s) => s.events.filter((e) => e.type === 'agent').map((e) => ({ ...e, session: s.id })));
-  const runs = applyFinals(traced, finals);
+  const hookFinals = readSessions(projectDir).flatMap((s) => s.events.filter((e) => e.type === 'agent-final').map((e) => ({ ...e, session: s.id })));
+  const runs = applyFinals(applyHookFinals(traced, hookFinals), finals);
   const roster = readRoster(agentsDir);
   const names = [...new Set([...roster.map((r) => r.name), ...runs.map((r) => r.agent)])].sort();
   const rows = names.map((name) => {
@@ -80,6 +102,9 @@ function buildKpi(projectDir, agentsDir, { finals = [] } = {}) {
   }
   return {
     generatedAt: Date.now(),
+    // Runs with no cost figure at all after every source above: they are in the run counts but not in the token
+    // or time totals, so those totals are lower bounds.
+    unreportedRuns: runs.filter((r) => r.tokens === null && r.durationMs === null).map(({ agent, phase, task, agentId }) => ({ agent, phase: phase ?? null, task, agentId: agentId ?? null })),
     totals: { agents: rows.length, active: active.length, idle: rows.length - active.length, runs: sum(rows.map((x) => x.runs)), failed: sum(rows.map((x) => x.failed)), unreported: sum(rows.map((x) => x.unreported)), tokens: sum(rows.map((x) => x.tokens)), durationMs: sum(rows.map((x) => x.durationMs)) },
     rows,
     human,
@@ -89,4 +114,4 @@ function buildKpi(projectDir, agentsDir, { finals = [] } = {}) {
   };
 }
 
-module.exports = { buildKpi, readRoster, applyFinals };
+module.exports = { buildKpi, readRoster, applyFinals, applyHookFinals };

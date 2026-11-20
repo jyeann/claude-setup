@@ -172,3 +172,89 @@ test('events recorded before prompts were classified are reported as unclassifie
   const { human } = buildKpi(dir, path.join(dir, 'none'));
   assert.deepEqual([human.prompts, human.interventions, human.unclassified, human.recordedPrompts], [0, 0, 2, 2]);
 });
+
+// --- cost of backgrounded agents, from the SubagentStop hook ---
+const { spawnSync: spawnHook } = require('node:child_process');
+const { summarizeTranscript } = require('../lib/subagent-usage');
+const iso = (ms) => new Date(Date.UTC(2026, 10, 20, 6, 0, 0) + ms).toISOString();
+// A transcript as the host writes it: one assistant record per content block, the same usage on each.
+function transcript(dir, name = 'agent-a1.jsonl') {
+  const usage = (i, o, w, r) => ({ input_tokens: i, output_tokens: o, cache_creation_input_tokens: w, cache_read_input_tokens: r });
+  const lines = [
+    { type: 'user', timestamp: iso(0), message: { role: 'user', content: 'go' } },
+    { type: 'assistant', timestamp: iso(1000), message: { id: 'm1', model: 'claude-sonnet-5-5', usage: usage(10, 20, 100, 0), content: [{ type: 'thinking' }] } },
+    { type: 'assistant', timestamp: iso(1100), message: { id: 'm1', model: 'claude-sonnet-5-5', usage: usage(10, 20, 100, 0), content: [{ type: 'tool_use', id: 't1', name: 'Read' }] } },
+    { type: 'user', timestamp: iso(2000), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1' }] } },
+    { type: 'assistant', timestamp: iso(61000), message: { id: 'm2', model: 'claude-sonnet-5-5', usage: usage(5, 40, 0, 130), content: [{ type: 'text', text: 'done' }] } },
+  ];
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, `${lines.map((l) => JSON.stringify(l)).join('\n')}\nnot json\n`);
+  return file;
+}
+
+test('a subagent transcript is summed once per message, with duration and tool calls', () => {
+  const dir = project();
+  const s = summarizeTranscript(transcript(dir));
+  assert.deepEqual(s, { tokens: 10 + 20 + 100 + 5 + 40 + 130, inputTokens: 115, outputTokens: 60, cacheReadTokens: 130, durationMs: 61000, toolUses: 1, models: ['claude-sonnet-5-5'] });
+  assert.equal(summarizeTranscript(path.join(dir, 'missing.jsonl')), null);
+  assert.equal(summarizeTranscript(undefined), null);
+  fs.writeFileSync(path.join(dir, 'empty.jsonl'), '');
+  assert.equal(summarizeTranscript(path.join(dir, 'empty.jsonl')), null);
+  assert.equal(summarizeTranscript(path.join(dir, 'agent-a1.txt')), null);
+});
+
+test('a background run gets its tokens and time from the SubagentStop record, with no hand-typed figures', () => {
+  const dir = project();
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'architect', description: '[phase:design] design it', effort: 'low' }, tool_response: { status: 'async_launched', agentId: 'a1' } }, 1);
+  const hook = path.join(__dirname, '..', 'hooks', 'subagent-stop.js');
+  const event = { session_id: 's1', hook_event_name: 'SubagentStop', agent_id: 'a1', agent_type: 'architect', agent_transcript_path: transcript(dir) };
+  assert.equal(spawnHook(process.execPath, [hook], { input: JSON.stringify(event), env: { ...process.env, CLAUDE_PROJECT_DIR: dir } }).status, 0);
+  const kpi = buildKpi(dir, path.join(dir, 'none'));
+  const row = kpi.rows.find((r) => r.agent === 'architect');
+  assert.deepEqual([row.runs, row.unreported, row.tokens, row.durationMs, row.toolUses], [1, 0, 305, 61000, 1]);
+  assert.equal(kpi.byPhase.find((p) => p.phase === 'design').tokens, 305);
+  assert.deepEqual(kpi.unreportedRuns, []);
+});
+
+test('SubagentStop: internal agents and runs the hook cannot read are not added; a foreground run keeps its own figures; the latest stop wins', () => {
+  const dir = project();
+  const hook = path.join(__dirname, '..', 'hooks', 'subagent-stop.js');
+  const send = (event) => spawnHook(process.execPath, [hook], { input: JSON.stringify({ session_id: 's1', ...event }), env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  trace.logToolEvent(dir, agentCall('tdd-guide', { tool_response: { totalTokens: 1200, totalDurationMs: 3000, totalToolUseCount: 4, agentId: 'fg1' } }), 1);
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'planner', description: 'plan' }, tool_response: { status: 'async_launched', agentId: 'bg1' } }, 2);
+  const file = transcript(dir);
+  send({ agent_id: 'x', agent_type: '', agent_transcript_path: file });
+  send({ agent_id: 'fg1', agent_type: 'tdd-guide', agent_transcript_path: file });
+  send({ agent_id: 'bg1', agent_type: 'planner', agent_transcript_path: path.join(dir, 'gone.jsonl') });
+  let kpi = buildKpi(dir, path.join(dir, 'none'));
+  assert.equal(kpi.rows.find((r) => r.agent === 'tdd-guide').tokens, 1200);
+  assert.equal(kpi.rows.find((r) => r.agent === 'planner').unreported, 1);
+  assert.equal(kpi.totals.runs, 2);
+  assert.deepEqual(kpi.unreportedRuns.map((r) => r.agent), ['planner']);
+  // The agent is resumed and stops again: the newer record wins, and an unreadable one earlier did not block it.
+  send({ agent_id: 'bg1', agent_type: 'planner', agent_transcript_path: file });
+  kpi = buildKpi(dir, path.join(dir, 'none'));
+  assert.equal(kpi.rows.find((r) => r.agent === 'planner').tokens, 305);
+  assert.equal(kpi.unreportedRuns.length, 0);
+});
+
+test('a SubagentStop record without a launch record is matched by agent type, or added as its own run', () => {
+  const dir = project();
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'architect', description: 'old run' }, tool_response: {} }, 1);
+  trace.logSubagentFinal(dir, { session_id: 's1', agent_id: 'n1', agent_type: 'architect' }, { tokens: 50, durationMs: 9, toolUses: 1 }, 5);
+  trace.logSubagentFinal(dir, { session_id: 's1', agent_id: 'n2', agent_type: 'reviewer' }, { tokens: 70, durationMs: 8, toolUses: 2 }, 6);
+  const kpi = buildKpi(dir, path.join(dir, 'none'));
+  assert.equal(kpi.rows.find((r) => r.agent === 'architect').tokens, 50);
+  assert.equal(kpi.rows.find((r) => r.agent === 'architect').runs, 1);
+  assert.equal(kpi.rows.find((r) => r.agent === 'reviewer').tokens, 70);
+});
+
+test('agents-kpi.js warns on stderr and names each run that still has no cost figures', () => {
+  const dir = project();
+  trace.logToolEvent(dir, { session_id: 's1', tool_name: 'Agent', tool_input: { subagent_type: 'architect', description: '[phase:design] design it' }, tool_response: { status: 'async_launched' } }, 1);
+  const r = spawnHook(process.execPath, [path.join(__dirname, '..', 'bin', 'agents-kpi.js')], { encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir } });
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /WARNING: 1 agent run\(s\) have no cost figures/);
+  assert.match(r.stderr, /architect \[design\] \[phase:design\] design it/);
+  assert.deepEqual(JSON.parse(r.stdout).unreportedRuns.map((x) => x.agent), ['architect']);
+});
