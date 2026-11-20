@@ -1,0 +1,17 @@
+{
+  "runner": "vitest",
+  "testCommand": "npx vitest run --coverage --coverage.reporter=json --coverage.reportOnFailure=true --coverage.reportsDirectory=\"$VERIFY_COVERAGE_DIR\"",
+  "timeoutMs": 240000,
+  "minTests": 8,
+  "srcDirs": ["src"],
+  "typecheck": { "command": "npx tsc --noEmit", "timeoutMs": 120000 },
+  "coverage": { "minLines": 80, "minFileLines": 60, "exclude": [] },
+  "testQuality": { "dirs": ["tests"], "minAssertionsPerFile": 3 },
+  "mutation": {
+    "samples": 8,
+    "minKillRate": 0.6,
+    "testCommand": "npx vitest run",
+    "copy": ["src", "tests", "acceptance", "tsconfig.json"],
+    "timeoutMs": 120000
+  }
+}

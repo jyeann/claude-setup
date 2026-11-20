@@ -286,3 +286,96 @@ test('analyzeTestFile still flags tautologies written with type arguments or cas
     assert.match(analyzeTestFile(body, opts).issues.join(), /tautolog/i, tautology);
   }
 });
+
+// ---------- Vitest and Jest ----------
+const { collectIstanbul, istanbulLineCoverage } = require('../lib/istanbul-coverage');
+
+// Captured from real runs (vitest 5.1.1, jest 30.5.2), non-TTY.
+const VITEST_OUT = [
+  ' RUN  v5.1.1 /work', '', ' ❯ tests/math.test.ts (4 tests | 1 failed | 1 skipped) 6ms', '   ❯ math (4)', '     × fails on purpose 4ms', '',
+  '⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯', '', ' FAIL  tests/math.test.ts > math > fails on purpose', 'AssertionError: expected 2 to be 3 // Object.is equality', '',
+  '- Expected', '+ Received', '', '- 3', '+ 2', '', ' ❯ tests/math.test.ts:14:52', '     12|   });', '     14|   it(\'fails on purpose\', () => { expect(add(1, 1)).toBe(3); });', '',
+  '⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯', '', ' Test Files  1 failed (1)', '      Tests  1 failed | 2 passed | 1 skipped (4)', '   Start at  06:56:17',
+].join('\n');
+const JEST_OUT = [
+  'FAIL tests/math.test.js', '  ● math › fails on purpose', '', '    expect(received).toBe(expected) // Object.is equality', '', '    Expected: 3', '    Received: 2', '',
+  '      12 |   it.skip(\'later\', () => { expect(1).toBe(2); });', '    > 14 |   it(\'fails on purpose\', () => { expect(add(1, 1)).toBe(3); });', '         |                                                    ^', '      15 | });', '',
+  '      at Object.toBe (tests/math.test.js:14:52)', '', 'Test Suites: 1 failed, 1 total', 'Tests:       1 failed, 1 skipped, 1 todo, 2 passed, 5 total', 'Snapshots:   0 total',
+].join('\n');
+
+test('parseTestSummary reads Vitest and Jest totals, including skipped and todo', () => {
+  assert.deepEqual(parseTestSummary(VITEST_OUT), { tests: 4, pass: 2, fail: 1, skipped: 1, todo: 0 });
+  assert.deepEqual(parseTestSummary(JEST_OUT), { tests: 5, pass: 2, fail: 1, skipped: 1, todo: 1 });
+  assert.deepEqual(parseTestSummary('      Tests  3 passed | 1 todo (4)\n'), { tests: 4, pass: 3, fail: 0, skipped: 0, todo: 1 });
+  assert.deepEqual(parseTestSummary('Tests:       7 passed, 7 total\n'), { tests: 7, pass: 7, fail: 0, skipped: 0, todo: 0 });
+});
+
+test('parseTestSummary does not mistake Vitest file counts or Jest suite counts for test counts', () => {
+  assert.equal(parseTestSummary(' Test Files  1 failed (1)\nTest Suites: 1 failed, 1 total\n').tests, 0);
+});
+
+test('extractFailures names each failing Vitest test with its error and no code frame', () => {
+  const out = extractFailures(VITEST_OUT);
+  assert.match(out, /tests\/math\.test\.ts > math > fails on purpose/);
+  assert.match(out, /expected 2 to be 3/);
+  assert.doesNotMatch(out, /12\||14\||Test Files|Failed Tests/);
+});
+
+test('extractFailures names each failing Jest test with expected and received and no code frame', () => {
+  const out = extractFailures(JEST_OUT);
+  assert.match(out, /- math › fails on purpose/);
+  assert.match(out, /Expected: 3/);
+  assert.match(out, /Received: 2/);
+  assert.doesNotMatch(out, /14 \||at Object|Test Suites|Snapshots|^- FAIL/m);
+  assert.match(extractFailures('  ● adds wrongly\n\n    expect(received).toBe(expected)\n'), /- adds wrongly/, 'top-level test without a describe');
+  assert.equal(extractFailures('  ● Console\n\n    console.log hi\n').includes('Console'), false);
+});
+
+const ISTANBUL = (file) => ({
+  [file]: {
+    path: file,
+    statementMap: { 0: { start: { line: 3 } }, 1: { start: { line: 3 } }, 2: { start: { line: 4 } }, 3: { start: { line: 10 } } },
+    s: { 0: 0, 1: 2, 2: 2, 3: 0 },
+  },
+});
+
+test('istanbulLineCoverage counts a line once, as covered when any statement starting there ran', () => {
+  const r = istanbulLineCoverage(ISTANBUL('/p/src/a.ts')['/p/src/a.ts']);
+  assert.deepEqual(r, { executable: 3, covered: 2, uncoveredLines: [10], pct: 66.67 });
+  assert.equal(istanbulLineCoverage({ statementMap: {}, s: {} }).pct, 100);
+});
+
+test('collectIstanbul maps absolute report paths to project-relative ones and ignores outsiders and node_modules', () => {
+  const root = tmp();
+  const dir = tmp();
+  const report = { ...ISTANBUL(path.join(root, 'src', 'a.ts')), ...ISTANBUL(path.join(root, 'node_modules', 'x', 'i.js')), ...ISTANBUL('/elsewhere/src/z.ts') };
+  fs.writeFileSync(path.join(dir, 'coverage-final.json'), JSON.stringify(report));
+  assert.deepEqual([...collectIstanbul(dir, root).keys()], ['src/a.ts']);
+});
+
+test('collectIstanbul returns null when the runner wrote no usable report', () => {
+  const root = tmp();
+  const dir = tmp();
+  assert.equal(collectIstanbul(dir, root), null);
+  fs.writeFileSync(path.join(dir, 'coverage-final.json'), 'not json');
+  assert.equal(collectIstanbul(dir, root), null);
+});
+
+test('analyzeTestFile accepts a path alias as a source reference only when it is configured', () => {
+  const body = "import { add } from '@/math';\nit('a', () => { expect(add(1, 2)).toBe(3); expect(add(0, 0)).toBe(0); expect(add(1, 1)).toBe(2); });";
+  assert.match(analyzeTestFile(body, { srcDirs: ['src'], minAssertions: 3 }).issues.join(), /never references the source/);
+  assert.deepEqual(analyzeTestFile(body, { srcDirs: ['src'], minAssertions: 3, srcAliases: ['@/'] }).issues, []);
+});
+
+test('analyzeTestFile flags string and typed expect tautologies and counts typed expect calls', () => {
+  const head = "import { add } from '../src/math';\n";
+  const filler = 'expect(add(0, 0)).toBe(0); expect(add(1, 1)).toBe(2);';
+  const opts = { srcDirs: ['src'], minAssertions: 3 };
+  for (const tautology of ["expect('a').toBe('a');", 'expect<number>(1).toBe(1);', 'expect(true).toBeTruthy();']) {
+    assert.match(analyzeTestFile(`${head}it('a', () => { ${tautology} ${filler} });`, opts).issues.join(), /tautolog/i, tautology);
+  }
+  const real = analyzeTestFile(`${head}it('a', () => { expect<number>(add(1, 2)).toBe(3); ${filler} });`, opts);
+  assert.equal(real.assertions, 3);
+  assert.deepEqual(real.issues, []);
+  assert.deepEqual(analyzeTestFile(`${head}it('a', () => { expect('abc').toMatch('b'); expect(1).toBeGreaterThan(0); ${filler} });`, opts).issues, []);
+});

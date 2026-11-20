@@ -6,6 +6,8 @@
 //   4. hidden holdout tests pass (optional)
 //   5. user journeys pass in a browser, one passing test per journey id in ux.md (optional)
 //   6. mutation spot-check: flipping one operator in src must make the suite fail
+// Runners: node:test (default; coverage from raw V8), Vitest and Jest ("runner": "vitest"|"jest"; coverage from the
+// runner's own Istanbul coverage-final.json, written to $VERIFY_COVERAGE_DIR by the test command).
 // TypeScript (.ts/.mts/.cts) is supported through Node's native type stripping; an optional type-check command
 // (typecheck.command) is a separate step, because stripping does not check types.
 // Config lives in verify.config.json; protect it (and this file) so the agent cannot weaken the gate.
@@ -17,6 +19,7 @@ const { runVerify } = require('./verify');
 const { tailOutput } = require('./stop-loop');
 const { parseTestSummary, extractFailures } = require('./summary');
 const { lineCoverage, collectCoverage } = require('./v8-coverage');
+const { collectIstanbul, istanbulLineCoverage, REPORT } = require('./istanbul-coverage');
 const { analyzeTestFile } = require('./test-quality');
 const { listMutations, applyMutation, selectMutations } = require('./mutate');
 const { TS_FILE, DECLARATION_FILE, stripTypes } = require('./typescript');
@@ -24,29 +27,47 @@ const { TS_FILE, DECLARATION_FILE, stripTypes } = require('./typescript');
 const SOURCE_FILE = /\.[cm]?[jt]s$/; // .tsx/.jsx are not supported: Node's type stripping does not handle JSX
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]s$/;
 
+const RUNNERS = ['node', 'vitest', 'jest'];
+const VITE_CONFIGS = ['js', 'ts', 'mjs', 'mts', 'cjs', 'cts'].flatMap((e) => [`vitest.config.${e}`, `vite.config.${e}`, `vitest.workspace.${e}`]);
+// Config the runner reads from the project root; copied into the mutation copy when present.
+const RUNNER_FILES = {
+  node: [],
+  vitest: [...VITE_CONFIGS, 'tsconfig.json'],
+  jest: ['jest.config.js', 'jest.config.cjs', 'jest.config.mjs', 'jest.config.ts', 'jest.config.json', 'babel.config.js', 'babel.config.cjs', '.babelrc', 'tsconfig.json'],
+};
+const COVERAGE_HINT = {
+  vitest: '`--coverage --coverage.reporter=json --coverage.reportOnFailure=true --coverage.reportsDirectory="$VERIFY_COVERAGE_DIR"` (needs @vitest/coverage-v8)',
+  jest: '`--coverage --coverageReporters=json --coverageDirectory="$VERIFY_COVERAGE_DIR"`',
+};
+
 function loadConfig(file) {
   let raw;
   try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { throw new Error(`Cannot read config ${file}: ${err.message}`); }
   if (typeof raw.testCommand !== 'string' || !raw.testCommand.trim()) throw new Error('config.testCommand (string) is required');
   const config = {
     testCommand: raw.testCommand,
+    runner: raw.runner ?? 'node',
     timeoutMs: raw.timeoutMs ?? 300_000,
     minTests: raw.minTests ?? 1,
     srcDirs: raw.srcDirs ?? ['src'],
     coverage: { minLines: 80, minFileLines: 50, minSourceFiles: 1, exclude: [], ...raw.coverage },
-    testQuality: { dirs: ['tests'], minAssertionsPerFile: 3, ...raw.testQuality },
+    testQuality: { dirs: ['tests'], minAssertionsPerFile: 3, srcAliases: [], ...raw.testQuality },
     replicates: raw.replicates ?? 2,
     holdout: raw.holdout ? { minTests: 1, ...raw.holdout } : null,
     journeys: raw.journeys ? { minTests: 1, ...raw.journeys } : null,
     typecheck: raw.typecheck ? { timeoutMs: 120_000, ...raw.typecheck } : null,
-    mutation: { samples: 6, minKillRate: 0.6, copy: ['acceptance', 'package.json'], timeoutMs: 120_000, timeoutFactor: 3, minTimeoutMs: 10_000, ...raw.mutation },
+    mutation: { samples: 6, minKillRate: 0.6, copy: ['acceptance', 'package.json'], exclude: [], timeoutMs: 120_000, timeoutFactor: 3, minTimeoutMs: 10_000, ...raw.mutation },
   };
   validate(config);
   return config;
 }
 
-function validate({ coverage, mutation, replicates, holdout, journeys, typecheck }) {
+function validate({ runner, testQuality, coverage, mutation, replicates, holdout, journeys, typecheck }) {
   const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+  if (!RUNNERS.includes(runner)) throw new Error(`runner must be one of ${RUNNERS.join(', ')}`);
+  if (!Array.isArray(testQuality.srcAliases) || testQuality.srcAliases.some((a) => typeof a !== 'string' || !a)) throw new Error('testQuality.srcAliases must be an array of non-empty strings');
+  if (!Array.isArray(mutation.exclude) || mutation.exclude.some((e) => typeof e !== 'string')) throw new Error('mutation.exclude must be an array of paths');
+  if (mutation.testCommand !== undefined && (typeof mutation.testCommand !== 'string' || !mutation.testCommand.trim())) throw new Error('mutation.testCommand must be a non-empty string');
   if (!Number.isInteger(replicates) || replicates < 1 || replicates > 5) throw new Error('replicates must be an integer between 1 and 5');
   if (holdout && (typeof holdout.command !== 'string' || !holdout.command.trim())) throw new Error('holdout.command (string) is required when holdout is set');
   if (holdout && (!Number.isInteger(holdout.minTests) || holdout.minTests < 1)) throw new Error('holdout.minTests must be an integer >= 1');
@@ -119,27 +140,36 @@ async function checkTypes(root, config, out) {
   return [result.timedOut ? `type check timed out after ${timeoutMs} ms` : `type check failed: \`${command}\` exited non-zero (output tail above)`];
 }
 
-function checkCoverage(root, config, covDir, out) {
+// Where this runner's coverage goes: raw V8 for node:test, an Istanbul report in $VERIFY_COVERAGE_DIR for the others.
+const coverageEnv = (config, dir) => (config.runner === 'node' ? { NODE_V8_COVERAGE: dir } : { VERIFY_COVERAGE_DIR: dir });
+
+function checkCoverage(root, config, covDir, out, testsPassed = true) {
   const files = sourceFiles(root, config);
   if (files.length === 0) return [`no source files found under ${config.srcDirs.join(', ')}`];
   const failures = [];
   if (files.length < config.coverage.minSourceFiles) {
     failures.push(`coverage: expected at least ${config.coverage.minSourceFiles} source file(s) under ${config.srcDirs.join(', ')}, found ${files.length}; do not delete source to raise coverage`);
   }
-  const byFile = collectCoverage(covDir, root);
+  const viaRunner = config.runner !== 'node';
+  const byFile = viaRunner ? collectIstanbul(covDir, root) : collectCoverage(covDir, root);
+  if (byFile === null) {
+    const why = testsPassed ? '' : ' (the tests failed, and Vitest writes no report then unless coverage.reportOnFailure is on)';
+    return [...failures, `coverage: the test command wrote no ${REPORT} to $VERIFY_COVERAGE_DIR${why}. For ${config.runner}, add ${COVERAGE_HINT[config.runner]} to testCommand`];
+  }
   let executable = 0;
   let covered = 0;
   for (const rel of files) {
     const text = fs.readFileSync(path.join(root, rel), 'utf8');
     let erasedSource;
     if (TS_FILE.test(rel)) { try { erasedSource = stripTypes(text); } catch { /* unparsable: count every non-comment line */ } }
-    const r = lineCoverage(text, byFile.get(rel) ?? [], { erasedSource });
+    const r = viaRunner && byFile.has(rel) ? istanbulLineCoverage(byFile.get(rel)) : lineCoverage(text, viaRunner ? [] : byFile.get(rel) ?? [], { erasedSource });
     executable += r.executable;
     covered += r.covered;
     const detail = r.uncoveredLines.length ? ` uncovered lines: ${ranges(r.uncoveredLines)}` : '';
     out(`  ${rel}  ${r.pct}% (${r.covered}/${r.executable})${detail}`);
     if (r.pct < config.coverage.minFileLines) {
-      const hint = r.pct === 0 ? ' (0% usually means the file was never loaded, or a child process running it was killed by a signal before it could write coverage: handle SIGTERM and exit 0)' : '';
+      const wrongRunner = !viaRunner && /\b(?:vitest|jest)\b/.test(config.testCommand) ? ' (testCommand runs Vitest or Jest: set "runner" in verify.config.json so coverage is read from their report)' : '';
+      const hint = wrongRunner || (r.pct === 0 ? ' (0% usually means the file was never loaded, or a child process running it was killed by a signal before it could write coverage: handle SIGTERM and exit 0)' : '');
       failures.push(`coverage: ${rel} is ${r.pct}%, below the ${config.coverage.minFileLines}% per-file floor${hint}`);
     }
   }
@@ -150,13 +180,13 @@ function checkCoverage(root, config, covDir, out) {
 }
 
 function checkTestQuality(root, config) {
-  const { dirs, minAssertionsPerFile } = config.testQuality;
+  const { dirs, minAssertionsPerFile, srcAliases } = config.testQuality;
   const files = dirs.flatMap((d) => walk(root, d, TEST_FILE));
   const hidden = config.srcDirs.flatMap((d) => walk(root, d, TEST_FILE))
     .map((rel) => `test quality: ${rel} is a test file inside the source dir (it is excluded from coverage); keep tests in ${dirs.join(', ')}`);
   if (dirs.length > 0 && files.length === 0) return [`no unit tests found in ${dirs.join(', ')}`, ...hidden];
   return hidden.concat(files.flatMap((rel) => {
-    const { issues } = analyzeTestFile(fs.readFileSync(path.join(root, rel), 'utf8'), { srcDirs: config.srcDirs, minAssertions: minAssertionsPerFile });
+    const { issues } = analyzeTestFile(fs.readFileSync(path.join(root, rel), 'utf8'), { srcDirs: config.srcDirs, minAssertions: minAssertionsPerFile, srcAliases });
     return issues.map((issue) => `test quality: ${rel} ${issue}`);
   }));
 }
@@ -168,11 +198,11 @@ const runSignature = (result) => {
 
 // Variance check (the first run's tests passed): the same command must give the same answer again, or the
 // gate is noise and the agent would be steered by luck.
-async function checkReplicates(root, config, first, out) {
+async function checkReplicates(root, config, first, out, env) {
   const failures = [];
   const expected = runSignature(first);
   for (let run = 2; run <= config.replicates; run += 1) {
-    const again = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs });
+    const again = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env });
     const got = runSignature(again);
     if (got !== expected) {
       failures.push(`flaky tests: run 1 -> ${expected}; run ${run} -> ${got}. The suite is non-deterministic, so it cannot be a definition of done; make it deterministic`);
@@ -185,9 +215,9 @@ async function checkReplicates(root, config, first, out) {
 }
 
 // Hidden acceptance tests: run only here, and only counts are reported, so the agent cannot code to them.
-async function checkHoldout(root, config, out) {
+async function checkHoldout(root, config, out, env) {
   const { command, minTests } = config.holdout;
-  const result = await runVerify(command, { cwd: root, timeoutMs: config.timeoutMs });
+  const result = await runVerify(command, { cwd: root, timeoutMs: config.timeoutMs, env });
   const s = parseTestSummary(result.output);
   out(`  holdout: ${s.pass}/${s.tests} passing`);
   const detail = 'Details are withheld on purpose: re-read the spec\'s acceptance criteria and handle cases beyond the visible tests.';
@@ -245,13 +275,14 @@ function copyProject(root, copy) {
   return tmp;
 }
 
-async function checkMutation(root, config, baselineMs, out) {
-  const files = sourceFiles(root, config);
+async function checkMutation(root, config, baselineMs, out, scratchEnv) {
+  const files = sourceFiles(root, config).filter((f) => !isExcluded(f, config.mutation.exclude));
   const texts = new Map(files.map((f) => [f, fs.readFileSync(path.join(root, f), 'utf8')]));
   const failures = [];
   const pool = files.flatMap((file) => {
     try { return listMutations(texts.get(file), { typescript: TS_FILE.test(file) }).map((m) => ({ ...m, file })); } catch (err) {
-      failures.push(`mutation: cannot type-strip ${file} (${err.message.split('\n')[0]}); Node's type stripping needs this file to parse as erasable TypeScript, so it could not be mutated`);
+      const fix = config.runner === 'node' ? "Node's type stripping needs this file to parse as erasable TypeScript" : 'mutation needs erasable TypeScript (no enum, namespace or parameter properties) even though the runner can compile more; rewrite the file, or list it in mutation.exclude (the check is skipped for it)';
+      failures.push(`mutation: cannot type-strip ${file} (${err.message.split('\n')[0]}), so it could not be mutated; ${fix}`);
       return [];
     }
   });
@@ -260,12 +291,13 @@ async function checkMutation(root, config, baselineMs, out) {
 
   const seed = crypto.createHash('sha1').update([...texts.values()].join('\0')).digest('hex');
   const picked = selectMutations(pool, config.mutation.samples, seed);
-  const tmp = copyProject(root, [...new Set([...config.srcDirs, ...config.testQuality.dirs, ...config.mutation.copy])]);
+  const tmp = copyProject(root, [...new Set([...config.srcDirs, ...config.testQuality.dirs, ...config.mutation.copy, ...RUNNER_FILES[config.runner]])]);
   const timeoutMs = mutationTimeoutMs(baselineMs, config.mutation);
   const survivors = [];
-  const env = { CLAUDE_PROJECT_DIR: tmp };
+  const env = { ...scratchEnv, CLAUDE_PROJECT_DIR: tmp };
+  const command = config.mutation.testCommand ?? config.testCommand;
   try {
-    const baseline = await runVerify(config.testCommand, { cwd: tmp, timeoutMs, env });
+    const baseline = await runVerify(command, { cwd: tmp, timeoutMs, env });
     if (!baseline.pass) {
       out(tailOutput(baseline.output, 20, 2000));
       return ['mutation: baseline run of the unmutated copy failed, so mutants would all look killed. The copy is missing something the tests need: add it to mutation.copy in verify.config.json'];
@@ -273,7 +305,7 @@ async function checkMutation(root, config, baselineMs, out) {
     for (const m of picked) {
       const target = path.join(tmp, m.file);
       fs.writeFileSync(target, applyMutation(texts.get(m.file), m));
-      const r = await runVerify(config.testCommand, { cwd: tmp, timeoutMs, env });
+      const r = await runVerify(command, { cwd: tmp, timeoutMs, env });
       fs.writeFileSync(target, texts.get(m.file));
       if (r.pass) survivors.push(m);
     }
@@ -291,12 +323,15 @@ async function checkMutation(root, config, baselineMs, out) {
 
 async function strongVerify(root, config, { fast = false, out = console.log } = {}) {
   const covDir = makeTemp('verify-cov-');
+  // Runs that are not the coverage run still expand $VERIFY_COVERAGE_DIR; point them at a throwaway directory.
+  const scratchDir = config.runner === 'node' ? null : makeTemp('verify-scratch-');
+  const scratchEnv = scratchDir ? coverageEnv(config, scratchDir) : {};
   const failures = [];
   let failingTests = '';
   try {
     out('[1/7] tests');
     const startedAt = Date.now();
-    const result = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env: { NODE_V8_COVERAGE: covDir } });
+    const result = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env: coverageEnv(config, covDir) });
     const baselineMs = Date.now() - startedAt;
     const tests = checkTests(result, config);
     failures.push(...tests.failures);
@@ -307,7 +342,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     }
     if (tests.failures.length === 0 && config.replicates > 1) {
       if (fast) out('  replicates: skipped (--fast); the full run is the definition of done');
-      else failures.push(...await checkReplicates(root, config, result, out));
+      else failures.push(...await checkReplicates(root, config, result, out, scratchEnv));
     }
 
     out('[2/7] type check');
@@ -315,7 +350,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     else failures.push(...await checkTypes(root, config, out));
 
     out('[3/7] source coverage');
-    failures.push(...checkCoverage(root, config, covDir, out));
+    failures.push(...checkCoverage(root, config, covDir, out, tests.failures.length === 0));
     out('[4/7] test quality');
     const quality = checkTestQuality(root, config);
     failures.push(...quality);
@@ -325,7 +360,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     if (!config.holdout) out('  holdout: not configured');
     else if (fast) out('  holdout: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  holdout: skipped until the checks above pass');
-    else failures.push(...await checkHoldout(root, config, out));
+    else failures.push(...await checkHoldout(root, config, out, scratchEnv));
 
     out('[6/7] user journeys in a browser');
     if (!config.journeys) out('  journeys: not configured');
@@ -336,9 +371,10 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     out('[7/7] mutation spot-check');
     if (fast) out('  mutation: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  mutation: skipped until the checks above pass');
-    else failures.push(...await checkMutation(root, config, baselineMs, out));
+    else failures.push(...await checkMutation(root, config, baselineMs, out, scratchEnv));
   } finally {
     removeTemp(covDir);
+    if (scratchDir) removeTemp(scratchDir);
   }
   out(failures.length === 0 ? 'VERIFY PASSED' : `VERIFY FAILED:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
   if (failingTests !== '') out(`\nFailing tests (fix these at the root cause):\n${failingTests}`);
