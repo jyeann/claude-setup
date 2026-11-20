@@ -74,9 +74,13 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: Full verify gate (tests, coverage, test quality, hidden holdout, mutation)
+      - name: Install Playwright and Chromium for the browser journeys
+        run: |
+          npm install -g playwright@1.63.0
+          playwright install --with-deps chromium
+      - name: Full verify gate (tests, coverage, test quality, hidden holdout, browser journeys, mutation)
         working-directory: examples/retro-board
-        run: CLAUDE_PROJECT_DIR="$PWD" node ../../.claude/harness/bin/verify.js
+        run: CLAUDE_PROJECT_DIR="$PWD" NODE_PATH="$(npm root -g)" node ../../.claude/harness/bin/verify.js
 
   eval-kit-selftest:
     name: eval-kit-selftest

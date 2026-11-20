@@ -20,6 +20,11 @@
     "command": "node --test \"${HARNESS_HIDDEN_DIR:-holdout}/*.test.js\"",
     "minTests": 8
   },
+  "journeys": {
+    "command": "node --test \"journeys/*.test.js\"",
+    "uxFile": "../../docs/product/retro-board/ux.md",
+    "minTests": 28
+  },
   "mutation": {
     "samples": 8,
     "minKillRate": 0.6,
