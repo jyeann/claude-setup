@@ -417,3 +417,182 @@ test('typecheck config needs a command and a positive timeout', () => {
     assert.match(r.stderr, pattern);
   }
 });
+
+// ---------- Vitest / Jest contract (stand-in runner) ----------
+// The suite must not depend on installing Vitest or Jest, so this stand-in speaks their contract: describe/it/expect
+// globals, a Vitest-style summary line, and an Istanbul report written to $VERIFY_COVERAGE_DIR when --coverage is given.
+// (Real Vitest 5.1.1 and Jest 30.5.2 were run through the gate by hand; see the README.)
+const FAKE_RUNNER = `const fs = require('node:fs');
+const path = require('node:path');
+const assert = require('node:assert');
+const args = process.argv.slice(2);
+if (args.includes('--fail-always')) { console.log('boom'); process.exit(1); }
+const dir = process.env.VERIFY_COVERAGE_DIR;
+if (args.includes('--coverage') && !dir) { console.error('VERIFY_COVERAGE_DIR is not set'); process.exit(3); }
+let pass = 0; let fail = 0; let skipped = 0;
+global.describe = (name, fn) => fn();
+global.it = (name, fn) => { try { fn(); pass += 1; } catch (err) { fail += 1; console.log(' FAIL  ' + name + '\\n' + err.message + '\\n'); } };
+global.it.skip = () => { skipped += 1; };
+global.expect = (v) => ({ toBe: (x) => assert.strictEqual(v, x), toThrow: (E) => assert.throws(v, E) });
+for (const f of fs.readdirSync('tests').filter((n) => /\\.test\\.js$/.test(n))) require(path.resolve('tests', f));
+const parts = [fail && fail + ' failed', pass && pass + ' passed', skipped && skipped + ' skipped'].filter(Boolean);
+console.log('      Tests  ' + parts.join(' | ') + ' (' + (pass + fail + skipped) + ')');
+if (args.includes('--coverage') && !args.includes('--no-report')) fs.copyFileSync('fake-coverage.json', path.join(dir, 'coverage-final.json'));
+process.exit(fail ? 1 : 0);
+`;
+const RUNNER_TEST = `const { add, isPositive } = require('../src/math');
+describe('math', () => {
+  it('add', () => {
+    expect(add(1, 2)).toBe(3);
+    expect(add(-1, 1)).toBe(0);
+    expect(() => add('a', 1)).toThrow(TypeError);
+    expect(() => add(1, 'b')).toThrow(TypeError);
+  });
+  it('isPositive', () => {
+    expect(isPositive(1)).toBe(true);
+    expect(isPositive(0)).toBe(false);
+    expect(isPositive(-1)).toBe(false);
+  });
+});
+`;
+// MATH statements start on lines 3, 4 and 7; counts say which ran.
+const istanbulFor = (dir, counts = [1, 1, 1]) => ({
+  [path.join(dir, 'src', 'math.js')]: {
+    path: path.join(dir, 'src', 'math.js'),
+    statementMap: { 0: { start: { line: 3 } }, 1: { start: { line: 4 } }, 2: { start: { line: 7 } } },
+    s: { 0: counts[0], 1: counts[1], 2: counts[2] },
+  },
+});
+const RUNNER_CONFIG = {
+  ...CONFIG,
+  runner: 'vitest',
+  testCommand: 'node fake-runner.js --coverage',
+  minTests: 2,
+  mutation: { ...CONFIG.mutation, copy: ['src', 'tests', 'fake-runner.js', 'fake-coverage.json'] },
+};
+function runnerProject({ test = RUNNER_TEST, config = RUNNER_CONFIG, counts } = {}) {
+  const dir = project({ 'math.test.js': test }, config);
+  fs.writeFileSync(path.join(dir, 'fake-runner.js'), FAKE_RUNNER);
+  fs.writeFileSync(path.join(dir, 'fake-coverage.json'), JSON.stringify(istanbulFor(dir, counts)));
+  return dir;
+}
+
+test('a Vitest-style project passes: summary parsed, coverage read from the runner report, mutants killed', () => {
+  const r = verify(runnerProject());
+  assert.equal(r.status, 0, text(r));
+  assert.match(r.stdout, /2\/2 passing/);
+  assert.match(r.stdout, /replicates: 2 runs agree/);
+  assert.match(r.stdout, /src\/math\.js {2}100% \(3\/3\)/);
+  assert.match(r.stdout, /mutation: killed 5\/5/);
+});
+
+test('coverage from a runner report names uncovered lines and enforces the per-file floor', () => {
+  const r = verify(runnerProject({ counts: [1, 0, 0], config: { ...RUNNER_CONFIG, coverage: { ...RUNNER_CONFIG.coverage, minFileLines: 50 } } }), '--fast');
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /src\/math\.js {2}33\.33% \(1\/3\) uncovered lines: 4, 7/);
+  assert.match(r.stdout, /below the 50% per-file floor/);
+});
+
+test('a runner that writes no report fails coverage with the flags to add, not a silent pass', () => {
+  const r = verify(runnerProject({ config: { ...RUNNER_CONFIG, testCommand: 'node fake-runner.js' } }), '--fast');
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /wrote no coverage-final\.json to \$VERIFY_COVERAGE_DIR/);
+  assert.match(r.stdout, /--coverage\.reporter=json/);
+});
+
+test('failing runner tests show the failing names, and a missing report then explains why', () => {
+  const r = verify(runnerProject({ test: `${RUNNER_TEST}\nit('wrong sum', () => { expect(add(1, 1)).toBe(3); });\n`, config: { ...RUNNER_CONFIG, testCommand: 'node fake-runner.js --coverage --no-report' } }), '--fast');
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /tests failed \(1 failing\)/);
+  assert.match(r.stdout, /Failing tests/);
+  assert.match(r.stdout, /wrong sum/);
+  assert.match(r.stdout, /the tests failed, and Vitest writes no report then/);
+});
+
+test('a skipped runner test fails the run through the runner summary', () => {
+  const r = verify(runnerProject({ test: `${RUNNER_TEST}\nit.skip('later', () => { expect(1).toBe(2); });\n` }), '--fast');
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /1 skipped/);
+});
+
+test('a placeholder Vitest-style test is rejected', () => {
+  const dir = runnerProject();
+  fs.writeFileSync(path.join(dir, 'tests', 'smoke.test.js'), "it('smoke', () => { expect(true).toBe(true); });\n");
+  const r = verify(dir, '--fast');
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /tests\/smoke\.test\.js/);
+  assert.match(r.stdout, /tautolog/i);
+});
+
+test('a surviving mutant is reported under a Vitest-style runner', () => {
+  const weak = `const { add, isPositive } = require('../src/math');
+describe('weak', () => {
+  it('runs', () => {
+    expect(typeof add(1, 2)).toBe('number');
+    expect(typeof isPositive(5)).toBe('boolean');
+    expect(add(1, 2) === undefined).toBe(false);
+  });
+});
+`;
+  const r = verify(runnerProject({ test: weak, config: { ...RUNNER_CONFIG, minTests: 1 } }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /survived: src\/math\.js:\d+/);
+});
+
+test('mutation.testCommand replaces the test command for mutants, so slow coverage flags can be left out', () => {
+  const r = verify(runnerProject({ config: { ...RUNNER_CONFIG, mutation: { ...RUNNER_CONFIG.mutation, testCommand: 'node fake-runner.js --fail-always' } } }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /mutation: baseline/);
+  const ok = verify(runnerProject({ config: { ...RUNNER_CONFIG, mutation: { ...RUNNER_CONFIG.mutation, testCommand: 'node fake-runner.js' } } }));
+  assert.equal(ok.status, 0, text(ok));
+  assert.match(ok.stdout, /mutation: killed 5\/5/);
+});
+
+test('mutation.exclude keeps a listed source file out of the mutant pool', () => {
+  const build = (exclude) => {
+    const dir = runnerProject({ config: { ...RUNNER_CONFIG, coverage: { minLines: 0, minFileLines: 0, exclude: [] }, mutation: { ...RUNNER_CONFIG.mutation, exclude } } });
+    fs.writeFileSync(path.join(dir, 'src', 'extra.js'), 'module.exports = { same: (a, b) => a === b };\n');
+    return dir;
+  };
+  const without = verify(build([]));
+  assert.match(without.stdout, /survived: src\/extra\.js:1/, 'unlisted, the untested operator is sampled and survives');
+  const listed = verify(build(['src/extra.js']));
+  assert.equal(listed.status, 0, text(listed));
+  assert.match(listed.stdout, /mutation: killed 5\/5/);
+  assert.doesNotMatch(listed.stdout, /extra\.js:\d+/);
+});
+
+test('a Vitest or Jest command with the default runner points at the runner setting when coverage reads 0%', () => {
+  const dir = runnerProject({ config: { ...RUNNER_CONFIG, runner: undefined, testCommand: 'node fake-vitest-runner.js --coverage' } });
+  fs.renameSync(path.join(dir, 'fake-runner.js'), path.join(dir, 'fake-vitest-runner.js'));
+  const r = verify(dir, '--fast');
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /set "runner" in verify\.config\.json/);
+});
+
+test('an unknown runner and bad runner options are usage errors', () => {
+  for (const [patch, pattern] of [
+    [{ runner: 'mocha' }, /runner must be one of/],
+    [{ testQuality: { ...CONFIG.testQuality, srcAliases: [1] } }, /srcAliases/],
+    [{ mutation: { ...CONFIG.mutation, exclude: 'src' } }, /mutation\.exclude/],
+    [{ mutation: { ...CONFIG.mutation, testCommand: '' } }, /mutation\.testCommand/],
+  ]) {
+    const r = verify(project({ 'math.test.js': GOOD_TEST }, { ...CONFIG, ...patch }));
+    assert.equal(r.status, 2, text(r));
+    assert.match(r.stderr, pattern);
+  }
+});
+
+test('a TypeScript file that is not erasable fails the mutation step by name, and mutation.exclude is the explicit way out', () => {
+  const build = (exclude) => {
+    const dir = runnerProject({ config: { ...RUNNER_CONFIG, coverage: { minLines: 0, minFileLines: 0, exclude: [] }, mutation: { ...RUNNER_CONFIG.mutation, exclude } } });
+    fs.writeFileSync(path.join(dir, 'src', 'color.ts'), "export enum Color { Red = 'red' }\nexport const warm = (c: Color) => c === Color.Red;\n");
+    return dir;
+  };
+  const r = verify(build([]));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /mutation: cannot type-strip src\/color\.ts/);
+  assert.match(r.stdout, /mutation\.exclude/);
+  const listed = verify(build(['src/color.ts']));
+  assert.equal(listed.status, 0, text(listed));
+});
