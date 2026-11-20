@@ -8,7 +8,8 @@ const r2 = (n) => {
   const v = Math.round(n * 100) / 100;
   return Object.is(v, -0) ? 0 : v;
 };
-const pathOf = (pts, close) => pts.map(([x, y], i) => `${i ? 'L' : 'M'}${r2(x)} ${r2(y)}`).join('') + (close ? 'Z' : '');
+// Implicit lineto: coordinate pairs after the first M are straight segments, which keeps the inlined page small.
+const pathOf = (pts, close) => `M${pts.map(([x, y]) => `${r2(x)} ${r2(y)}`).join(' ')}${close ? 'Z' : ''}`;
 
 // Epitrochoid: a point at distance d from the centre of a circle of radius r rolling around one of radius R.
 function rosette(cx, cy, R, r, d, steps = 360) {
@@ -36,7 +37,7 @@ function sealPath(cx, cy, base, amp, teeth, steps = 360) {
   return pathOf(pts, true);
 }
 
-const SHEET = { w: 566, h: 800, inset: 28, start: 36, amp: 6, period: 38, step: 2 };
+const SHEET = { w: 566, h: 800, inset: 28, start: 36, amp: 6, period: 38, step: 4 };
 
 // One sine band along an edge of the 566 x 800 sheet; k (0..2) shifts the phase by k * 2pi/3.
 function sineBand(edge, k, opts) {
@@ -62,9 +63,10 @@ function guilloche(opts) {
   const out = [rect(10, 10, o.w - 20, o.h - 20), rect(18, 18, o.w - 36, o.h - 36)];
   for (const edge of ['top', 'bottom', 'left', 'right']) for (let k = 0; k < 3; k += 1) out.push(sineBand(edge, k, o));
   const c = o.start;
-  for (const [x, y] of [[c, c], [o.w - c, c], [c, o.h - c], [o.w - c, o.h - c]]) out.push(rosette(x, y, 15, 2.5, 4));
-  out.push(rosette(o.w / 2, o.h / 2, 75, 15, 18));
-  return out;
+  for (const [x, y] of [[c, c], [o.w - c, c], [c, o.h - c], [o.w - c, o.h - c]]) out.push(rosette(x, y, 15, 2.5, 4, 180));
+  out.push(rosette(o.w / 2, o.h / 2, 75, 15, 18, 240));
+  // Decorative border art: one decimal is below a device pixel at any print or screen size.
+  return out.map((d) => d.replace(/-?\d+\.\d+/g, (n) => String(r2(Math.round(Number(n) * 10) / 10))));
 }
 
 // Per-glyph placement for ring text (no textPath): glyph i sits at angle i * 360 / n, measured from 12 o'clock.

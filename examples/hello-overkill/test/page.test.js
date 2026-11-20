@@ -55,15 +55,15 @@ test('script is syntactically valid', () => {
   assert.doesNotThrow(() => new Function(body));
 });
 
-test('control borders use a dedicated high-contrast --ctl-line token in both schemes', () => {
-  assert.match(html, /--ctl-line:#767676/);
-  assert.match(html, /prefers-color-scheme:dark\)\{:root\{[^}]*--ctl-line:#8a8a8a/);
-  assert.match(html, /border:1px solid var\(--ctl-line\)/);
-  assert.match(html, /color-scheme:light dark/);
+test('control borders use the high-contrast --control token in both schemes', () => {
+  assert.match(html, /:root\{--paper:#F4EEE2;[^}]*--control:#7A7061/);
+  assert.match(html, /prefers-color-scheme:dark\)\{:root:not\(\[data-theme=light\]\)\{[^}]*--control:#7C8594/);
+  assert.match(html, /border:1px solid var\(--control\)/);
+  assert.match(html, /<meta name="color-scheme" content="light dark">/);
 });
 
 test('submit buttons use aria-disabled instead of the disabled attribute', () => {
-  assert.match(html, /button\[aria-disabled=true\]/);
+  assert.match(html, /\.btn\[aria-disabled=true\]\{[^}]*cursor:not-allowed/);
   assert.ok(!/\.disabled\s*=/.test(html));
   assert.match(html, /isBusyBtn\(sayBtn\)/);
   assert.match(html, /isBusyBtn\(vBtn\)/);
@@ -75,7 +75,8 @@ test('shared error helpers, repeated-status re-announce and vote error associati
   assert.match(html, /statusEl\.textContent = ''/);
   assert.match(html, /aria-describedby', 'vote-error'/);
   assert.ok(!/result\.setAttribute\('aria-busy'/.test(html));
-  assert.match(html, /vIn\.setAttribute\('aria-invalid', 'true'\)/);
+  assert.match(html, /showErr\(vErr, vIn, verr, true\)/);
+  assert.match(html, /input\.setAttribute\('aria-invalid', 'true'\)/);
 });
 
 test('route handler ignores query-only hash changes', () => {

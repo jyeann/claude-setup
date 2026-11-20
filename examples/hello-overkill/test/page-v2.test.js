@@ -30,7 +30,7 @@ for (const [view, ids] of Object.entries(V2)) {
 
 test('nav links point at their hash routes and are real anchors', () => {
   for (const key of Object.keys(V2)) {
-    assert.match(html, new RegExp(`<a href="#/${key}" data-testid="nav-${key}" id="nav-${key}">[^<]+</a>`), key);
+    assert.match(html, new RegExp(`<a href="#/${key}" data-testid="nav-${key}" id="nav-${key}" data-sub="[A-Z ]+">(?:<svg[^>]*>[\\s\\S]*?</svg>)?[^<]+</a>`), key);
     assert.match(html, new RegExp(`id="v-${key}"`), `section for ${key}`);
   }
 });
@@ -144,11 +144,12 @@ test('exactly one script and one style, hashes match the exports', () => {
 });
 
 test('styles: 44px targets, ctl-line borders, reflow, dark mode and print rules cover the new views', () => {
-  assert.match(html, /input\[type=text\],input\[type=date\],input\[type=number\],select,textarea\{[^}]*min-height:44px[^}]*border:1px solid var\(--ctl-line\)/);
+  assert.match(html, /input\[type=text\],input\[type=date\],input\[type=number\],select,textarea\{[^}]*min-height:48px[^}]*border:1px solid var\(--control\)/);
   assert.match(html, /prefers-color-scheme:dark/);
-  assert.match(html, /\.pre\{white-space:pre-line\}/);
-  assert.match(html, /\.more\{/);
-  assert.match(html, /@media \(max-width:480px\)/);
+  assert.match(html, /\.annex nav a\{[^}]*min-height:60px/);
+  assert.match(html, /\.haiku-lines p\{[^}]*overflow-wrap:anywhere/);
+  assert.match(html, /@media \(max-width:479px\)/);
+  assert.match(html, /@media print\{/);
 });
 
 test('the 38 v1 testids are still there', () => {
