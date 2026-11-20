@@ -152,6 +152,19 @@ test('agent hand-backs, stop-hook feedback and notifications are not counted as 
   assert.equal(human.recordedPrompts, 5);
 });
 
+test('a host restart notice and other host-generated notices are not human prompts or interventions', () => {
+  const dir = project();
+  const restart = "This session's worker process was restarted. If your previous turn was already complete, take no action and wait for the next event. Otherwise, continue from where you left off.";
+  trace.logHuman(dir, { session_id: 's1', prompt: 'build me a packing list' }, 1);
+  for (const [i, prompt] of [restart, '<wake reason="external-event"><event source="github"/></wake>', '<child-session-event>failed</child-session-event>', '<webhook-payload>{}</webhook-payload>', '<system-reminder>x</system-reminder>'].entries()) {
+    assert.equal(trace.promptKind(prompt), 'system', prompt);
+    trace.logHuman(dir, { session_id: 's1', prompt }, 2 + i);
+  }
+  assert.equal(trace.promptKind('why was the worker restarted?'), 'human');
+  const { human } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual([human.prompts, human.interventions, human.recordedPrompts], [1, 0, 6]);
+});
+
 test('events recorded before prompts were classified are reported as unclassified, not as human', () => {
   const dir = project();
   fs.mkdirSync(path.join(dir, '.harness', 'traces'), { recursive: true });

@@ -78,7 +78,9 @@ function logBlocked(projectDir, event, reason, now = Date.now()) {
 // One record per human prompt: only its length, never the text. After the first prompt of a session,
 // every further prompt is an intervention, which the KPI view counts as a defect of the run's autonomy.
 // Agent hand-backs, stop-hook feedback and notifications also arrive as prompts. Count only what is not one of those.
-const SYSTEM_PROMPT_MARKERS = ['SYSTEM NOTIFICATION - NOT USER INPUT', '[Subagent hand-back]', '<task-notification', 'Stop hook feedback', 'sent a message while you were working', 'This task fired at'];
+const SYSTEM_PROMPT_MARKERS = ['SYSTEM NOTIFICATION - NOT USER INPUT', '[Subagent hand-back]', '<task-notification', 'Stop hook feedback', 'sent a message while you were working', 'This task fired at',
+  // Host notices: a restarted worker, wake-ups for subscribed events, child-session and webhook deliveries.
+  "This session's worker process was restarted", '<wake reason=', '<child-session-event', '<webhook-payload', '<system-reminder>'];
 const promptKind = (prompt) => (SYSTEM_PROMPT_MARKERS.some((m) => String(prompt ?? '').includes(m)) ? 'system' : 'human');
 
 function logHuman(projectDir, event, now = Date.now()) {
