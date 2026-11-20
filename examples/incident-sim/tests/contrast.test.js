@@ -156,8 +156,7 @@ test('app.css exists and uses only var(--token) colours (no hex, no rgb literals
 
 test('every animation and keyframe is listed in the reduced-motion kill switch or has an explicit static replacement', { skip: !hasApp }, () => {
   const keyframes = [...appCss.matchAll(/@keyframes\s+([a-z0-9-]+)/gi)].map((m) => m[1]);
-  assert.ok(keyframes.length >= 3, 'pulse, shake and recovery ring exist');
-  for (const k of ['pulse', 'shake', 'recv-ring']) assert.ok(keyframes.includes(k), `@keyframes ${k}`);
+  assert.deepEqual([...keyframes].sort(), ['pulse', 'shake'], 'pulse and shake are the only keyframes (design-direction section 10)');
   // global kill switch in tokens.css
   assert.match(tokensCss, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*animation:\s*none\s*!important[\s\S]*transition-duration:\s*0s\s*!important/);
   // static replacements in app.css for each animated signal

@@ -1,0 +1,234 @@
+{
+  "schema": 1,
+  "id": "stampede",
+  "title": "Fixture: a cache that forgets all its keys at once",
+  "difficulty": 1,
+  "summary": "Test fixture modelled on a cache stampede.",
+  "budget": 6,
+  "seed": 1,
+  "labels": {
+    "lb": "Checkout LB",
+    "cache": "Product cache"
+  },
+  "topology": {
+    "nodes": {
+      "clients": {
+        "rps": 2000
+      },
+      "lb": {
+        "capacity": 6000,
+        "baseMs": 2
+      },
+      "service-1": {
+        "capacity": 2500,
+        "instances": 2,
+        "baseMs": 10
+      },
+      "service-2": {
+        "capacity": 1000,
+        "baseMs": 10
+      },
+      "cache": {
+        "capacity": 4500,
+        "baseMs": 1,
+        "missCost": 1,
+        "hitRate": 0.95,
+        "backlogMax": 20000
+      },
+      "db-primary": {
+        "capacity": 1200,
+        "baseMs": 8,
+        "backlogMax": 20000
+      },
+      "db-replica": {
+        "capacity": 1000,
+        "baseMs": 20
+      },
+      "third-party": {
+        "capacity": 500,
+        "baseMs": 30
+      }
+    },
+    "edges": [
+      {
+        "from": "clients",
+        "to": "lb"
+      },
+      {
+        "from": "lb",
+        "to": "service-1"
+      },
+      {
+        "from": "lb",
+        "to": "service-2",
+        "share": 0.1
+      },
+      {
+        "from": "service-1",
+        "to": "cache"
+      },
+      {
+        "from": "service-2",
+        "to": "third-party"
+      },
+      {
+        "from": "cache",
+        "to": "db-primary"
+      },
+      {
+        "from": "db-primary",
+        "to": "db-replica",
+        "calls": 0.2
+      }
+    ]
+  },
+  "workload": [
+    [
+      0,
+      1
+    ]
+  ],
+  "sparks": {
+    "p99": "lb",
+    "errors": "lb",
+    "saturation": "db-primary",
+    "queue": "db-primary",
+    "cache-hit": "cache"
+  },
+  "faults": [
+    {
+      "id": "ttl-expiry",
+      "trigger": {
+        "atTick": 4
+      },
+      "effects": [
+        {
+          "path": "node:cache.hitRate",
+          "op": "set",
+          "value": 0.08,
+          "ramp": 2
+        }
+      ]
+    }
+  ],
+  "alerts": [
+    {
+      "id": "checkout-p99",
+      "severity": 2,
+      "text": "checkout p99 > 2 s",
+      "when": {
+        "node": "lb",
+        "metric": "p99",
+        "op": "gt",
+        "value": 2000
+      }
+    },
+    {
+      "id": "cache-hit",
+      "severity": 3,
+      "text": "Cache hit rate under 80%",
+      "when": {
+        "node": "cache",
+        "metric": "hitRate",
+        "op": "lt",
+        "value": 0.8
+      }
+    }
+  ],
+  "logs": [
+    {
+      "node": "cache",
+      "level": "warn",
+      "when": {
+        "node": "cache",
+        "metric": "hitRate",
+        "op": "lt",
+        "value": 0.5
+      },
+      "text": "{m:cache.missRps|int} misses for key product:42 in 1 s"
+    },
+    {
+      "node": "db-primary",
+      "level": "error",
+      "when": {
+        "node": "db-primary",
+        "metric": "queue",
+        "op": "gt",
+        "value": 1000
+      },
+      "every": 3,
+      "text": "slow query queue at {m:db-primary.queue|int}"
+    }
+  ],
+  "deploys": [
+    {
+      "tick": -90,
+      "node": "service-1",
+      "text": "service-1 v12 released"
+    }
+  ],
+  "actions": {
+    "add-ttl-jitter": {
+      "cost": 1,
+      "effects": {
+        "cache": [
+          {
+            "path": "node:cache.hitRate",
+            "op": "set",
+            "value": 0.95,
+            "ramp": 3
+          }
+        ]
+      }
+    },
+    "failover": {
+      "cost": 2,
+      "effects": {
+        "db-primary": [
+          {
+            "path": "node:db-primary.capFactor",
+            "op": "set",
+            "value": 0.2
+          },
+          {
+            "path": "node:db-primary.capFactor",
+            "op": "set",
+            "value": 1,
+            "ramp": 15
+          }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          {
+            "path": "node:service-1.instances",
+            "op": "add",
+            "value": 1
+          }
+        ]
+      }
+    }
+  },
+  "hint": "Look at which node left ok first.",
+  "rootCause": "Hot keys expired together and every request fell through to the database.",
+  "rootCauseNode": "cache",
+  "concept": "Cache stampede and TTL jitter.",
+  "harmfulWhy": {
+    "failover": "Promoting the replica started a cold database while the stampede was still on."
+  },
+  "optimalPath": [
+    {
+      "id": "add-ttl-jitter",
+      "node": "cache"
+    }
+  ],
+  "optimalSummary": {
+    "timeToMitigate": 17,
+    "cost": 1
+  },
+  "guideUrl": "https://bytebytego.com/guides/how-can-cache-systems-go-wrong",
+  "guideTitle": "Cache failure modes"
+}

@@ -347,3 +347,8 @@ Acceptance tests are read-only for builders; unit tests go in `tests/`.
 20. Text mode does not change the engine; after an action it runs 2 steps then pauses (UI rule, ux J8).
 21. Out-of-budget score is 20 (not 0) when nothing harmful happened, per the formula; ux check 40 only requires tier `Escalated`.
 22. Daily and first-run: `#/` on a profile without progress starts `cache-stampede` with the daily seed; the daily card on the board uses the daily pick (for 2026-11-19 that is `split-brain`, not cache-stampede).
+23. (amendment from builder E1, accepted) Escalation never takes the last pager lamp; `maxTicks` forces budget 0 and the 10-tick grace. The 610-tick no-action replay in acceptance requires this.
+24. (accepted) `safe-json` takes a `maxDepth` option (default 8); the scenario loader passes `{ maxBytes: 65536, maxDepth: 12 }` because real scenario shapes (`actions.x.effects.node[].if.all[]`) are 9 deep.
+25. (accepted) The 20,000-token limit rejects at 20,000 or more (SC11 requires a 20,000-key object to be rejected).
+26. (accepted) `step(state, actions)` carries the scenario as `state.scenario` so the JSON round trip works; `canonicalJson(state)` includes it.
+27. (accepted) Served formula: `processed = min(backlog + load, capacity)`, leftover to backlog up to `backlogMax`, the rest dropped. Zero capacity with load reads as saturation 1. `stepRaw(state, actions)` is an engine export for the solver and classifier forks.

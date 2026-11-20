@@ -134,6 +134,8 @@
   --dialog-w: 32rem;
   --pulse-scale: 1.35;
   --shake-dx: 3px;
+  --grid-pitch: 24px;         /* map floor dot grid */
+  --glow-alpha: 0.4;          /* node glow disc opacity for warn, crit, recv */
 }
 
 @media (prefers-color-scheme: light) {
