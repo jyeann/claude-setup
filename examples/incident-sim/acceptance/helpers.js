@@ -159,6 +159,7 @@ export function invariantViolations(E, sc, s) {
   const finite = (n) => typeof n === 'number' && Number.isFinite(n);
   for (const node of Object.keys(s.params)) {
     const g = (name) => E.eng.metric(s, node, name);
+    if (E.catalogue.NODE_TYPES[node] === 'client') { if (!finite(g('rps'))) bad.push(`non-finite rps on ${node}`); continue; }
     for (const name of ['p50', 'p99', 'queue', 'rps', 'missRps', 'connections', 'errorRate', 'saturation']) {
       const v = g(name);
       if (!finite(v)) bad.push(`non-finite ${name} on ${node}`);

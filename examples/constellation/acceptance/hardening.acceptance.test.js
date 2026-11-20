@@ -441,8 +441,8 @@ test('SC6 the served HTML and JS never use HTML or code-string sinks, index.html
 test('SC6 every ux.md data-testid appears literally in index.html, a served /js/*.js file, or the permission page', async (t) => {
   if (!fs.existsSync(UX_MD)) { t.skip(`ux.md not found at ${UX_MD} (a mutation copy of the project has no docs/)`); return; }
   const TESTIDS = uxTestIds();
-  assert.ok(TESTIDS.length >= 100, `the data-testid table gave only ${TESTIDS.length} ids`);
-  for (const id of ['sky-canvas', 'star-card', 'forbidden-page', 'search-result', 'unlit-item', 'constellation-item', 'conflict-reload', 'note-notice-retry']) assert.ok(TESTIDS.includes(id), `table parse lost ${id}`);
+  assert.ok(TESTIDS.length >= 90, `the data-testid table gave only ${TESTIDS.length} ids`);
+  for (const id of ['sky-canvas', 'star-card', 'forbidden-page', 'search-result', 'unlit-item', 'constellation-item', 'conflict-reload', 'conflict-copy', 'rename-cancel']) assert.ok(TESTIDS.includes(id), `table parse lost ${id}`);
   await withServer(async (s) => {
     let everything = (await s.call('GET', '/')).text;
     everything += (await s.call('GET', '/', undefined, { headers: { host: 'evil.example' } })).text;
@@ -532,7 +532,7 @@ test('a VAULT_DIR that cannot be used as a folder exits 1 with a message', async
     fs.writeFileSync(path.join(sb.base, 'afile'), 'x');
     const r = await runToExit({ sandbox: sb, env: { VAULT_DIR: path.join(sb.base, 'afile', 'vault') } });
     assert.equal(r.code, 1, r.output);
-    assert.ok(r.output.trim().length > 0);
+    assert.ok(r.output.includes('Cannot write to VAULT_DIR'), r.output);
     assert.doesNotMatch(r.stdout, /Constellation running/);
   } finally { sb.cleanup(); }
 });

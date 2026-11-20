@@ -28,8 +28,6 @@
     "copy": [
       "package.json",
       "src",
-      "public/js/engine",
-      "public/js/core",
       "public",
       "scenarios",
       "tests",
