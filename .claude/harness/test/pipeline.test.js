@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { checkPipeline, formatReport } = require('../lib/pipeline');
+const { checkPipeline, formatReport, frozenFiles, sourceHash } = require('../lib/pipeline');
 const { buildState } = require('../lib/state');
 
 const PIPELINE = path.join(__dirname, '..', 'bin', 'pipeline.js');
@@ -52,7 +52,11 @@ function write(root, files) {
   }
 }
 
+const TASKS = '# Tasks\n## T1: build it\n- type: AFK\n- blocked-by: none\n- status: done\n';
+const aged = (file, secondsAgo) => { const t = new Date(Date.now() - secondsAgo * 1000); fs.utimesSync(file, t, t); };
+
 // A product with every phase's output in place. Product files under app/, documents under docs/.
+// reviews.md and qa.md record the real source hash unless a test replaces them.
 function project(overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-'));
   write(root, {
@@ -60,17 +64,25 @@ function project(overrides = {}) {
     'docs/ux.md': `# UX\n### J1. Add (SC1)\nUC1 the sum is shown. ${LONG}`,
     'docs/design.md': `# Design\n${LONG}`,
     'docs/decisions.md': '# Decisions\n',
-    'docs/reviews.md': `# Reviews\n${LONG}\nOpen: CRITICAL 0, HIGH 0\n`,
-    'docs/qa.md': `# QA\n${LONG}`,
-    'docs/retro.md': `# Retro\n${LONG}`,
+    'docs/retro.md': `# Retro\n${LONG}\nProposed change to app/README.md.\n`,
     'app/spec.md': '# Spec\n',
-    'app/TASKS.md': '# Tasks\n',
+    'app/TASKS.md': TASKS,
     'app/verify.config.json': { ...CONFIG, journeys: { ...CONFIG.journeys, uxFile: '../docs/ux.md' } },
     'app/acceptance/add.test.js': one('adds'),
+    'app/holdout/hidden.test.js': one('hidden'),
+    'app/journeys/walk.test.js': `${one('J1: add two numbers')}test('UC1: the sum is shown', () => {});\n`,
     'app/README.md': '# App\n```bash\nnode src/math.js\n```\n',
     'app/CHANGELOG.md': '# Changelog\n',
     ...overrides,
   });
+  for (const [file, text] of Object.entries(overrides)) if (text === null) fs.rmSync(path.join(root, file), { force: true });
+  const hash = sourceHash(path.join(root, 'app'));
+  const record = (name, open) => `# ${name}\n${LONG}\n${open}\nExamined: ${hash}\n`;
+  for (const [file, text] of [['docs/reviews.md', record('Reviews', 'Open: CRITICAL 0, HIGH 0')], ['docs/qa.md', record('QA', 'Open: BLOCKER 0, MAJOR 0')]]) {
+    if (!(file in overrides)) write(root, { [file]: text });
+  }
+  aged(path.join(root, 'docs/reviews.md'), 60);
+  write(root, { 'docs/kpi.json': {} });
   return root;
 }
 const check = (root, runGate = passGate) => checkPipeline({ root, product: 'app', docs: 'docs', runGate });
@@ -107,8 +119,20 @@ test('each phase reports what is missing', async () => {
     [{ 'app/verify.config.json': '{ nope' }, 'plan', /not valid JSON/],
     [{ 'app/verify.config.json': { testCommand: 'x' } }, 'plan', /holdout\.command[\s\S]*journeys\.command/],
     [{ 'docs/reviews.md': `# Reviews\n${LONG}` }, 'review', /Open: CRITICAL 0, HIGH 0/],
+    [{ 'app/holdout/hidden.test.js': null }, 'plan', /holdout command matches no test files/],
+    [{ 'app/journeys/walk.test.js': null }, 'plan', /journeys command matches no test files/],
+    [{ 'app/journeys/walk.test.js': one('J1: add') }, 'plan', /no journey test is named for UC1/],
+    [{ 'app/TASKS.md': '# Tasks\nnothing here\n' }, 'plan', /TASKS\.md does not parse: no tasks found/],
+    [{ 'app/TASKS.md': '## T1: x\n- type: AFK\n- blocked-by: T9\n' }, 'plan', /blocked by unknown task T9/],
+    [{ 'app/package.json': {} }, 'plan', /mutation\.copy does not list it/],
     [{ 'docs/reviews.md': `${LONG}\nOpen: CRITICAL 0, HIGH 2\n` }, 'review', /0 CRITICAL and 2 HIGH/],
     [{ 'docs/qa.md': '' }, 'qa', /stub/],
+    [{ 'docs/qa.md': `# QA\n${LONG}` }, 'qa', /Open: BLOCKER 0, MAJOR 0/],
+    [{ 'docs/qa.md': `${LONG}\nOpen: BLOCKER 0, MAJOR 1\n` }, 'qa', /0 BLOCKER and 1 MAJOR/],
+    [{ 'docs/qa.md': `${LONG}\nOpen: BLOCKER 0, MAJOR 0\n` }, 'qa', /Examined: <hash>/],
+    [{ 'docs/reviews.md': `${LONG}\nOpen: CRITICAL 0, HIGH 0\nExamined: ${'0'.repeat(64)}\n` }, 'review', /examined an older version of the source/],
+    [{ 'docs/reviews.md': `${LONG}\nOpen: CRITICAL 0, HIGH 0\n` }, 'review', /Examined: <hash>/],
+    [{ 'docs/retro.md': `# Retro\n${LONG}\nChange nothing/at/all.txt` }, 'retro', /names no file that exists/],
     [{ 'app/README.md': '# App' }, 'release', /run steps in a code block/],
     [{ 'docs/retro.md': '' }, 'retro', /stub/],
   ];
@@ -158,12 +182,12 @@ test('an AMEND line in decisions.md lets the author change a frozen file once', 
 });
 
 test('adding or deleting a frozen test file also needs an AMEND line', async () => {
-  const root = project({ 'app/holdout/hidden.test.js': one('hidden') });
+  const root = project({ 'app/holdout/second.test.js': one('second') });
   await check(root);
-  fs.rmSync(path.join(root, 'app/holdout/hidden.test.js'));
+  fs.rmSync(path.join(root, 'app/holdout/second.test.js'));
   fs.writeFileSync(path.join(root, 'app/acceptance/extra.test.js'), one('extra'));
   const problems = (await check(root)).phases[3].problems.join('\n');
-  assert.match(problems, /app\/holdout\/hidden\.test\.js changed/);
+  assert.match(problems, /app\/holdout\/second\.test\.js changed/);
   assert.match(problems, /app\/acceptance\/extra\.test\.js changed/);
 });
 
@@ -171,7 +195,6 @@ test('the real gate runs the browser journeys and the whole pipeline passes end 
   const root = project({
     'app/src/math.js': MATH,
     'app/tests/math.test.js': UNIT,
-    'app/holdout/hidden.test.js': one('hidden'),
     'app/journeys/walk.test.js': `${one('J1: add two numbers')}test('UC1: the sum is shown', () => { assert.equal(add(1, 1), 2); });\n`,
   });
   const r = await checkPipeline({ root, product: 'app', docs: 'docs' });
@@ -242,4 +265,62 @@ test('--open-gate-files leaves spec and acceptance writable for a whole-pipeline
   const base = { verifyCommand: 'x', projectDir: '/p' };
   assert.ok(buildState(base).protectedPaths.includes('acceptance/'));
   assert.deepEqual(buildState({ ...base, gateFilesOpen: true, protectedPaths: ['keep/'] }).protectedPaths, ['keep/']);
+});
+
+test('a fix after review or QA changes the source hash and sends the pipeline back to review', async () => {
+  const root = project({ 'app/src/math.js': MATH, 'app/public/index.html': '<h1>x</h1>' });
+  const app = path.join(root, 'app');
+  const before = sourceHash(app);
+  assert.match(before, /^[0-9a-f]{64}$/);
+  assert.equal(sourceHash(app), before);
+  assert.equal((await check(root)).pass, true);
+  for (const file of ['app/src/math.js', 'app/public/index.html']) {
+    const original = fs.readFileSync(path.join(root, file), 'utf8');
+    fs.writeFileSync(path.join(root, file), `${original}\n// fix after review`);
+    assert.notEqual(sourceHash(app), before, file);
+    const r = await check(root);
+    assert.equal(r.blocked, 'review', file);
+    assert.match(r.phases.find((p) => p.name === 'review').problems[0], /examined an older version/);
+    fs.writeFileSync(path.join(root, file), original);
+  }
+  assert.equal(sourceHash(app), before);
+  // QA alone stale: review is current, qa is not.
+  const hash = sourceHash(app);
+  fs.writeFileSync(path.join(root, 'docs/qa.md'), `${LONG}\nOpen: BLOCKER 0, MAJOR 0\nExamined: ${hash.replace(/^./, hash[0] === 'a' ? 'b' : 'a')}\n`);
+  assert.equal((await check(root)).blocked, 'qa');
+});
+
+test('the hash covers the srcDirs of verify.config.json', async () => {
+  const root = project({ 'app/lib/a.js': 'a', 'app/verify.config.json': { ...CONFIG, srcDirs: ['lib'], journeys: { ...CONFIG.journeys, uxFile: '../docs/ux.md' } } });
+  const before = sourceHash(path.join(root, 'app'));
+  fs.writeFileSync(path.join(root, 'app/lib/a.js'), 'b');
+  const changed = sourceHash(path.join(root, 'app'));
+  assert.notEqual(changed, before);
+  fs.writeFileSync(path.join(root, 'app/src-unlisted.js'), 'c');
+  fs.mkdirSync(path.join(root, 'app/lib/node_modules'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'app/lib/node_modules/x.js'), 'ignored');
+  assert.equal(sourceHash(path.join(root, 'app')), changed, 'files outside srcDirs and public/, and node_modules, are not hashed');
+});
+
+test('retro needs a kpi.json that is newer than reviews.md', async () => {
+  const root = project();
+  fs.rmSync(path.join(root, 'docs/kpi.json'));
+  let r = await check(root);
+  assert.equal(r.blocked, 'retro');
+  assert.match(r.phases.at(-1).problems.join('\n'), /kpi\.json is missing/);
+  write(root, { 'docs/kpi.json': {} });
+  aged(path.join(root, 'docs/kpi.json'), 600);
+  r = await check(root);
+  assert.match(r.phases.at(-1).problems.join('\n'), /kpi\.json is older than reviews\.md/);
+  aged(path.join(root, 'docs/kpi.json'), 1);
+  assert.equal((await check(root)).pass, true);
+});
+
+test('CLI: hash prints the digest that check compares against', () => {
+  const root = project({ 'app/src/math.js': MATH });
+  const run = (args) => spawnSync('node', [PIPELINE, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  const r = run(['hash', '--product', 'app']);
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), sourceHash(path.join(root, 'app')));
+  assert.equal(run(['hash']).status, 2);
 });

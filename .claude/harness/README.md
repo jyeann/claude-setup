@@ -83,7 +83,23 @@ The Stop hook only holds an agent while verify fails, so with `verify.js` as the
 
 The plan phase writes the spec and tests inside the run, so start with `--open-gate-files` (the default write-protection of `spec.md`, `acceptance/` and `verify.config.json` is off). Instead, when the plan phase first completes, `pipeline.js` records hashes of `spec.md`, `verify.config.json`, `acceptance/`, `holdout/` and `ux.md` in `.harness/pipeline/`. Any later change, addition or deletion fails the check until `decisions.md` has an `AMEND: <path> - reason` line (one line per change). This is tamper detection with an audit trail, not prevention: it lets a test author correct a wrong test without a human, and it means the holdout is not hidden from the agent in this mode. `--no-commit-gate` is needed because the commit gate would refuse every commit until the last phase.
 
-Limits: the document checks are structural (the file exists, is not a stub, has the required section or line), so they prove a phase was done, not that it was done well; `reviews.md` reports its own open-finding counts; every stop attempt after the plan phase costs a full product gate run.
+What each phase must contain (the check prints what is missing; these are the exact lines agents write):
+
+| Phase | Check |
+|---|---|
+| discover | `brief.md` (300+ characters) with a "Success criteria" section |
+| ux | `ux.md` numbers journeys `J1`, `J2`, ... and covers every `SC<n>` of the brief |
+| design | `design.md` (300+ characters) |
+| plan | `spec.md`, acceptance tests, `decisions.md`; `verify.config.json` with `holdout.command` and `journeys.command` + `uxFile`; the test files those two commands name exist; every `J<n>`/`UC<n>` in `ux.md` appears in the name of a `test()`/`it()`/`describe()` in the journey test files (static check, before the build); `TASKS.md` parses with `lib/tasks.js` (`parseTasks` + `validateTasks`, no errors); if the product has a `package.json`, `mutation.copy` lists it |
+| build | the product's `verify.js` exits 0 |
+| review | `reviews.md` has the line `Open: CRITICAL 0, HIGH 0` (true counts) and the line `Examined: <hash>` |
+| qa | `qa.md` has the line `Open: BLOCKER 0, MAJOR 0` (true counts) and the line `Examined: <hash>` |
+| release | product `README.md` with a code block, `CHANGELOG.md` |
+| retro | `retro.md` names at least one file path that exists in the repo; `kpi.json` exists in the docs directory and is newer than `reviews.md` |
+
+`<hash>` is the digest of the product's source: every file under the `srcDirs` of `verify.config.json` (default `src`) plus `public/` if present, path and content, `node_modules` skipped. Print it with `node .claude/harness/bin/pipeline.js hash --product <dir>`. A review or QA record whose hash differs from the current one is incomplete: a fix after the review or the walkthrough must be re-reviewed or re-walked, then the line updated. Write the hash after the review or walk, never ahead of it, and never copy a hash into a record for work that was not done on that source.
+
+Limits: the document checks prove a phase was done against the current source, not that it was done well; the `Open:` counts are the agents' own; every stop attempt after the plan phase costs a full product gate run.
 
 ## Holdout set (`--hide`)
 ```bash
