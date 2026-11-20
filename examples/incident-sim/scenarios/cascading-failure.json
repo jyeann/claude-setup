@@ -1,60 +1,319 @@
 {
   "schema": 1,
   "id": "cascading-failure",
-  "title": "The recommendations widget is slow, and now checkout is falling over with it",
+  "title": "A slow partner took out recommendations, and checkout went down with it",
   "difficulty": 3,
-  "summary": "A slow partner turns a side widget into a checkout outage. No single fix is enough, and the order matters.",
+  "summary": "A slow partner API starves Recommendations of threads and retries turn one failure into a storm. No single fix works, and order matters.",
   "budget": 8,
   "seed": 10,
-  "labels": { "lb": "Checkout LB", "service-1": "Checkout", "service-2": "Recommendations", "cache": "Product cache", "db-primary": "Orders DB", "third-party": "Partner API" },
+  "labels": {
+    "lb": "Checkout LB",
+    "service-1": "Checkout",
+    "service-2": "Recommendations",
+    "cache": "Product cache",
+    "db-primary": "Orders DB",
+    "third-party": "Partner API"
+  },
   "topology": {
     "nodes": {
-      "clients": { "rps": 1000 },
-      "lb": { "capacity": 12000, "baseMs": 2 },
-      "service-1": { "capacity": 1600, "baseMs": 12, "backlogMax": 6000 },
-      "service-2": { "capacity": 800, "baseMs": 15, "workers": 100 },
-      "cache": { "capacity": 8000, "baseMs": 1, "hitRate": 0.95 },
-      "db-primary": { "capacity": 3500, "baseMs": 6, "backlogMax": 2000 },
-      "third-party": { "capacity": 2000, "baseMs": 30, "timeoutMs": 2000 }
+      "clients": {
+        "rps": 1000
+      },
+      "lb": {
+        "capacity": 12000,
+        "baseMs": 2
+      },
+      "service-1": {
+        "capacity": 1500,
+        "baseMs": 12,
+        "backlogMax": 1500,
+        "timeoutMs": 3000
+      },
+      "service-2": {
+        "capacity": 2000,
+        "baseMs": 15,
+        "workers": 300
+      },
+      "cache": {
+        "capacity": 8000,
+        "baseMs": 1,
+        "hitRate": 0.95
+      },
+      "db-primary": {
+        "capacity": 1800,
+        "baseMs": 6,
+        "backlogMax": 2000
+      },
+      "third-party": {
+        "capacity": 3000,
+        "baseMs": 30,
+        "timeoutMs": 2000
+      }
     },
     "edges": [
-      { "from": "clients", "to": "lb", "retries": 3 },
-      { "from": "lb", "to": "service-1" },
-      { "from": "lb", "to": "service-2", "share": 0.5 },
-      { "from": "service-1", "to": "cache" },
-      { "from": "service-1", "to": "db-primary", "share": 0.3 },
-      { "from": "service-2", "to": "third-party" }
+      {
+        "from": "clients",
+        "to": "lb",
+        "retries": 3
+      },
+      {
+        "from": "lb",
+        "to": "service-1"
+      },
+      {
+        "from": "lb",
+        "to": "service-2",
+        "share": 1
+      },
+      {
+        "from": "service-1",
+        "to": "cache"
+      },
+      {
+        "from": "service-1",
+        "to": "db-primary",
+        "share": 1
+      },
+      {
+        "from": "service-2",
+        "to": "third-party"
+      }
     ]
   },
-  "workload": [[0, 1]],
-  "sparks": { "p99": "lb", "errors": "service-1", "saturation": "service-1", "queue": "service-1", "cache-hit": "cache" },
+  "workload": [
+    [
+      0,
+      1
+    ]
+  ],
+  "sparks": {
+    "p99": "lb",
+    "errors": "service-1",
+    "saturation": "service-1",
+    "queue": "service-1",
+    "cache-hit": "cache"
+  },
   "faults": [
     {
       "id": "partner-slow",
-      "trigger": { "atTick": 5 },
-      "effects": [ { "path": "node:third-party.extraMs", "op": "set", "value": 4000 } ]
+      "trigger": {
+        "atTick": 5
+      },
+      "effects": [
+        {
+          "path": "node:third-party.extraMs",
+          "op": "set",
+          "value": 4000
+        }
+      ]
     }
   ],
   "alerts": [
-    { "id": "checkout-errors", "severity": 1, "text": "checkout errors > 5%", "when": { "node": "service-1", "metric": "errorRate", "op": "gt", "value": 0.05 } },
-    { "id": "checkout-p99", "severity": 2, "text": "checkout p99 > 2 s", "when": { "node": "lb", "metric": "p99", "op": "gt", "value": 2000 } },
-    { "id": "reco-timeouts", "severity": 2, "text": "recommendations timeouts", "when": { "node": "service-2", "metric": "errorRate", "op": "gt", "value": 0.1 } },
-    { "id": "db-hot", "severity": 3, "text": "Orders DB saturation above 90%", "when": { "node": "db-primary", "metric": "saturation", "op": "gte", "value": 0.9 } }
+    {
+      "id": "checkout-errors",
+      "severity": 1,
+      "text": "checkout errors > 5%",
+      "when": {
+        "node": "service-1",
+        "metric": "errorRate",
+        "op": "gt",
+        "value": 0.05
+      }
+    },
+    {
+      "id": "checkout-p99",
+      "severity": 2,
+      "text": "checkout p99 > 2 s",
+      "when": {
+        "node": "lb",
+        "metric": "p99",
+        "op": "gt",
+        "value": 2000
+      }
+    },
+    {
+      "id": "reco-timeouts",
+      "severity": 2,
+      "text": "recommendations timeouts",
+      "when": {
+        "node": "service-2",
+        "metric": "errorRate",
+        "op": "gt",
+        "value": 0.1
+      }
+    },
+    {
+      "id": "db-hot",
+      "severity": 3,
+      "text": "Orders DB saturation above 90%",
+      "when": {
+        "node": "db-primary",
+        "metric": "saturation",
+        "op": "gte",
+        "value": 0.9
+      }
+    }
   ],
-  "logs": [],
-  "deploys": [],
+  "logs": [
+    {
+      "node": "third-party",
+      "level": "warn",
+      "every": 3,
+      "when": {
+        "node": "third-party",
+        "metric": "p50",
+        "op": "gt",
+        "value": 1000
+      },
+      "text": "partner API answering in {m:third-party.p50|ms}, calls are piling up"
+    },
+    {
+      "node": "service-2",
+      "level": "warn",
+      "every": 3,
+      "when": {
+        "node": "service-2",
+        "metric": "errorRate",
+        "op": "gt",
+        "value": 0.1
+      },
+      "text": "worker threads exhausted: all {p:node:service-2.workers} are waiting on the partner API"
+    },
+    {
+      "node": "lb",
+      "level": "warn",
+      "every": 4,
+      "when": {
+        "node": "lb",
+        "metric": "rps",
+        "op": "gt",
+        "value": 2000
+      },
+      "text": "clients are retrying hard: {m:lb.rps|int} requests/s arriving against a calm 1,000"
+    },
+    {
+      "node": "service-1",
+      "level": "error",
+      "every": 3,
+      "when": {
+        "node": "service-1",
+        "metric": "queue",
+        "op": "gt",
+        "value": 500
+      },
+      "text": "request queue is {m:service-1.queue|int} deep and responses are timing out"
+    },
+    {
+      "node": "db-primary",
+      "level": "warn",
+      "every": 4,
+      "when": {
+        "node": "db-primary",
+        "metric": "saturation",
+        "op": "gte",
+        "value": 0.9
+      },
+      "text": "{m:db-primary.rps|int} queries/s arriving, well past what the database can answer"
+    },
+    {
+      "node": "service-2",
+      "level": "info",
+      "every": 6,
+      "when": {
+        "path": "edge:service-2>third-party.breaker",
+        "op": "eq",
+        "value": true
+      },
+      "text": "circuit breaker is guarding the partner API, serving the fallback list"
+    }
+  ],
+  "deploys": [
+    {
+      "tick": -1800,
+      "node": "service-2",
+      "text": "Recommendations v54: new carousel layout, no behaviour change"
+    },
+    {
+      "tick": -300,
+      "node": "third-party",
+      "text": "Partner status page: maintenance window opened, \"minor latency expected\""
+    }
+  ],
   "actions": {
-    "shed-load": { "cost": 2, "effects": { "lb": [ { "path": "node:lb.shed", "op": "set", "value": 0.4 } ] } },
-    "circuit-breaker": { "cost": 2, "effects": { "service-2": [ { "path": "edge:service-2>third-party.breaker", "op": "set", "value": true } ] } },
-    "scale-service": { "cost": 2, "effects": { "service-1": [ { "path": "node:service-1.instances", "op": "add", "value": 2 } ] } }
+    "shed-load": {
+      "cost": 2,
+      "effects": {
+        "lb": [
+          {
+            "path": "node:lb.shed",
+            "op": "set",
+            "value": 0.25
+          }
+        ]
+      }
+    },
+    "circuit-breaker": {
+      "cost": 2,
+      "effects": {
+        "service-2": [
+          {
+            "path": "edge:service-2>third-party.breaker",
+            "op": "set",
+            "value": true
+          }
+        ]
+      }
+    },
+    "scale-service": {
+      "cost": 2,
+      "effects": {
+        "service-1": [
+          {
+            "path": "node:service-1.instances",
+            "op": "add",
+            "value": 1
+          }
+        ]
+      }
+    }
   },
-  "hint": "x",
-  "rootCause": "x",
+  "hint": "Trace a request to see what it is really waiting on. Then ease the pressure before you add capacity.",
+  "rootCause": "The partner API behind Recommendations slowed to about four seconds a call. Every checkout waits for recommendations, so Recommendations ran out of worker threads and started failing, and checkout failed with it. Clients retried each failure up to three times, which multiplied the load on every tier and kept Checkout and the database overloaded. Recovery needed the retry flood eased, the failing dependency cut off with a fallback, and capacity added once there was room.",
   "rootCauseNode": "third-party",
-  "concept": "x",
-  "harmfulWhy": { "scale-service": "x" },
-  "optimalPath": [ { "id": "shed-load", "node": "lb" }, { "id": "circuit-breaker", "node": "service-2" }, { "id": "scale-service", "node": "service-1" } ],
-  "optimalSummary": { "timeToMitigate": 40, "cost": 6 },
+  "concept": "Cascading failure: a slow dependency eats threads, timeouts become retries, and retries become load that keeps healthy tiers failing. Resilience patterns work in layers. Shed load to stop the amplification, put a circuit breaker with a fallback around the failing dependency, then add capacity. Do it out of order and you pour traffic into a system that cannot take it yet.",
+  "harmfulWhy": {
+    "scale-service": "Adding Checkout instances while clients were still retrying let about three times the normal traffic through to the database. The database had been healthy, so it saturated and started failing, and the storm fed itself harder. Capacity helps only after the load is under control."
+  },
+  "optimalPath": [
+    {
+      "id": "shed-load",
+      "node": "lb"
+    },
+    {
+      "id": "circuit-breaker",
+      "node": "service-2"
+    },
+    {
+      "id": "scale-service",
+      "node": "service-1"
+    }
+  ],
+  "optimalSummary": {
+    "timeToMitigate": 25,
+    "cost": 6
+  },
   "guideUrl": "https://bytebytego.com/guides/resiliency-patterns",
-  "guideTitle": "Resiliency patterns"
+  "guideTitle": "Resiliency patterns: breakers, retries and shedding",
+  "diagnostics": {
+    "trace-request": {
+      "lines": [
+        "Checkout cannot answer until Recommendations answers, and Recommendations is waiting on the partner API."
+      ]
+    },
+    "compare-dashboards": {
+      "lines": [
+        "Traffic into the load balancer is {m:lb.rps|int} requests/s. Calm is about 1,000."
+      ]
+    }
+  }
 }

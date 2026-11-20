@@ -38,7 +38,7 @@ export async function loadScenarios(dir, deps) {
     let text;
     try { text = utf8.decode(bytes); } catch { fail(name, 'is not valid UTF-8. Expected: UTF-8 text.'); continue; }
     d ??= await defaultDeps();
-    const parsed = d.parseSafe(text, { maxBytes: MAX_FILE_BYTES });
+    const parsed = d.parseSafe(text, { maxBytes: MAX_FILE_BYTES, maxDepth: 12 });
     if (!parsed.ok) { fail(name, parsed.reason); continue; }
     const v = parsed.value;
     if (v === null || typeof v !== 'object' || Array.isArray(v)) { fail(name, 'is not a JSON object. Expected: an object with the scenario fields.'); continue; }
