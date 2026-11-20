@@ -32,6 +32,8 @@ What the packing-list run added:
 - **Did not hold (condition 6):** half the delegated agents were moved to the background after 120 seconds and their cost was not recorded; the KPI figures were completed by hand.
 - **New, open:** the pipeline's document checks pass on filler text, so only the build phase is a real gate; the stop gate was never exercised because the agent never tried to stop; journey tests are not in the frozen set; two guard-hook crashes failed open. `packing-list` and `wiki` are not gated in CI.
 
+Skill and agent changes, 2026-11-20 (branch `claude/harness-defects-fix`): `orch-product-team` changed in "Test author rules" (items 4 and 5: port 0 in journey tests, prove the gate config before it is frozen), in "Limits and resuming" (item 8: hourly scheduled resume set up at the start, `status.md` at every phase boundary) and in the phase table and builder/QA instructions (exact `Open:` and `Examined:` lines, stop servers you start); the `gan-evaluator` agent (item 9) lost its `mcp__playwright__*` tools and now drives Playwright through Bash. By reopen trigger 2 the per-phase effort comparison is due again; it was not re-run.
+
 Until those are fixed and one run passes without them, treat the process as: **builds a working small product unattended, with cost reporting and resume after a usage limit not yet reliable.**
 
 ## Reopen the decision when any of these happens
