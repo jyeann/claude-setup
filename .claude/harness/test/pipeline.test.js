@@ -336,3 +336,32 @@ test('CLI: hash prints the digest that check compares against', () => {
   assert.equal(r.stdout.trim(), sourceHash(path.join(root, 'app')));
   assert.equal(run(['hash']).status, 2);
 });
+
+// The journeys template starts the product on port 0 and reads the real port from its output, so two runs
+// at once cannot collide. Needs Playwright and a browser, which the harness does not install.
+const hasBrowser = (() => { try { require.resolve('playwright'); return true; } catch { return false; } })();
+test('the journeys template reads the port the server bound, so parallel runs do not collide', { skip: !hasBrowser && 'playwright is not installed' }, async () => {
+  const server = `const http = require('node:http');
+const s = http.createServer((q, r) => { r.setHeader('content-type', 'text/html'); r.end('<h1>Hi</h1>'); });
+s.listen(Number(process.env.PORT), '127.0.0.1', () => console.log('Listening at http://127.0.0.1:' + s.address().port));
+process.on('SIGTERM', () => s.close(() => process.exit(0)));
+`;
+  const roots = [0, 1, 2].map(() => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tpl-'));
+    write(root, { 'src/server.js': server });
+    fs.mkdirSync(path.join(root, 'journeys'));
+    fs.copyFileSync(path.join(__dirname, '..', 'templates', 'journeys.test.js'), path.join(root, 'journeys', 'journeys.test.js'));
+    return root;
+  });
+  const runs = await Promise.all(roots.map((root) => new Promise((resolve) => {
+    const p = require('node:child_process').spawn('node', ['--test', 'journeys/journeys.test.js'], { cwd: root, env: { ...process.env, NODE_TEST_CONTEXT: undefined } });
+    let out = '';
+    p.stdout.on('data', (d) => { out += d; });
+    p.stderr.on('data', (d) => { out += d; });
+    p.on('exit', (code) => resolve({ code, out }));
+  })));
+  for (const r of runs) { assert.equal(r.code, 0, r.out); assert.match(r.out, /# pass 1/); }
+  const tpl = fs.readFileSync(path.join(__dirname, '..', 'templates', 'journeys.test.js'), 'utf8');
+  assert.doesNotMatch(tpl, /Math\.random/);
+  assert.match(tpl, /PORT: '0'/);
+});
