@@ -24,6 +24,16 @@ In a session on this repo (or a project with the plugin and harness installed), 
 `orch-product-team`. The skill starts the harness with the whole pipeline as the definition of done, so the Stop
 hook sends the agent back to the next unfinished phase instead of letting it stop to ask.
 
+## Starting a JavaScript or TypeScript project
+The verify gate grades Node projects that run tests with `node:test`. Copy the closest config into the product folder:
+
+| Stack | Copy | What differs |
+|---|---|---|
+| JavaScript | `examples/todo-api/verify.config.json` | `.test.js` globs |
+| TypeScript | `examples/slug-ts/verify.config.json` and a `tsconfig.json` | `.test.ts` globs, `typecheck` (`npx tsc --noEmit`), `tsconfig.json` in `mutation.copy`; Node 22.18+, erasable syntax only |
+
+Add `holdout` and `journeys` for a product with screens (see `examples/packing-list/verify.config.json`). Not graded by the strong gate: JSX/TSX, Vitest, Jest and other languages. Details: `.claude/harness/README.md`, sections "Strong verify" and "TypeScript".
+
 ## Install in another project
 Claude Code 2.1.275 or later:
 ```
