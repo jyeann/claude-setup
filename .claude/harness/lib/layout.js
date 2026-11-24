@@ -25,7 +25,7 @@ function trackedFiles(root) {
 //    such as `.claude/skills/<name>/` included, so no current doc can send an agent to them. There is no
 //    `git show` exception; retiredNamesSkip lists files (history) exempt from this check only.
 //  - retiredPhrases are retired wording; they match whole words, ignoring case and wrapped across lines, and
-//    are reported at the line where they start. retiredPhrasesSkip lists files or folders exempt from this check only.
+//    are reported at the line where they start (a blank line between words still matches). retiredPhrasesSkip lists files or folders exempt from this check only.
 function checkLayout(root, policy, files = trackedFiles(root)) {
   const problems = [];
   for (const dir of policy.forbiddenDirs || []) {

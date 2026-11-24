@@ -3,7 +3,7 @@
 Decision made by the orchestrating agent on 2026-11-18, without waiting for a human, as asked. It is written down so it can be checked and overturned.
 
 ## Decision
-The testing and the product-team process are **complete for this scope**: small, dependency-free web products built by one orchestrator with sonnet, with the owner asked only at the end (final acceptance). They stay complete as long as every condition below holds. No further validation run is needed to call them complete; the triggers further down say when to reopen.
+The testing and the product-team process are **complete for this scope**: small, dependency-free web products built by one orchestrator with sonnet, with the owner asked only at the end (final acceptance); this was the scope on 2026-11-18, see the 2026-11-24 update below. They stay complete as long as every condition below holds. No further validation run is needed to call them complete; the triggers further down say when to reopen.
 
 | # | Condition | Status | Evidence |
 |---|-----------|--------|----------|
