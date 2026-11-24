@@ -111,8 +111,11 @@ test('a report written a fraction of a second before the run is rejected (compar
   const early = path.join(dir, 'early.xml');
   fs.writeFileSync(early, '<testsuites><testcase name="adds two numbers"/></testsuites>');
   fs.writeFileSync(path.join(dir, 'tests', 'cases.txt'), `pass adds two numbers\n@report-from ${early}\n`);
-  const now = Date.now() / 1000;
-  fs.utimesSync(early, now, now);
+  // File times come from the kernel's coarse clock, which can run a few ms behind Date.now(); a report stamped
+  // with the precise current time can therefore look newer than the directory made just after it. 100 ms
+  // before the run is still a fraction of a second, and well clear of that granularity.
+  const before = Date.now() / 1000 - 0.1;
+  fs.utimesSync(early, before, before);
   const run = await runReported(sh(STANDIN, 'tests/cases.txt'), 'standin-pytest', { cwd: dir, timeoutMs: 30_000 });
   assert.deepEqual(run.problems, ['the JUnit report is older than this run (stale or copied in); only a report written during the run is trusted']);
   assert.equal(run.report, null);
