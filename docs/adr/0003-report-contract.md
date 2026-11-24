@@ -6,9 +6,10 @@ The gate stays the judge, not the report. The trust rules:
 
 1. **A non-zero exit fails**, whatever the report says.
 2. **The gate owns the report location.** A fresh directory outside the project is created after the run starts, for every run (main run, each replicate, holdout, journeys), and deleted after reading. The gate builds the reporter flags itself and appends them to the command; a project's config never chooses the path. Where a tool has no flag for the path (Playwright), the gate sets the variable it reads (`PLAYWRIGHT_JUNIT_OUTPUT_FILE`) only in that one child process (spike amendment 2 on #55).
-3. **Only a report written during the run counts.** A missing file, a file modified before the run started (to the whole second, for filesystems with coarse times), or a file that does not parse fails the step, and the message names the flags the gate appended.
+3. **Only a report written during the run counts.** A missing file, a file modified before the fresh report directory was created (both times read from the same filesystem, so no rounding), or a file that does not parse fails the step, and the message names the flags the gate appended.
 4. **Two witnesses must agree.** The JUnit totals (tests, failures, skipped) must equal the runner's own stdout summary, or the gate fails showing both and trusts neither.
-5. **Holdout stays hidden.** For the hidden holdout only counts are printed; trust failures are worded without report content, the command or its paths.
+5. **Holdout stays hidden.** For the hidden holdout only counts are printed; any trust failure becomes one fixed message, and the JUnit reader's errors carry a character offset at most, never text from the report.
+6. **A weaker gate is an owner decision, never a silent pass.** While an adapter cannot run a check (coverage, test quality or mutation for `junit` until #58/#59), the gate fails unless `verify.config.json` holds `weakerGate: {missing, decision}` whose `missing` equals exactly the checks not run and whose `decision` points at the owner's record. An accepted weaker gate still prints the checks it does not run on every run. The pipeline checks the record itself in #62.
 
 Skipped and todo tests fail as before, journey ids are matched against passing JUnit test names, and failing tests are printed as `not ok N - <name>` lines in the existing "Failing tests" block, so the no-progress breaker and failure clustering read them unchanged.
 
@@ -22,6 +23,7 @@ Skipped and todo tests fail as before, journey ids are matched against passing J
 ## Consequences
 
 - Adding a stack means an adapter (flags in, report out, summary line), not a rewrite; a stand-in runner written in shell proves the gate is not tied to JavaScript.
-- Until the lcov and mutation readers land, the `junit` adapter prints coverage, test quality and mutation as "not available" and lists them as not checked on every run; it is a weaker gate and says so.
+- Until the lcov and mutation readers land, the `junit` adapter prints coverage, test quality and mutation as "not available"; it passes only with a matching `weakerGate` owner decision, and lists them as not checked on every run.
+- `standin-pytest` is a test-only runner shape for the shell stand-in; offering Python as a stack needs its own spec.
 - Hard to reverse: once products are built against the contract, changing report formats or loosening a trust rule changes every product's gate. Tightening stays cheap.
 - Remaining risk: test code runs with the same rights as the tool, so it could write a consistent fake report and a matching summary. The gate-owned path outside the project and the protected config make that deliberate cheating rather than an accident; an independent review is still the backstop.

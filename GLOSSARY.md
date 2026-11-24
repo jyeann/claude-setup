@@ -90,7 +90,7 @@ _Avoid_: minor decision
 
 **Adapter**:
 The `adapter` setting in `verify.config.json` that chooses how the verify gate measures a project: `node` (default) uses the gate's own `node:test` measuring, any other adapter judges the reports the project's own tools write under the report contract.
-_Avoid_: plugin, driver, preset
+_Avoid_: plugin, driver
 
 **Report contract**:
 The standard reports the verify gate reads (JUnit XML for test results; lcov and the mutation-testing-elements JSON to follow) and the trust rules it applies to them: a non-zero exit fails, the gate owns a fresh report directory outside the project, only a report written during the run counts, and its totals must match the runner's own summary. Recorded in ADR-0003.
