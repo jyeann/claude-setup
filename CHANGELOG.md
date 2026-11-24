@@ -12,6 +12,10 @@
 
 - **wiki** (`examples/wiki`, version 1.0.0): a local-first Markdown wiki. Notes are plain `<Title>.md` files in one vault folder. The browser UI provides `[[wikilinks]]`, backlinks, rename that rewrites links, Ctrl+K search, a graph view and conflict-safe saves. It runs on Node 22 with no dependencies and no build step, bound to loopback by default. See `examples/wiki/README.md` for run steps, limits and known limitations.
 
+### Changed
+
+- **Gate setup examples are harness fixtures** (#30, spec #27): `examples/todo-api`, `examples/slug-ts` and `examples/sheet-engine` moved unchanged to `.claude/harness/fixtures/`, and the harness README links there. `install.js` does not copy `fixtures/` into other projects: they are specs and acceptance tests without `src/`, so a target's test runner would only find failing tests.
+
 ### Removed
 
 - **link-shortener, packing-list and wiki** (#29, spec #27): `examples/{link-shortener,packing-list,wiki}/`, their run records in `docs/product/`, `docs/product/agent-runs.json`, `docs/product/human-corrected.json`, and the `gate-link-shortener` CI job and required check. Git history keeps them (last at `bfad3bb`). `agents-kpi.js` reads the two JSON files only when passed `--finals` or `--human-corrected`, so nothing depends on them by default.

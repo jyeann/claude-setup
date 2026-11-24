@@ -54,7 +54,7 @@ Or `/harness-build <spec> --verify "<cmd>"`. Start Claude with `--permission-mod
 in `.claude/settings.json`), never `--dangerously-skip-permissions`.
 
 ## Strong verify (`bin/verify.js`)
-`--verify "node .claude/harness/bin/verify.js"` with a `verify.config.json` (see `examples/todo-api/` for JavaScript, `examples/slug-ts/` for TypeScript). Seven checks, in order:
+`--verify "node .claude/harness/bin/verify.js"` with a `verify.config.json` (see [`fixtures/todo-api/`](fixtures/todo-api/) for JavaScript, [`fixtures/slug-ts/`](fixtures/slug-ts/) for TypeScript). Seven checks, in order:
 1. **Tests**: exit 0, none skipped or todo, at least `minTests` ran. Then **replicates** (`replicates`, default 2): the same command runs again and must give the same pass/fail counts, otherwise the gate is noise and is rejected as flaky. `--fast` skips the extra runs.
 2. **Type check** (optional, TypeScript: `"typecheck": {"command": "npx tsc --noEmit", "timeoutMs": 120000}`): runs after the tests and fails the gate with the tail of the compiler output. Node strips types without checking them, so without this a type error never fails anything. Off when the key is absent. `--fast` still runs it: it is cheap and it is exactly the feedback the agent needs while iterating. The harness never installs or bundles `tsc`; the command is yours.
 3. **Source coverage**: line coverage of `srcDirs` only, from raw V8 coverage across *all* processes (so a server spawned by an acceptance test counts). Total and per-file floors. For `.ts` files, lines that hold only types (`interface`, `type`, `import type`) are not counted as executable.
@@ -110,13 +110,15 @@ HARNESS_HIDDEN_DIR=/abs/path/to/held-out claude -p "..."      # verify.config.js
 While a run is active, shell commands and `Read`/`Grep`/`Glob` calls that name that directory or the variable are blocked
 (`hooks/pre-read.js`, `lib/guards.js`). The held-out tests run inside `verify.js` (and so inside the Stop hook), and their
 failing assertions come back in the verify output; that is the intended feedback channel. They resolve the project from the
-current directory (`path.resolve('src/...')`), so they also run against the mutation copy. See `examples/sheet-engine/`.
+current directory (`path.resolve('src/...')`), so they also run against the mutation copy. See [`fixtures/sheet-engine/`](fixtures/sheet-engine/).
 Limits: this stops a good-faith agent from reading the suite, not a determined one, and every failure reveals one expected value.
 
 ## Test
 ```bash
 node --test .claude/harness/test/*.test.js
 ```
+`fixtures/` holds the gate setup examples (spec, acceptance tests and `verify.config.json`, no `src/`). They are
+starting points for a harness run, not products, and the installer does not copy them (or `test/`) into other projects.
 
 ## Known limits (be honest about these)
 - **Verify is only as strong as your tests.** With a plain `npm test` verify, an agent can pad with a placeholder test (seen live: `tests/smoke.test.js` asserting `true` passed an 80% coverage floor measured over test files). The strong verify closes that gap for Node projects; for other stacks write an equivalent gate. Acceptance tests written from the spec and protected with `--protect` remain the most important defence.

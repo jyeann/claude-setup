@@ -21,6 +21,7 @@ test('installs harness, rules, settings and gitignore into an empty project', ()
   assert.ok(fs.existsSync(path.join(dir, '.claude', 'harness', 'lib', 'guards.js')));
   assert.ok(fs.existsSync(path.join(dir, '.claude', 'rules', 'ecc-common', 'security.md')));
   assert.equal(fs.existsSync(path.join(dir, '.claude', 'harness', 'test')), false);
+  assert.equal(fs.existsSync(path.join(dir, '.claude', 'harness', 'fixtures')), false);
   const s = settingsOf(dir);
   const source = readJson(path.join(CLAUDE_DIR, 'settings.json'));
   assert.deepEqual(s.permissions.deny, source.permissions.deny);

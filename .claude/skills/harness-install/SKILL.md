@@ -26,7 +26,7 @@ If `${CLAUDE_PLUGIN_ROOT}` is still a literal string in the command above, the i
 
 ## What it does
 
-- Writes `.claude/harness/` (overwrites, so re-running updates it).
+- Writes `.claude/harness/` (overwrites, so re-running updates it), without the harness's own `test/` and `fixtures/`.
 - Copies `.claude/rules/` and `.claude/plans/`, keeping any file that already exists (`--force` overwrites).
 - Merges into `.claude/settings.json`: adds missing allow and deny rules and hook groups; sets `sandbox`
   and `statusLine` only when absent. It never removes or replaces an existing setting.

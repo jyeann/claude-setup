@@ -8,7 +8,9 @@ const path = require('node:path');
 const SETTINGS_KEYS = ['permissions', 'sandbox', 'hooks', 'statusLine'];
 const GITIGNORE_LINE = '.harness/';
 // The harness's own test suite checks this repository (its CI workflow, its manifests), so it stays here.
-const SKIP_IN_HARNESS = ['test'];
+// The fixtures are setup examples for the README (spec, acceptance tests, verify.config.json, no src/):
+// in another project they would only add failing *.test.js files for its test runner to find.
+const SKIP_IN_HARNESS = ['test', 'fixtures'];
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 const exists = (p) => fs.existsSync(p);
