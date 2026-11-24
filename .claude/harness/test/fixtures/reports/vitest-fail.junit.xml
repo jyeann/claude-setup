@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="5" failures="1" errors="0" time="0.049530428">
+    <testsuite name="tests/Slug.test.tsx" timestamp="2026-11-24T06:11:48.105Z" hostname="vm" tests="4" failures="0" errors="0" skipped="1" time="0.037185311">
+        <testcase classname="tests/Slug.test.tsx" name="slugify &gt; lowercases and joins words with dashes" time="0.002276181">
+        </testcase>
+        <testcase classname="tests/Slug.test.tsx" name="slugify &gt; cuts the slug to the maximum length" time="0.000202329">
+        </testcase>
+        <testcase classname="tests/Slug.test.tsx" name="slugify &gt; keeps unicode letters (not supported yet)" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="tests/Slug.test.tsx" name="Slug component &gt; shows the slug of the typed title" time="0.032621264">
+        </testcase>
+    </testsuite>
+    <testsuite name="tests/failing.test.tsx" timestamp="2026-11-24T06:11:48.107Z" hostname="vm" tests="1" failures="1" errors="0" skipped="0" time="0.012345117">
+        <testcase classname="tests/failing.test.tsx" name="trims leading dashes (deliberately failing for the spike)" time="0.009786584">
+            <failure message="expected &apos;-hello&apos; to be &apos;hello&apos; // Object.is equality" type="AssertionError">
+AssertionError: expected &apos;-hello&apos; to be &apos;hello&apos; // Object.is equality
+
+Expected: &quot;hello&quot;
+Received: &quot;-hello&quot;
+
+ ❯ tests/failing.test.tsx:5:31
+            </failure>
+        </testcase>
+    </testsuite>
+</testsuites>
