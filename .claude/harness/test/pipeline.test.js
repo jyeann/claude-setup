@@ -578,3 +578,297 @@ test('the report warns once when the labels came from a saved copy', async () =>
   assert.equal(r.pass, true);
   assert.deepEqual(r.warnings, ['warning: labels read from the saved copy x.json because gh cannot reach GitHub (gh is not installed)']);
 });
+
+// ---- layer verdicts and redirects at the owner gates (#48), read from a saved issue JSON with no network ----
+const { parseVerdict } = require('../lib/pipeline');
+const PASS = 'verdict: problem=pass impression=pass approach=pass correctness=pass craft=pass';
+const redirect = (layer, reason) => PASS.replace(`${layer}=pass`, `${layer}=redirect "${reason}"`);
+// gh is "offline", so every read comes from the saved copy of the spec issue in <root>/issue.json.
+const offlineGh = () => ({ status: 1, stdout: '', stderr: 'error connecting to api.github.com' });
+function owner(root) {
+  const comments = [];
+  const state = { labels: ['afk'] };
+  const save = () => write(root, { 'issue.json': { number: 19, labels: state.labels.map((name) => ({ name })), comments } });
+  save();
+  return {
+    say(body) { comments.push({ id: 5000 + comments.length, body, created_at: new Date(Date.UTC(2026, 10, 24, 1, comments.length)).toISOString(), user: { login: 'owner' } }); save(); },
+    label(...labels) { state.labels = labels; save(); },
+  };
+}
+const checkSaved = (root, runGate = passGate) => checkPipeline({ root, product: 'app', docs: 'docs', runGate, runTasksCheck: tasksMatch, readIssue: (q) => defaultReadIssue({ ...q, issueJson: path.join(root, 'issue.json'), run: offlineGh }) });
+const edit = (root, rel) => fs.appendFileSync(path.join(root, rel), '\nRedone after the redirect.\n');
+
+test('verdict parsing reads one pass or redirect per layer, with the redirect reason', () => {
+  const v = parseVerdict(`Thanks!\n${redirect('impression', 'too cluttered')}\n`);
+  assert.equal(v.ok, true);
+  assert.deepEqual(v.redirects, [{ layer: 'impression', phase: 'ux', reason: 'too cluttered' }]);
+  assert.deepEqual(parseVerdict(PASS).redirects, []);
+  assert.deepEqual(parseVerdict(PASS.replace('craft=pass', 'craft=redirect “slow start”')).redirects, [{ layer: 'craft', phase: 'build', reason: 'slow start' }]);
+  assert.equal(parseVerdict('Looks good to me, no verdict here'), null);
+});
+
+test('a malformed verdict is reported with the expected format, never a pass', () => {
+  const bad = {
+    'missing layer': 'verdict: problem=pass impression=pass approach=pass correctness=pass',
+    'unknown layer': `${PASS} vibe=pass`,
+    'twice': `${PASS} craft=pass`,
+    'no reason': PASS.replace('craft=pass', 'craft=redirect'),
+    'empty reason': PASS.replace('craft=pass', 'craft=redirect ""'),
+    'bad value': PASS.replace('craft=pass', 'craft=maybe'),
+    'garbage': `${PASS} and also "this"`,
+  };
+  for (const [why, text] of Object.entries(bad)) {
+    const v = parseVerdict(text);
+    assert.equal(v.ok, false, why);
+    assert.ok(v.errors.length > 0, why);
+  }
+});
+
+test('a redirect on impression makes only the ux phase incomplete; the other phases stay complete', async () => {
+  const root = project();
+  const o = owner(root);
+  o.say(redirect('impression', 'too cluttered'));
+  const r = await checkSaved(root);
+  assert.equal(r.blocked, 'ux');
+  assert.deepEqual([statusOf(r).discover, statusOf(r).ux, statusOf(r).design], ['done', 'incomplete', 'pending']);
+  assert.match(problemsOf(r, 'ux')[0], /owner redirected impression at spec-approved \(round 1 of 3\): "too cluttered"/);
+  assert.match(formatReport(r), /INCOMPLETE at phase "ux"/);
+  // Redo ux: every phase before the gate is complete again, and the gate asks the owner again.
+  edit(root, 'docs/ux.md');
+  const asked = await checkSaved(root);
+  assert.deepEqual(['discover', 'ux', 'design', 'spec'].map((p) => statusOf(asked)[p]), ['done', 'done', 'done', 'done']);
+  assert.deepEqual(asked.waiting, { gate: 'spec-approved', spec: 19 });
+  assert.match(problemsOf(asked, 'spec-approved').join('\n'), /redirect round 1 of 3.*post a new verdict/);
+  // The label alone does not pass a gate whose latest verdict is a redirect.
+  o.label('afk', 'spec-approved');
+  assert.equal((await checkSaved(root)).blocked, 'spec-approved');
+  o.say(PASS);
+  assert.equal(statusOf(await checkSaved(root))['spec-approved'], 'done');
+});
+
+test('each layer goes back to its own phase: problem to discover, approach to design, correctness and craft to build', async () => {
+  for (const [layer, phase] of [['problem', 'discover'], ['approach', 'design']]) {
+    const root = project();
+    owner(root).say(redirect(layer, 'wrong'));
+    const r = await checkSaved(root);
+    assert.equal(r.blocked, phase, layer);
+  }
+  for (const layer of ['correctness', 'craft']) {
+    const root = project();
+    const o = owner(root);
+    o.label('afk', 'spec-approved');
+    o.say(PASS);
+    assert.deepEqual((await checkSaved(root)).waiting, { gate: 'accepted', spec: 19 });
+    o.say(redirect(layer, 'rounding is wrong'));
+    const r = await checkSaved(root);
+    assert.equal(r.blocked, 'build', layer);
+    assert.equal(statusOf(r).plan, 'done');
+    assert.match(problemsOf(r, 'build')[0], /owner redirected .* at accepted \(round 1 of 3\): "rounding is wrong"/);
+    write(root, { 'app/src/math.js': MATH });
+    assert.deepEqual((await checkSaved(root)).waiting, { gate: 'accepted', spec: 19 }, layer);
+  }
+});
+
+test('a redirect at accepted resets the freeze only for the redirected phase outputs', async () => {
+  const root = project();
+  const o = owner(root);
+  o.label('afk', 'spec-approved');
+  o.say(PASS);
+  assert.equal((await checkSaved(root)).blocked, 'accepted');
+  o.say(redirect('impression', 'the sum is hard to find'));
+  assert.equal((await checkSaved(root)).blocked, 'ux');
+  edit(root, 'docs/ux.md');
+  // The spec-approved approval of ux.md is void (the redirect came at accepted); one new verdict answers it.
+  assert.equal((await checkSaved(root)).blocked, 'spec-approved');
+  o.say(PASS);
+  // ux.md was frozen in the plan phase; the redirect reopened it, so the freeze does not complain.
+  const r = await checkSaved(root);
+  assert.equal(statusOf(r).plan, 'done');
+  assert.equal(statusOf(r)['spec-approved'], 'done');
+  assert.equal(r.blocked, 'accepted');
+  // Other frozen files still need an AMEND line.
+  write(root, { 'app/spec.md': '# Spec, changed\n' });
+  const frozen = await checkSaved(root);
+  assert.equal(frozen.blocked, 'plan');
+  assert.match(problemsOf(frozen, 'plan')[0], /app\/spec\.md changed after the plan phase froze it/);
+});
+
+test('a 4th redirect at the same gate stops the run with a report naming the layer and the reasons', async () => {
+  const root = project();
+  const o = owner(root);
+  const reasons = ['too cluttered', 'still cluttered', 'colours clash', 'nope'];
+  for (const [i, reason] of reasons.slice(0, 3).entries()) {
+    o.say(redirect('impression', reason));
+    const r = await checkSaved(root);
+    assert.equal(r.blocked, 'ux', `round ${i + 1}`);
+    edit(root, 'docs/ux.md');
+    assert.equal((await checkSaved(root)).blocked, 'spec-approved');
+  }
+  o.say(redirect('impression', reasons[3]));
+  const r = await checkSaved(root);
+  assert.equal(r.blocked, 'spec-approved');
+  assert.equal(statusOf(r).ux, 'done', 'the 4th redirect returns no phase');
+  assert.deepEqual(r.stopped, { gate: 'spec-approved', spec: 19, rounds: 4, layers: ['impression'], reasons: reasons.map((reason, i) => ({ round: i + 1, layer: 'impression', reason })) });
+  const report = formatReport(r);
+  assert.match(report, /PIPELINE STOPPED at owner gate "spec-approved" after 3 redirect rounds/);
+  assert.match(report, /the 4th redirect names impression/);
+  for (const reason of reasons) assert.match(report, new RegExp(`"${reason}"`));
+  assert.doesNotMatch(report, /do not stop to ask a human/);
+  assert.equal(report.split('\n').at(-1), 'waiting for owner: spec issue #19 needs label spec-approved');
+  // Still stopped on the next check: the run does not loop.
+  assert.ok((await checkSaved(root)).stopped);
+});
+
+test('rounds are counted per gate', async () => {
+  const root = project();
+  const o = owner(root);
+  for (const reason of ['a', 'b', 'c']) {
+    o.say(redirect('problem', reason));
+    await checkSaved(root);
+    edit(root, 'docs/brief.md');
+  }
+  o.label('afk', 'spec-approved');
+  o.say(PASS);
+  assert.equal((await checkSaved(root)).blocked, 'accepted');
+  o.say(redirect('craft', 'messy'));
+  const r = await checkSaved(root);
+  assert.equal(r.blocked, 'build');
+  assert.equal(r.stopped, undefined);
+  assert.match(problemsOf(r, 'build')[0], /round 1 of 3/);
+});
+
+test('changing an approved file voids the approval and the pipeline returns to waiting', async () => {
+  const root = project();
+  const o = owner(root);
+  o.label('afk', 'spec-approved', 'accepted');
+  assert.equal((await checkSaved(root)).pass, true);
+  edit(root, 'docs/brief.md');
+  const r = await checkSaved(root);
+  assert.equal(r.blocked, 'spec-approved');
+  assert.deepEqual(r.waiting, { gate: 'spec-approved', spec: 19 });
+  assert.match(problemsOf(r, 'spec-approved').join('\n'), /docs\/brief\.md changed after the owner approved it at spec-approved.*approval is void/);
+  // The label still being there is not enough: the owner posts a new verdict for the changed files.
+  assert.ok((await checkSaved(root)).waiting);
+  o.say(PASS);
+  assert.equal((await checkSaved(root)).pass, true);
+});
+
+test('an AMEND line keeps an approval when an approved file changes', async () => {
+  const root = project();
+  owner(root).label('afk', 'spec-approved', 'accepted');
+  assert.equal((await checkSaved(root)).pass, true);
+  edit(root, 'docs/design.md');
+  fs.appendFileSync(path.join(root, 'docs/decisions.md'), 'AMEND: docs/design.md - typo in the data section\n');
+  assert.equal((await checkSaved(root)).pass, true);
+});
+
+test('changing the product after accepted voids that approval', async () => {
+  const root = project();
+  owner(root).label('afk', 'spec-approved', 'accepted');
+  assert.equal((await checkSaved(root)).pass, true);
+  write(root, { 'app/src/extra.js': 'module.exports = 1;\n' });
+  const r = await checkSaved(root);
+  assert.deepEqual(r.waiting, { gate: 'accepted', spec: 19 });
+  assert.match(problemsOf(r, 'accepted').join('\n'), /app\/src\/extra\.js changed after the owner approved it at accepted/);
+});
+
+test('a malformed latest verdict keeps the gate waiting and the report shows the expected form', async () => {
+  const root = project();
+  const o = owner(root);
+  o.label('afk', 'spec-approved');
+  o.say('verdict: problem=pass impression=meh');
+  const r = await checkSaved(root);
+  assert.deepEqual(r.waiting, { gate: 'spec-approved', spec: 19 });
+  const report = formatReport(r);
+  assert.match(report, /latest verdict on spec issue #19 cannot be read/);
+  assert.match(report, /verdict: problem=pass\|redirect "<reason>" impression=pass\|redirect "<reason>"/);
+  o.say(PASS);
+  assert.equal(statusOf(await checkSaved(root))['spec-approved'], 'done');
+});
+
+test('only the latest verdict counts', async () => {
+  const root = project();
+  const o = owner(root);
+  o.label('afk', 'spec-approved', 'accepted');
+  o.say(redirect('problem', 'old thought'));
+  o.say(PASS);
+  assert.equal((await checkSaved(root)).pass, true);
+});
+
+test('the default issue reader fetches the comments when the issue has any, and a saved copy without their text waits', async () => {
+  const calls = [];
+  const run = (args) => {
+    calls.push(args.at(-1));
+    const body = args.at(-1).includes('/comments') ? [[{ id: 1, body: PASS }]] : [{ number: 19, comments: 1, labels: [] }];
+    return { status: 0, stdout: JSON.stringify(body), stderr: '' };
+  };
+  const r = await defaultReadIssue({ spec: 19, run });
+  assert.deepEqual(calls, ['repos/{owner}/{repo}/issues/19', 'repos/{owner}/{repo}/issues/19/comments?per_page=100']);
+  assert.deepEqual(r.issue.comments, [{ id: 1, body: PASS }]);
+  const root = project();
+  write(root, { 'issue.json': { number: 19, comments: 2, labels: ['spec-approved', 'accepted'] } });
+  const saved = await checkSaved(root);
+  assert.deepEqual(saved.waiting, { gate: 'spec-approved', spec: 19 });
+  assert.match(problemsOf(saved, 'spec-approved').join('\n'), /has 2 comments but not their text/);
+});
+
+test('verdict lines quoted in a code block or a blockquote are not verdicts', () => {
+  assert.equal(parseVerdict(`What changed. You said:\n> ${redirect('impression', 'too cluttered')}\n`), null);
+  assert.equal(parseVerdict(`Expected form:\n\`\`\`\n${PASS}\n\`\`\`\n`), null);
+  assert.equal(parseVerdict(`~~~text\n${PASS}\n~~~\n`), null);
+  assert.equal(parseVerdict(`    ${PASS}\n`), null, 'an indented code block');
+  assert.equal(parseVerdict(`\`\`\`\n${PASS}\n\`\`\`\n${redirect('craft', 'messy')}`).redirects[0].layer, 'craft');
+});
+
+test('a comment with more than one verdict line is malformed', () => {
+  const v = parseVerdict(`${PASS}\n${redirect('craft', 'messy')}`);
+  assert.equal(v.ok, false);
+  assert.match(v.errors.join('\n'), /more than one verdict line/);
+});
+
+test('a quoted verdict in a later comment does not pass the gate', async () => {
+  const root = project();
+  const o = owner(root);
+  o.say(redirect('impression', 'too cluttered'));
+  assert.equal((await checkSaved(root)).blocked, 'ux');
+  edit(root, 'docs/ux.md');
+  o.label('afk', 'spec-approved');
+  o.say(`Redone the ux. Expected form:\n\`\`\`\n${PASS}\n\`\`\``);
+  assert.equal((await checkSaved(root)).blocked, 'spec-approved');
+});
+
+test('a redirect at accepted voids the spec-approved approval of the files it changes', async () => {
+  const root = project();
+  const o = owner(root);
+  o.label('afk', 'spec-approved');
+  o.say(PASS);
+  assert.equal((await checkSaved(root)).blocked, 'accepted');
+  o.say(redirect('impression', 'the sum is hard to find'));
+  assert.equal((await checkSaved(root)).blocked, 'ux');
+  edit(root, 'docs/ux.md');
+  // ux.md was approved at spec-approved; the change was asked for at accepted, so spec-approved asks again.
+  const r = await checkSaved(root);
+  assert.deepEqual(r.waiting, { gate: 'spec-approved', spec: 19 });
+  assert.match(problemsOf(r, 'spec-approved').join('\n'), /docs\/ux\.md changed after the owner approved it at spec-approved/);
+});
+
+test('a correctness or craft redirect at spec-approved is malformed: those layers are judged at accepted', async () => {
+  for (const layer of ['correctness', 'craft']) {
+    const root = project();
+    const o = owner(root);
+    o.label('afk', 'spec-approved');
+    o.say(redirect(layer, 'too early'));
+    const r = await checkSaved(root);
+    assert.deepEqual(r.waiting, { gate: 'spec-approved', spec: 19 }, layer);
+    assert.match(problemsOf(r, 'spec-approved').join('\n'), new RegExp(`${layer} is judged at accepted`));
+  }
+});
+
+test('a corrupt gate state file fails closed and names the file', async () => {
+  const root = project();
+  owner(root).label('afk', 'spec-approved');
+  await checkSaved(root);
+  assert.ok(fs.existsSync(path.join(root, '.harness/pipeline/app.gates.json')));
+  fs.writeFileSync(path.join(root, '.harness/pipeline/app.gates.json'), '{ nope');
+  await assert.rejects(checkSaved(root), /\.harness\/pipeline\/app\.gates\.json is corrupt/);
+});

@@ -6,7 +6,10 @@
 // the Stop hook keeps the agent working through every phase. Exit 0: complete. Exit 1: a phase is incomplete
 // (named, with what is missing). Exit 2: usage error. Exit 3: waiting for the owner; the last line reads
 // "waiting for owner: spec issue #N needs label <gate>", and the Stop hook lets the turn end.
-// --issue-json: a saved copy of the spec issue, read only when gh cannot reach GitHub.
+// A layer verdict comment on the spec issue that redirects a layer sends the run back to that layer's phase;
+// a 4th redirect at one gate stops the run (exit 3, "PIPELINE STOPPED").
+// --issue-json: a saved copy of the spec issue (with its comments as an array, for the layer verdicts),
+// read only when gh cannot reach GitHub.
 const { checkPipeline, formatReport } = require('../lib/pipeline');
 
 async function main([command, ...rest]) {
