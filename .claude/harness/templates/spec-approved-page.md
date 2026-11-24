@@ -28,8 +28,10 @@ building the adapter first as its own spec.>
 
 ## Screens
 
-<Links to the rendered screens or look variations, with one line each on what the screen is for.
-"No screens" for a product without a screen.>
+<The look contract (from screens.md) in two or three plain sentences, then every screen of screens.md with its
+desktop and mobile image and one line on what the screen is for. Every screen id of ux.md appears here: the owner
+confirms the whole set, and the built product is later compared with it. Other look variations may be linked
+for comparison. "No screens" for a product without a screen.>
 
 ## Done means
 

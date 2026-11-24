@@ -24,6 +24,12 @@ const AMEND = /^\s*(?:[-*]\s*)?AMEND:?\s+`?([^\s`]+)`?/gm;
 // repository, which gh resolves from the clone): a run cannot point its gates at another repository's issue.
 const SPEC_ISSUE = /^\s*(?:[-*]\s*)?Spec issue:\s*#(\d+)\s*$/mi;
 const LOOK = /^\s*(?:[-*]\s*)?Look:\s*\S/mi;
+const LOOK_NONE = /^\s*(?:[-*]\s*)?Look:\s*none\b/mi;
+// The look contract (#76): every screen of ux.md is rendered in the chosen look and listed in screens.md, the
+// owner confirms the whole set at spec-approved, and qa compares the built screens with it (visual-parity.md).
+const SCREENS = 'screens.md';
+const PARITY = 'visual-parity.md';
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const STATUS_WORD = /\b(?:proven|experimental|planned)\b/i;
 // The one page the owner reads before spec-approved (templates/spec-approved-page.md, #47).
 const PAGE = 'spec-approved-page.md';
@@ -110,6 +116,7 @@ function pageProblems(docs) {
     return [];
   });
   out.push(...stackPartProblems(bodies.get('The real choices'), docs));
+  out.push(...pageScreenProblems((bodies.get('Screens') ?? []).join('\n'), docs));
   if (CODE_FENCE.test(text)) out.push(`${PAGE} contains a code block: write the page in plain language, with no code`);
   return out;
 }
@@ -133,6 +140,113 @@ function stackPartProblems(lines, docs) {
   return out;
 }
 
+// Screen ids are the S<n> tokens in the headings of ux.md ("### S1 Sign up (`/signup`) and S2 Log in").
+const screenIds = (uxText) => [...new Set((uxText.match(/^#{2,4}\s.*$/gm) ?? []).flatMap((h) => h.match(/\bS\d+\b/g) ?? []))];
+const hasScreens = (docs) => !LOOK_NONE.test(read(path.join(docs, 'decisions.md')) ?? '');
+const SEPARATOR = /^\s*\|?\s*:?-{2,}/;
+// Rows of the first table under "## <section>": an array of cell arrays, header and separator dropped.
+function tableRows(text, section) {
+  const lines = text.replace(/<!--[\s\S]*?-->/g, '').split('\n');
+  const start = lines.findIndex((l) => new RegExp(`^##\\s+${section}\\s*$`, 'i').test(l));
+  if (start < 0) return null;
+  const rows = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^##\s/.test(line)) break;
+    if (!/^\s*\|/.test(line)) continue;
+    rows.push(line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()));
+  }
+  return rows.filter((r) => !SEPARATOR.test(r.join('|'))).slice(1);
+}
+// A rendered image named in a table cell, as a link or in backticks, resolved inside the docs directory.
+const IMAGE = /\(([^)\s]+\.png)\)|`([^`\s]+\.png)`|(?:^|\s)([^\s`()|]+\.png)\b/i;
+const imageOf = (docs, cell) => { const m = IMAGE.exec(cell ?? ''); return m ? path.resolve(docs, m[1] ?? m[2] ?? m[3]) : null; };
+function imageProblem(docs, cell, label) {
+  const file = imageOf(docs, cell);
+  if (!file) return `${label} names no .png image: render the screen and link the file`;
+  if (!inside(docs, file)) return `${label} points outside the docs directory`;
+  let head;
+  try { head = fs.readFileSync(file).subarray(0, 4); } catch { return `${label} names ${rel(docs, file)}, which does not exist`; }
+  return head.equals(PNG_MAGIC) ? null : `${label} names ${rel(docs, file)}, which is not a PNG image`;
+}
+const unfilled = (body) => !body.trim() || PLACEHOLDER.test(body);
+function sectionBody(text, name) {
+  const lines = text.replace(/<!--[\s\S]*?-->/g, '').split('\n');
+  const start = lines.findIndex((l) => new RegExp(`^##\\s+${name}\\s*$`, 'i').test(l));
+  if (start < 0) return null;
+  const end = lines.findIndex((l, i) => i > start && /^##\s/.test(l));
+  return lines.slice(start + 1, end < 0 ? undefined : end).join('\n');
+}
+
+// Phase 4a, part of the look: every screen in ux.md has a rendered sample (desktop and mobile) in the chosen look.
+// A screen the prototype shows but ux.md does not define (the Market home of the first Gachi Market run) is
+// reported, so the look the owner approves is the look that gets specified, ticketed and built.
+function screenProblems({ docs }) {
+  if (!hasScreens(docs)) return [];
+  const ux = read(path.join(docs, 'ux.md')) ?? '';
+  const ids = screenIds(ux);
+  if (!ids.length) return ['ux.md names no screens: give every screen a heading that starts with its id (### S1 Name (`/path`)), including the first screen after sign-in, or record "Look: none" in decisions.md for a product without a screen'];
+  const text = read(path.join(docs, SCREENS));
+  if (text === null) return [`${SCREENS} is missing: copy .claude/harness/templates/${SCREENS}, render every screen of ux.md (${ids.join(', ')}) in the chosen look at desktop and mobile width, and list each one`];
+  const out = [];
+  const contract = sectionBody(text, 'Look contract');
+  if (contract === null || unfilled(contract)) out.push(`${SCREENS} "Look contract" is not filled: list the signature features of the chosen look that every screen must keep (layout pattern, hero element, components, theme)`);
+  const rows = tableRows(text, 'Screen set');
+  if (rows === null) return [...out, `${SCREENS} has no "## Screen set" table: one row per screen with its id, desktop image, mobile image, source and reference`];
+  const seen = new Set();
+  for (const row of rows) {
+    const id = /^S\d+\b/.exec(row[0] ?? '')?.[0];
+    if (!id) { out.push(`${SCREENS} has a Screen set row that does not start with a screen id: "${(row[0] ?? '').slice(0, 40)}"`); continue; }
+    if (seen.has(id)) out.push(`${SCREENS} lists ${id} twice`);
+    seen.add(id);
+    if (!ids.includes(id)) { out.push(`${SCREENS} renders ${id}, but ux.md has no ${id}: a screen in the approved look must be specified. Add it to ux.md with its journeys, or remove the row`); continue; }
+    for (const [i, kind] of [[1, 'desktop'], [2, 'mobile']]) {
+      const p = imageProblem(docs, row[i], `${SCREENS} ${id} ${kind} sample`);
+      if (p) out.push(p);
+    }
+  }
+  const missing = ids.filter((id) => !seen.has(id));
+  if (missing.length) out.push(`${SCREENS} has no rendered sample for ${missing.join(', ')}: the owner confirms every screen at spec-approved, so render each one`);
+  return out;
+}
+
+// The page's Screens section must show every screen the owner is asked to confirm.
+function pageScreenProblems(body, docs) {
+  if (!body || unfilled(body) || !hasScreens(docs)) return [];
+  const missing = screenIds(read(path.join(docs, 'ux.md')) ?? '').filter((id) => !new RegExp(`\\b${id}\\b`).test(body));
+  return missing.length ? [`${PAGE} section "Screens" does not show ${missing.join(', ')}: list every screen of ${SCREENS} with its rendered image, so the owner confirms the whole set`] : [];
+}
+
+// Phase 7: the built product, screen by screen, against the screens the owner approved. A deviation is never
+// accepted by an agent: the build is fixed, or the owner changes the approved screen (an impression redirect).
+function parityProblems({ docs }) {
+  if (!hasScreens(docs)) return [];
+  const ids = screenIds(read(path.join(docs, 'ux.md')) ?? '');
+  const text = read(path.join(docs, PARITY));
+  if (text === null) return [`${PARITY} is missing: copy .claude/harness/templates/${PARITY}, screenshot every built screen at desktop and mobile width, and compare each with its approved sample in ${SCREENS}`];
+  const rows = tableRows(text, 'Parity');
+  if (rows === null) return [`${PARITY} has no "## Parity" table: one row per screen with the approved image, the built image and a verdict`];
+  const out = [];
+  const seen = new Set();
+  for (const row of rows) {
+    const id = /^S\d+\b/.exec(row[0] ?? '')?.[0];
+    if (!id) continue;
+    seen.add(id);
+    const approved = imageProblem(docs, row[1], `${PARITY} ${id} approved image`);
+    if (approved) out.push(approved);
+    const built = imageProblem(docs, row[2], `${PARITY} ${id} built screenshot`);
+    if (built) out.push(built);
+    if (!approved && !built && imageOf(docs, row[1]) === imageOf(docs, row[2])) out.push(`${PARITY} ${id}: the built screenshot is the approved image: take a real screenshot of the running product`);
+    const verdict = (row[3] ?? '').trim();
+    if (/^match\b/i.test(verdict)) continue;
+    out.push(/^deviation\b/i.test(verdict)
+      ? `${PARITY} ${id} is a deviation (${verdict.slice(0, 80)}): fix the build to match the approved screen, or ask the owner to change the approved screen; an agent does not accept a deviation`
+      : `${PARITY} ${id} has the verdict "${verdict.slice(0, 40)}": write "match" or "deviation: <what differs>"`);
+  }
+  const missing = ids.filter((id) => !seen.has(id));
+  if (missing.length) out.push(`${PARITY} has no row for ${missing.join(', ')}: compare every screen`);
+  return out;
+}
+
 // Phase 4a: the spec issue is written (to-spec) and the look chosen from rendered variations (prototype).
 // Both are recorded in decisions.md, which is where the gates find the spec issue number. The
 // spec-approved page is written last, so the owner judges one page at the gate.
@@ -142,7 +256,7 @@ function specProblems({ docs }) {
   const out = [];
   if (!SPEC_ISSUE.test(text)) out.push('decisions.md has no "Spec issue: #N" line: write the spec issue in this product\'s repository (to-spec), then record its number on a line of its own');
   if (!LOOK.test(text)) out.push('decisions.md has no "Look:" line: render variations (prototype), choose one, put it in the spec issue and record it as "Look: <choice and where it is rendered>" ("Look: none" for a product without a screen)');
-  return [...out, ...pageProblems(docs)];
+  return [...out, ...screenProblems({ docs }), ...pageProblems(docs)];
 }
 
 const specIssueOf = (docs) => Number((SPEC_ISSUE.exec(read(path.join(docs, 'decisions.md')) ?? '') ?? [])[1]) || null;
@@ -278,7 +392,7 @@ function phaseOf(ctx, file) {
   const abs = path.join(ctx.root, file);
   if (inside(ctx.docs, abs)) {
     const d = rel(ctx.docs, abs);
-    return { 'brief.md': 'discover', 'ux.md': 'ux', 'design.md': 'design' }[d] ?? (d.startsWith('adr/') ? 'design' : null);
+    return { 'brief.md': 'discover', 'ux.md': 'ux', [SCREENS]: 'ux', 'design.md': 'design' }[d] ?? (d.startsWith('adr/') ? 'design' : d.startsWith('screens/') ? 'ux' : null);
   }
   if (!inside(ctx.product, abs)) return null;
   const p = rel(ctx.product, abs);
@@ -529,7 +643,7 @@ const PHASES = [
     if (!m) return ['reviews.md needs a line of exactly this form, with the true counts after the fix round: "Open: CRITICAL 0, HIGH 0"'];
     return Number(m[1]) + Number(m[2]) === 0 ? [] : [`reviews.md records ${m[1]} CRITICAL and ${m[2]} HIGH findings still open: fix them, re-run the reviewers on the fix, then update the line`];
   })],
-  ['qa', ({ docs }) => doc(docs, 'qa.md', 'independent browser walkthrough record')],
+  ['qa', ({ docs }) => [...doc(docs, 'qa.md', 'independent browser walkthrough record'), ...parityProblems({ docs })]],
   ['release', ({ product }) => [
     ...(/```/.test(read(path.join(product, 'README.md')) ?? '') ? [] : ['README.md in the product directory needs run steps in a code block: someone with only the README must be able to run it']),
     ...(read(path.join(product, 'CHANGELOG.md')) === null ? ['CHANGELOG.md is missing in the product directory'] : []),

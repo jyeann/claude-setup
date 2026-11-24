@@ -13,7 +13,7 @@ Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/READ
 |---|---|
 | `.claude/skills/orch-product-team/` | The nine-phase workflow: discover, UX, design, plan, build, review, QA, release, retro. |
 | `.claude/agents/` | The 15 agents the workflow calls (14 team roles plus `harness-optimizer`). |
-| `.claude/skills/` | 9 skills: the workflow, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference). |
+| `.claude/skills/` | 10 skills: the workflow, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference) and `mobbin-references`, an optional design reference source through Mobbin's MCP server. |
 | `.claude/commands/` | `/harness-build` and `/harness-improve`. |
 | `.claude/rules/ecc-common/` | Five short always-loaded rules. |
 | `.claude/harness/` | Guard hooks, the verify gate (tests, type check, coverage, test quality, hidden holdout, browser journeys, mutation), the whole-pipeline stop gate, tracing and KPI roll-up. Dependency-free, with its own test suite. |

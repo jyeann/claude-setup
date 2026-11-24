@@ -70,6 +70,18 @@ _Avoid_: score, rating, sign-off
 A layer verdict of redirect that names the failed layer and a reason, and sends the run back only to that layer's phase (problem to discover, impression to ux, approach to design, correctness or craft to build).
 _Avoid_: rejection, rollback, restart
 
+**Look contract**:
+The record in `screens.md` of a product's chosen look: its signature features and a rendered desktop and mobile image of every screen in `ux.md`. The owner confirms the whole set at `spec-approved`, and phase 7 compares the built screens with it.
+_Avoid_: mood board, style guide, design spec
+
+**Screen id**:
+The `S<n>` number at the start of a screen's heading in `ux.md`; the key that ties a screen to its rendered sample, its tickets and its parity row.
+_Avoid_: page number, view name
+
+**Visual parity**:
+The phase 7 record (`visual-parity.md`) that compares each built screen with its approved image and gives the verdict `match` or `deviation`; an agent never accepts a deviation.
+_Avoid_: screenshot test, design review
+
 **Progress summary**:
 A one-page note published once per build round when about 70% of tickets are done, showing what works, what drifted and what is left; it is not an owner gate and not a checkpoint, never blocks the build, and silence means carry on.
 _Avoid_: checkpoint, status gate, mid-run approval
