@@ -74,6 +74,37 @@ test('untracked files are not read, and a policy without refs only checks folder
   assert.deepEqual(checkLayout(dir, { forbiddenDirs: ['README.md'] }), ['README.md/ exists']);
 });
 
+test('fails when a current doc names a retired skill, in prose or as a path, and its folder is a forbidden dir', () => {
+  const policy = { ...POLICY, forbiddenDirs: ['.claude/skills/old-skill'], retiredNames: ['old-skill'] };
+  const dir = repo({
+    'README.md': 'Build the list with the `old-skill` skill.\n',
+    'docs/run.md': 'see .claude/skills/old-skill/SKILL.md\n',
+    '.claude/skills/old-skill/SKILL.md': 'name: old-skill\n',
+    'CHANGELOG.md': 'removed old-skill\n',
+    'other.md': 'my-old-skill, old-skills and old-skill-v2 are other names\n',
+  });
+  assert.deepEqual(checkLayout(dir, policy), [
+    '.claude/skills/old-skill/ exists',
+    '.claude/skills/old-skill/SKILL.md:1 names retired old-skill',
+    'README.md:1 names retired old-skill',
+    'docs/run.md:1 names retired old-skill',
+  ]);
+});
+
+test('current docs in this repository do not name plan-to-tasks, and its skill folder stays deleted (#23)', () => {
+  const policy = JSON.parse(fs.readFileSync(path.join(REPO, '.claude', 'layout.json'), 'utf8'));
+  assert.ok(policy.retiredNames.includes('plan-to-tasks'));
+  assert.ok(policy.forbiddenDirs.includes('.claude/skills/plan-to-tasks'));
+  assert.deepEqual(checkLayout(REPO, { ...policy, forbiddenRefs: [] }), []);
+});
+
+test('a policy with only retiredNames checks names, and retiredNamesSkip exempts a file from that check alone', () => {
+  const dir = repo({ 'a.md': 'use old-skill\n', 'adr.md': 'rejected old-skill; see examples/x\n' });
+  assert.deepEqual(checkLayout(dir, { retiredNames: ['old-skill'] }), ['a.md:1 names retired old-skill', 'adr.md:1 names retired old-skill']);
+  const policy = { forbiddenRefs: ['examples/'], retiredNames: ['old-skill'], retiredNamesSkip: ['adr.md'] };
+  assert.deepEqual(checkLayout(dir, policy), ['a.md:1 names retired old-skill', 'adr.md:1 cites examples/']);
+});
+
 test('CLI takes --policy and exits 0 when the repository has no policy', () => {
   const dir = repo({ 'README.md': 'see examples/x\n' });
   const policy = path.join(dir, 'p.json');

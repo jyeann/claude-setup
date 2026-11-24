@@ -4,7 +4,7 @@ Pattern: sequential | Mode: safe
 
 ## Goal
 Work through every AFK task in `TASKS.md` until all are done and the test suite is green.
-`TASKS.md` is generated from a spec issue's tickets by `tasks-sync.js pull` (format: `.claude/harness/templates/tasks.md`); never edit it.
+`TASKS.md` is generated from a spec issue's tickets (GitHub sub-issues made with `/mattpocock-skills:to-tickets`) by `tasks-sync.js pull` (format: `.claude/harness/templates/tasks.md`); never edit it.
 Pull it with: `node .claude/harness/bin/tasks-sync.js pull --spec <n>` (through `gh`; without it, `--from-json <issues.json>` saved with the GitHub MCP tools, see `docs/agents/issue-tracker.md`).
 
 ## Run it under the harness (enforced limits)
