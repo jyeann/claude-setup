@@ -16,7 +16,14 @@ if (!fs.existsSync(policyFile)) {
   console.log(`check-layout: no policy at ${policyFile}, nothing to check.`);
   process.exit(0);
 }
-const problems = checkLayout(root, JSON.parse(fs.readFileSync(policyFile, 'utf8')));
+let policy;
+try {
+  policy = JSON.parse(fs.readFileSync(policyFile, 'utf8'));
+} catch (e) {
+  console.error(`check-layout: cannot read policy ${policyFile}: ${e.message}`);
+  process.exit(2);
+}
+const problems = checkLayout(root, policy);
 if (problems.length === 0) console.log('check-layout: layout is clean.');
 else {
   console.error(`check-layout: ${problems.length} problem(s). Move the file or fix the reference.\n${problems.join('\n')}`);

@@ -81,6 +81,10 @@ test('CLI takes --policy and exits 0 when the repository has no policy', () => {
   fs.writeFileSync(policy, JSON.stringify({ forbiddenRefs: ['nothing/'] }));
   assert.equal(cli(dir, '--policy', policy).status, 0);
   fs.rmSync(path.join(dir, '.claude', 'layout.json'));
+  fs.writeFileSync(policy, '{ not json');
+  const bad = cli(dir, '--policy', policy);
+  assert.equal(bad.status, 2);
+  assert.match(bad.stderr, /cannot read policy/);
   const none = cli(dir);
   assert.equal(none.status, 0);
   assert.match(none.stdout, /no policy/);
