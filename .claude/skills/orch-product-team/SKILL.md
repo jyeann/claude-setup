@@ -67,7 +67,7 @@ Small fixes and single-file changes do not need phases 1-4: give the fix to `tdd
 
 ## Effort (measured defaults, sonnet, one product)
 
-From the per-phase comparison on the retro board (`docs/product/retro-board/effort-by-phase.md`, 24 cells of 1 to 2 trials, objective graders):
+From the per-phase comparison on the retro board (`docs/testbench/retro-board/effort-by-phase.md`, 24 cells of 1 to 2 trials, objective graders):
 
 | Phase | Default | Why |
 |---|---|---|
@@ -76,7 +76,7 @@ From the per-phase comparison on the retro board (`docs/product/retro-board/effo
 | tests (test owner) | `medium` | `low` passed 1 of 2; `high` cost 2x `medium` with the same pass |
 | build | `low` or `medium`, with the full gate including the hidden holdout | `high` failed the gate 2 of 2: in the one run diagnosed, it missed a rule from the design that no visible test covered (control characters in card text) |
 
-Read this carefully: most graders check coverage by keyword, so "all passed" means the checklist was met, not that the work was equal. Trials are few. Re-run `examples/retro-board/tune/run.js` on a second product before treating any row as settled, and keep a hidden holdout in the build gate: it was the only check that told the effort levels apart on quality.
+Read this carefully: most graders check coverage by keyword, so "all passed" means the checklist was met, not that the work was equal. Trials are few. Re-run `testbench/retro-board/tune/run.js` on a second product before treating any row as settled, and keep a hidden holdout in the build gate: it was the only check that told the effort levels apart on quality.
 
 ## Limits and resuming
 

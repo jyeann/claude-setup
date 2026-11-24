@@ -1,0 +1,271 @@
+{
+  "model": "claude-sonnet-5-5",
+  "generated": "2026-11-18T09:35:01.552Z",
+  "note": "pass/fail from objective graders in testbench/retro-board/tune; trials per cell are small (1 to 2); build and tests cells merge a re-run",
+  "rows": [
+    {
+      "phase": "discover",
+      "effort": "low",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.106,
+      "meanSeconds": 36,
+      "meanOutputTokens": 3060,
+      "meanTurns": 5
+    },
+    {
+      "phase": "discover",
+      "effort": "medium",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.116,
+      "meanSeconds": 41,
+      "meanOutputTokens": 3936,
+      "meanTurns": 6
+    },
+    {
+      "phase": "discover",
+      "effort": "high",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.166,
+      "meanSeconds": 55,
+      "meanOutputTokens": 5321,
+      "meanTurns": 8
+    },
+    {
+      "phase": "ux",
+      "effort": "low",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.224,
+      "meanSeconds": 85,
+      "meanOutputTokens": 10788,
+      "meanTurns": 6
+    },
+    {
+      "phase": "ux",
+      "effort": "medium",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.259,
+      "meanSeconds": 107,
+      "meanOutputTokens": 13077,
+      "meanTurns": 7
+    },
+    {
+      "phase": "ux",
+      "effort": "high",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.375,
+      "meanSeconds": 151,
+      "meanOutputTokens": 20725,
+      "meanTurns": 9
+    },
+    {
+      "phase": "design",
+      "effort": "low",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.489,
+      "meanSeconds": 191,
+      "meanOutputTokens": 24406,
+      "meanTurns": 8
+    },
+    {
+      "phase": "design",
+      "effort": "medium",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.552,
+      "meanSeconds": 218,
+      "meanOutputTokens": 27895,
+      "meanTurns": 9
+    },
+    {
+      "phase": "design",
+      "effort": "high",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.976,
+      "meanSeconds": 420,
+      "meanOutputTokens": 53779,
+      "meanTurns": 13
+    },
+    {
+      "phase": "tests",
+      "effort": "low",
+      "trials": 2,
+      "passes": 1,
+      "passRate": 0.5,
+      "meanCostUsd": 0.79,
+      "meanSeconds": 259,
+      "meanOutputTokens": 40204,
+      "meanTurns": 16
+    },
+    {
+      "phase": "tests",
+      "effort": "medium",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.976,
+      "meanSeconds": 450,
+      "meanOutputTokens": 51629,
+      "meanTurns": 16
+    },
+    {
+      "phase": "tests",
+      "effort": "high",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 1.975,
+      "meanSeconds": 1178,
+      "meanOutputTokens": 105177,
+      "meanTurns": 30
+    },
+    {
+      "phase": "build",
+      "effort": "low",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.721,
+      "meanSeconds": 213,
+      "meanOutputTokens": 32523,
+      "meanTurns": 16
+    },
+    {
+      "phase": "build",
+      "effort": "medium",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 1.19,
+      "meanSeconds": 408,
+      "meanOutputTokens": 55944,
+      "meanTurns": 25
+    },
+    {
+      "phase": "build",
+      "effort": "high",
+      "trials": 2,
+      "passes": 0,
+      "passRate": 0,
+      "meanCostUsd": 1.534,
+      "meanSeconds": 780,
+      "meanOutputTokens": 70059,
+      "meanTurns": 31
+    },
+    {
+      "phase": "review",
+      "effort": "low",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.282,
+      "meanSeconds": 38,
+      "meanOutputTokens": 3729,
+      "meanTurns": 9
+    },
+    {
+      "phase": "review",
+      "effort": "medium",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.324,
+      "meanSeconds": 50,
+      "meanOutputTokens": 5428,
+      "meanTurns": 11
+    },
+    {
+      "phase": "review",
+      "effort": "high",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.474,
+      "meanSeconds": 92,
+      "meanOutputTokens": 10658,
+      "meanTurns": 17
+    },
+    {
+      "phase": "qa",
+      "effort": "low",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.612,
+      "meanSeconds": 571,
+      "meanOutputTokens": 22408,
+      "meanTurns": 18
+    },
+    {
+      "phase": "qa",
+      "effort": "medium",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.719,
+      "meanSeconds": 724,
+      "meanOutputTokens": 27335,
+      "meanTurns": 23
+    },
+    {
+      "phase": "qa",
+      "effort": "high",
+      "trials": 1,
+      "passes": 1,
+      "passRate": 1,
+      "meanCostUsd": 0.914,
+      "meanSeconds": 652,
+      "meanOutputTokens": 36361,
+      "meanTurns": 22
+    },
+    {
+      "phase": "release",
+      "effort": "low",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.199,
+      "meanSeconds": 48,
+      "meanOutputTokens": 4075,
+      "meanTurns": 10
+    },
+    {
+      "phase": "release",
+      "effort": "medium",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.192,
+      "meanSeconds": 49,
+      "meanOutputTokens": 4096,
+      "meanTurns": 10
+    },
+    {
+      "phase": "release",
+      "effort": "high",
+      "trials": 2,
+      "passes": 2,
+      "passRate": 1,
+      "meanCostUsd": 0.29,
+      "meanSeconds": 67,
+      "meanOutputTokens": 6585,
+      "meanTurns": 13
+    }
+  ]
+}
