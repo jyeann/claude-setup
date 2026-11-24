@@ -67,7 +67,7 @@ The owner's answer for one judgement layer at an owner gate, either pass or redi
 _Avoid_: score, rating, sign-off
 
 **Redirect**:
-A layer verdict of "no" that names the failed layer and a reason, and sends the run back only to that layer's phase (problem to discover, impression to ux, approach to design, correctness or craft to build).
+A layer verdict of redirect that names the failed layer and a reason, and sends the run back only to that layer's phase (problem to discover, impression to ux, approach to design, correctness or craft to build).
 _Avoid_: rejection, rollback, restart
 
 **Progress summary**:

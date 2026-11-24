@@ -1,4 +1,4 @@
-# Owner gates give a verdict per judgement layer, and a redirect goes back one phase
+# Owner gates give a verdict per judgement layer, and a redirect goes back only to the failed layer's phase
 
 The two owner gates (spec-approved, accepted) can only wait for a label, so a "no" says nothing about what was wrong and nothing defines what is redone. We judge every product on five **judgement layers** (problem, impression, approach, correctness, craft). At both owner gates the owner gives one **layer verdict** per layer. A verdict of redirect names the failed layer and a reason, and the pipeline goes back only to that layer's phase: problem to discover, impression to ux, approach to design, correctness or craft to build. A gate allows at most 3 redirect rounds, then the run stops and reports. An approval is tied to the hash of the files it approved, so a later change voids it. The **progress summary** published at about 70% of tickets done is not an owner gate and never blocks: silence means carry on, and an owner comment is a **progress response**, not an intervention.
 
