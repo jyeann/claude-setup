@@ -4,7 +4,7 @@
 design.md and the one-way rows of decisions.md, save it as spec-approved-page.md in the run's docs folder,
 and post it on the spec issue. Plain language only: no code, no commands, no file formats. Replace every
 <placeholder>; pipeline.js counts a section that still holds only placeholders as empty. Keep the seven
-headings exactly as they are. -->
+headings and the Stack part of "The real choices" exactly as they are. -->
 
 ## Problem and who it is for
 
@@ -18,6 +18,13 @@ headings exactly as they are. -->
 
 <The 3 to 4 one-way decisions from decisions.md (rows with Door "one-way"). For each: what was chosen, the
 alternatives, and the trade-off in plain words. Two-way decisions stay in decisions.md and are not listed.>
+
+### Stack
+
+<The proposed stack and 1 to 2 alternatives, from the Stack section of design.md. For each: how well the gate
+can check it (proven, experimental or planned) and any checks the gate would not run. For a stack with no
+adapter, give the three options: a supported alternative, a weaker gate (and which checks it leaves out), or
+building the adapter first as its own spec.>
 
 ## Screens
 
