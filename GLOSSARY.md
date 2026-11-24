@@ -56,5 +56,5 @@ The one reference product kept in this repo (`testbench/retro-board/`, run recor
 _Avoid_: example, sample app, demo
 
 **Product repository**:
-The repository (or owner-given path) where `orch-product-team` builds one new product, with the harness installed and the run records in `docs/product/<slug>/` inside it; written `<product-repo>` in the skill and agent text. Never this repo.
+The repository (or owner-given path) where `orch-product-team` builds one new product, with the harness installed and the run records in `<product-repo>/docs/product/<slug>/`. Never this repo.
 _Avoid_: example folder, product folder
