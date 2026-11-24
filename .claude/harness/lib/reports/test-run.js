@@ -8,6 +8,7 @@ const path = require('node:path');
 const { runVerify } = require('../verify');
 const { makeTemp, removeTemp } = require('../temp-dirs');
 const { parseJUnit } = require('./junit');
+const { parseLcov } = require('./lcov');
 const { RUNNERS, shellQuote } = require('./runners');
 
 const MAX_FAILURE_LINES = 40;
@@ -23,9 +24,22 @@ const inside = (dir, root) => {
 
 const totals = (t) => `tests ${t.tests}, failures ${t.failures}, skipped ${t.skipped}`;
 
-// Returns { result, report, summary, problems }. `problems` are trust failures, worded without report
-// content, so they are safe to print for the hidden holdout.
-async function runReported(command, runnerName, { cwd, timeoutMs, env = {} }) {
+// The lcov the runner wrote under the same trust rules as the JUnit report: present, written during this run,
+// parsable. Returns { lcov, coverageProblems }.
+function readLcov(cov, runner, startedAt) {
+  if (!fs.existsSync(cov.file)) {
+    return { lcov: null, coverageProblems: [`no lcov report was written. The gate appends ${runner.coverageFlags} to the command, so it must end with the runner's invocation for the flags to reach it`] };
+  }
+  if (fs.statSync(cov.file).mtimeMs < startedAt) {
+    return { lcov: null, coverageProblems: ['the lcov report is older than this run (stale or copied in); only a report written during the run is trusted'] };
+  }
+  try { return { lcov: parseLcov(fs.readFileSync(cov.file, 'utf8')), coverageProblems: [] }; } catch (err) { return { lcov: null, coverageProblems: [err.message] }; }
+}
+
+// Returns { result, report, summary, problems } and, when `coverage` (the srcDirs) is given and the runner can
+// write lcov, { lcov, coverageProblems }. `problems` are trust failures, worded without report content, so they
+// are safe to print for the hidden holdout (which never asks for coverage).
+async function runReported(command, runnerName, { cwd, timeoutMs, env = {}, coverage = null }) {
   const runner = RUNNERS[runnerName];
   const dir = makeTemp('verify-report-');
   try {
@@ -34,7 +48,9 @@ async function runReported(command, runnerName, { cwd, timeoutMs, env = {} }) {
     const startedAt = fs.statSync(dir).mtimeMs;
     if (inside(dir, cwd)) throw new Error(`the report directory ${dir} is inside the project; set TMPDIR to a directory outside it`);
     const hand = runner.handover(dir);
-    const full = `${command} ${hand.args.map(shellQuote).join(' ')}`;
+    const cov = coverage && runner.coverage ? runner.coverage(dir, coverage) : null;
+    const args = cov ? [...hand.args, ...cov.args] : hand.args;
+    const full = `${command} ${args.map(shellQuote).join(' ')}`;
     const result = await runVerify(full, { cwd, timeoutMs, env: { ...env, ...hand.env } });
     const problems = [];
     let report = null;
@@ -50,7 +66,8 @@ async function runReported(command, runnerName, { cwd, timeoutMs, env = {} }) {
     else if (report && (report.tests !== summary.tests || report.failures !== summary.failures || report.skipped !== summary.skipped)) {
       problems.push(`the JUnit report (${totals(report)}) disagrees with ${runnerName}'s own summary (${totals(summary)}); neither is trusted`);
     }
-    return { result, report: problems.length === 0 ? report : null, summary, problems };
+    const run = { result, report: problems.length === 0 ? report : null, summary, problems };
+    return cov ? { ...run, ...readLcov(cov, runner, startedAt) } : run;
   } finally {
     removeTemp(dir);
   }
