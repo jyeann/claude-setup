@@ -9,9 +9,11 @@
 // TypeScript (.ts/.mts/.cts) is supported through Node's native type stripping; an optional type-check command
 // (typecheck.command) is a separate step, because stripping does not check types.
 // Config lives in verify.config.json; protect it (and this file) so the agent cannot weaken the gate.
+// With "adapter": "junit" the test steps (1, replicates, holdout, journeys) are judged from a JUnit report and
+// the runner's own summary instead of node:test output (lib/reports/, ADR-0003); coverage, test quality and
+// mutation are then reported as not checked until their readers exist.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { runVerify } = require('./verify');
 const { tailOutput } = require('./stop-loop');
@@ -20,6 +22,9 @@ const { lineCoverage, collectCoverage } = require('./v8-coverage');
 const { analyzeTestFile } = require('./test-quality');
 const { listMutations, applyMutation, selectMutations } = require('./mutate');
 const { TS_FILE, DECLARATION_FILE, stripTypes } = require('./typescript');
+const { makeTemp, removeTemp, cleanupTempDirs } = require('./temp-dirs');
+const { RUNNERS } = require('./reports/runners');
+const { runReported, counts, formatFailures, passedNames } = require('./reports/test-run');
 
 const SOURCE_FILE = /\.[cm]?[jt]s$/; // .tsx/.jsx are not supported: Node's type stripping does not handle JSX
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]s$/;
@@ -29,6 +34,9 @@ function loadConfig(file) {
   try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { throw new Error(`Cannot read config ${file}: ${err.message}`); }
   if (typeof raw.testCommand !== 'string' || !raw.testCommand.trim()) throw new Error('config.testCommand (string) is required');
   const config = {
+    adapter: raw.adapter ?? 'node',
+    runner: raw.runner ?? null,
+    weakerGate: raw.weakerGate ?? null,
     testCommand: raw.testCommand,
     timeoutMs: raw.timeoutMs ?? 300_000,
     minTests: raw.minTests ?? 1,
@@ -36,8 +44,8 @@ function loadConfig(file) {
     coverage: { minLines: 80, minFileLines: 50, minSourceFiles: 1, exclude: [], ...raw.coverage },
     testQuality: { dirs: ['tests'], minAssertionsPerFile: 3, ...raw.testQuality },
     replicates: raw.replicates ?? 2,
-    holdout: raw.holdout ? { minTests: 1, ...raw.holdout } : null,
-    journeys: raw.journeys ? { minTests: 1, ...raw.journeys } : null,
+    holdout: raw.holdout ? { minTests: 1, runner: raw.runner ?? null, ...raw.holdout } : null,
+    journeys: raw.journeys ? { minTests: 1, runner: raw.runner ?? null, ...raw.journeys } : null,
     typecheck: raw.typecheck ? { timeoutMs: 120_000, ...raw.typecheck } : null,
     mutation: { samples: 6, minKillRate: 0.6, copy: ['acceptance', 'package.json'], timeoutMs: 120_000, timeoutFactor: 3, minTimeoutMs: 10_000, ...raw.mutation },
   };
@@ -45,7 +53,33 @@ function loadConfig(file) {
   return config;
 }
 
-function validate({ coverage, mutation, replicates, holdout, journeys, typecheck }) {
+// `node` (default) is the built-in node:test path. `junit` judges any runner from its JUnit report and its own
+// stdout summary (ADR-0003); `runner` names how the gate hands that runner the report path (lib/reports/runners.js).
+const ADAPTERS = ['node', 'junit'];
+
+function validateAdapter({ adapter, runner, holdout, journeys }) {
+  if (!ADAPTERS.includes(adapter)) throw new Error(`adapter must be one of ${ADAPTERS.join(', ')}`);
+  const runners = Object.keys(RUNNERS).join(', ');
+  if (adapter === 'node') {
+    if (runner !== null || holdout?.runner || journeys?.runner) throw new Error('runner applies only with "adapter": "junit"; the node adapter reads node:test output');
+    return;
+  }
+  const named = [['runner', runner]];
+  if (holdout) named.push(['holdout.runner', holdout.runner]);
+  if (journeys) named.push(['journeys.runner', journeys.runner]);
+  for (const [key, value] of named) {
+    if (!Object.hasOwn(RUNNERS, value ?? '')) throw new Error(`${key} must be one of ${runners} with "adapter": "junit"`);
+  }
+}
+
+function validate(config) {
+  validateAdapter(config);
+  const { weakerGate } = config;
+  if (weakerGate !== null && (!Array.isArray(weakerGate.missing) || !weakerGate.missing.every((c) => typeof c === 'string')
+    || typeof weakerGate.decision !== 'string' || !weakerGate.decision.trim())) {
+    throw new Error('weakerGate needs "missing" (array of check names) and "decision" (where the owner\'s decision is recorded)');
+  }
+  const { coverage, mutation, replicates, holdout, journeys, typecheck } = config;
   const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
   if (!Number.isInteger(replicates) || replicates < 1 || replicates > 5) throw new Error('replicates must be an integer between 1 and 5');
   if (holdout && (typeof holdout.command !== 'string' || !holdout.command.trim())) throw new Error('holdout.command (string) is required when holdout is set');
@@ -61,19 +95,6 @@ function validate({ coverage, mutation, replicates, holdout, journeys, typecheck
   if (!inRange(coverage.minFileLines, 0, 100)) throw new Error('coverage.minFileLines must be between 0 and 100');
   if (!Number.isInteger(coverage.minSourceFiles) || coverage.minSourceFiles < 0) throw new Error('coverage.minSourceFiles must be an integer >= 0');
 }
-
-// Temp dirs are removed on normal exit and, via cleanupTempDirs(), when the process is signalled.
-const tempDirs = new Set();
-function makeTemp(prefix) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  tempDirs.add(dir);
-  return dir;
-}
-function removeTemp(dir) {
-  fs.rmSync(dir, { recursive: true, force: true });
-  tempDirs.delete(dir);
-}
-function cleanupTempDirs() { for (const dir of [...tempDirs]) removeTemp(dir); }
 
 function walk(root, dir, accept) {
   const abs = path.join(root, dir);
@@ -217,16 +238,103 @@ async function checkJourneys(root, config, out) {
   if (s.skipped > 0 || s.todo > 0) failures.push('journeys: skipped or todo journey tests are not passing');
   if (s.tests < minTests) failures.push(`journeys: only ${s.tests} journey test(s) ran; at least ${minTests} expected`);
   if (failures.length > 0) out(extractFailures(result.output) || tailOutput(result.output, 25, 2500));
-  if (uxFile) {
-    const file = path.resolve(root, uxFile);
-    if (!fs.existsSync(file)) return [...failures, `journeys: ${uxFile} not found; it lists the journeys the walkthrough must cover`];
-    const ids = journeyIds(fs.readFileSync(file, 'utf8'));
-    if (ids.length === 0) failures.push(`journeys: ${uxFile} names no journey (J1, J2, ...) or UI check (UC1, ...) ids`);
-    const names = passedTestNames(result.output);
-    const missing = ids.filter((id) => !names.some((n) => new RegExp(`\\b${id}\\b`).test(n)));
-    if (missing.length > 0) failures.push(`journeys: no passing browser test is named for ${missing.join(', ')} (${uxFile}); start each test name with the id it walks, e.g. "J1: ..."`);
-  }
+  return uxFile ? [...failures, ...checkJourneyIds(root, uxFile, passedTestNames(result.output))] : failures;
+}
+
+// Every journey or UI-check id that ux.md names needs a passing test whose name contains it.
+function checkJourneyIds(root, uxFile, names) {
+  const file = path.resolve(root, uxFile);
+  if (!fs.existsSync(file)) return [`journeys: ${uxFile} not found; it lists the journeys the walkthrough must cover`];
+  const failures = [];
+  const ids = journeyIds(fs.readFileSync(file, 'utf8'));
+  if (ids.length === 0) failures.push(`journeys: ${uxFile} names no journey (J1, J2, ...) or UI check (UC1, ...) ids`);
+  const missing = ids.filter((id) => !names.some((n) => new RegExp(`\\b${id}\\b`).test(n)));
+  if (missing.length > 0) failures.push(`journeys: no passing browser test is named for ${missing.join(', ')} (${uxFile}); start each test name with the id it walks, e.g. "J1: ..."`);
   return failures;
+}
+
+// ---- Report contract (adapter "junit", ADR-0003): the same checks, judged from JUnit and the runner's summary.
+
+const trustFailures = (label, run) => run.problems.map((p) => `${label}: ${p}`);
+
+function judgeReportTests(run, config) {
+  const failures = trustFailures('tests', run);
+  const s = counts(run);
+  if (run.result.timedOut) failures.push(`tests timed out after ${config.timeoutMs} ms`);
+  else if (!run.result.pass && run.report && s.fail === 0) failures.push(`tests failed: the command exited with code ${run.result.code} although its JUnit report shows no failing test; a non-zero exit always fails`);
+  else if (!run.result.pass || s.fail > 0) failures.push(`tests failed (${s.fail} failing)`);
+  if (s.skipped > 0) failures.push(`${s.skipped} skipped or todo test(s): skipping is not passing`);
+  if (s.tests < config.minTests) failures.push(`only ${s.tests} test(s) ran; at least ${config.minTests} expected`);
+  return { summary: s, failures };
+}
+
+const reportSignature = (run) => {
+  const s = counts(run);
+  return `${run.result.pass ? 'pass' : 'fail'}: ${s.pass}/${s.tests} passing, ${s.fail} failing`;
+};
+
+async function checkReportReplicates(root, config, first, out) {
+  const failures = [];
+  const expected = reportSignature(first);
+  for (let run = 2; run <= config.replicates; run += 1) {
+    const again = await runReported(config.testCommand, config.runner, { cwd: root, timeoutMs: config.timeoutMs });
+    const got = reportSignature(again);
+    if (again.problems.length > 0) failures.push(...trustFailures(`replicate run ${run}`, again));
+    else if (got !== expected) failures.push(`flaky tests: run 1 -> ${expected}; run ${run} -> ${got}. The suite is non-deterministic, so it cannot be a definition of done; make it deterministic`);
+    if (failures.length > 0) {
+      out(tailOutput(again.result.output, 25, 2500));
+      break;
+    }
+  }
+  out(failures.length === 0 ? `  replicates: ${config.replicates} runs agree` : '  replicates: DISAGREE');
+  return failures;
+}
+
+async function checkReportTests(root, config, fast, out) {
+  const run = await runReported(config.testCommand, config.runner, { cwd: root, timeoutMs: config.timeoutMs });
+  const tests = judgeReportTests(run, config);
+  const failures = [...tests.failures];
+  let failingTests = '';
+  out(`  ${tests.summary.pass}/${tests.summary.tests} passing`);
+  if (failures.length > 0) {
+    failingTests = formatFailures(run.report);
+    if (failingTests === '') out(tailOutput(run.result.output, 25, 2500));
+  }
+  if (failures.length === 0 && config.replicates > 1) {
+    if (fast) out('  replicates: skipped (--fast); the full run is the definition of done');
+    else failures.push(...await checkReportReplicates(root, config, run, out));
+  }
+  return { failures, failingTests };
+}
+
+// Counts only: no test name, message, path or output of the hidden set is ever printed.
+async function checkReportHoldout(root, config, out) {
+  const { command, minTests, runner } = config.holdout;
+  const run = await runReported(command, runner, { cwd: root, timeoutMs: config.timeoutMs });
+  const s = counts(run);
+  out(`  holdout: ${s.pass}/${s.tests} passing`);
+  const detail = 'Details are withheld on purpose: re-read the spec\'s acceptance criteria and handle cases beyond the visible tests.';
+  if (run.result.timedOut) return [`holdout: the hidden tests timed out. ${detail}`];
+  // Trust problems are summarised in one fixed sentence: even their wording is not allowed to carry report text.
+  if (run.problems.length > 0) return ['holdout: the JUnit report could not be trusted (parse or totals problem); details hidden'];
+  if (s.tests < minTests) return [`holdout: only ${s.tests} hidden test(s) ran; at least ${minTests} expected (is the holdout set missing?)`];
+  if (s.skipped > 0) return ['holdout: skipped or todo hidden tests are not passing'];
+  if (!run.result.pass || s.fail > 0) return [`holdout: ${s.fail || 'some'} of ${s.tests} hidden acceptance test(s) fail. ${detail}`];
+  return [];
+}
+
+async function checkReportJourneys(root, config, out) {
+  const { command, minTests, uxFile, runner } = config.journeys;
+  const run = await runReported(command, runner, { cwd: root, timeoutMs: config.timeoutMs });
+  const s = counts(run);
+  out(`  journeys: ${s.pass}/${s.tests} passing`);
+  const failures = trustFailures('journeys', run);
+  if (run.result.timedOut) failures.push(`journeys: the browser walkthrough timed out after ${config.timeoutMs} ms`);
+  else if (!run.result.pass || s.fail > 0) failures.push(`journeys: ${s.fail || 'some'} browser journey test(s) fail; the product does not work for a user yet`);
+  if (s.skipped > 0) failures.push('journeys: skipped or todo journey tests are not passing');
+  if (s.tests < minTests) failures.push(`journeys: only ${s.tests} journey test(s) ran; at least ${minTests} expected`);
+  if (failures.length > 0) out(formatFailures(run.report) || tailOutput(run.result.output, 25, 2500));
+  return uxFile ? [...failures, ...checkJourneyIds(root, uxFile, passedNames(run.report))] : failures;
 }
 
 // A mutant that hangs the suite counts as killed, so wait only a few multiples of the healthy run time.
@@ -289,25 +397,50 @@ async function checkMutation(root, config, baselineMs, out) {
     : [];
 }
 
+// A gate that cannot run some checks passes only on a recorded owner decision naming exactly those checks
+// (#55: a weaker gate is an owner choice with the missing checks listed, never a silent pass).
+function checkWeakerGate(config, notChecked) {
+  const accepted = config.weakerGate;
+  if (!accepted) {
+    if (notChecked.length === 0) return [];
+    return [`weaker gate: the ${config.adapter} adapter does not run ${notChecked.join(', ')}; this needs an owner decision recorded as "weakerGate": {"missing": ${JSON.stringify(notChecked)}, "decision": "<where it is recorded>"} in verify.config.json`];
+  }
+  const unlisted = notChecked.filter((c) => !accepted.missing.includes(c));
+  const extra = accepted.missing.filter((c) => !notChecked.includes(c));
+  if (unlisted.length === 0 && extra.length === 0) return [];
+  const detail = [unlisted.length > 0 ? ` (not listed: ${unlisted.join(', ')})` : '', extra.length > 0 ? ` (listed but checked: ${extra.join(', ')})` : ''].join('');
+  return [`weaker gate: weakerGate.missing must list exactly ${notChecked.join(', ') || 'nothing'}${detail}`];
+}
+
 async function strongVerify(root, config, { fast = false, out = console.log } = {}) {
+  const reports = config.adapter !== 'node';
+  const notChecked = [];
+  const notAvailable = (step, label) => { notChecked.push(label); out(`  ${step}: not available for the ${config.adapter} adapter`); };
   const covDir = makeTemp('verify-cov-');
   const failures = [];
   let failingTests = '';
+  let baselineMs = 0;
   try {
     out('[1/7] tests');
-    const startedAt = Date.now();
-    const result = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env: { NODE_V8_COVERAGE: covDir } });
-    const baselineMs = Date.now() - startedAt;
-    const tests = checkTests(result, config);
-    failures.push(...tests.failures);
-    out(`  ${tests.summary.pass}/${tests.summary.tests} passing`);
-    if (tests.failures.length > 0) {
-      failingTests = extractFailures(result.output);
-      if (failingTests === '') out(tailOutput(result.output, 25, 2500));
-    }
-    if (tests.failures.length === 0 && config.replicates > 1) {
-      if (fast) out('  replicates: skipped (--fast); the full run is the definition of done');
-      else failures.push(...await checkReplicates(root, config, result, out));
+    if (reports) {
+      const tests = await checkReportTests(root, config, fast, out);
+      failures.push(...tests.failures);
+      failingTests = tests.failingTests;
+    } else {
+      const startedAt = Date.now();
+      const result = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env: { NODE_V8_COVERAGE: covDir } });
+      baselineMs = Date.now() - startedAt;
+      const tests = checkTests(result, config);
+      failures.push(...tests.failures);
+      out(`  ${tests.summary.pass}/${tests.summary.tests} passing`);
+      if (tests.failures.length > 0) {
+        failingTests = extractFailures(result.output);
+        if (failingTests === '') out(tailOutput(result.output, 25, 2500));
+      }
+      if (tests.failures.length === 0 && config.replicates > 1) {
+        if (fast) out('  replicates: skipped (--fast); the full run is the definition of done');
+        else failures.push(...await checkReplicates(root, config, result, out));
+      }
     }
 
     out('[2/7] type check');
@@ -315,34 +448,44 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     else failures.push(...await checkTypes(root, config, out));
 
     out('[3/7] source coverage');
-    failures.push(...checkCoverage(root, config, covDir, out));
+    if (reports) notAvailable('coverage', 'coverage');
+    else failures.push(...checkCoverage(root, config, covDir, out));
     out('[4/7] test quality');
-    const quality = checkTestQuality(root, config);
-    failures.push(...quality);
-    out(quality.length === 0 ? '  ok' : quality.map((q) => `  ${q}`).join('\n'));
+    if (reports) notAvailable('test quality', 'test-quality');
+    else {
+      const quality = checkTestQuality(root, config);
+      failures.push(...quality);
+      out(quality.length === 0 ? '  ok' : quality.map((q) => `  ${q}`).join('\n'));
+    }
 
     out('[5/7] hidden holdout set');
     if (!config.holdout) out('  holdout: not configured');
     else if (fast) out('  holdout: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  holdout: skipped until the checks above pass');
-    else failures.push(...await checkHoldout(root, config, out));
+    else failures.push(...await (reports ? checkReportHoldout : checkHoldout)(root, config, out));
 
     out('[6/7] user journeys in a browser');
     if (!config.journeys) out('  journeys: not configured');
     else if (fast) out('  journeys: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  journeys: skipped until the checks above pass');
-    else failures.push(...await checkJourneys(root, config, out));
+    else failures.push(...await (reports ? checkReportJourneys : checkJourneys)(root, config, out));
 
     out('[7/7] mutation spot-check');
-    if (fast) out('  mutation: skipped (--fast); the full run is the definition of done');
+    if (reports) notAvailable('mutation', 'mutation');
+    else if (fast) out('  mutation: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  mutation: skipped until the checks above pass');
     else failures.push(...await checkMutation(root, config, baselineMs, out));
   } finally {
     removeTemp(covDir);
   }
+  failures.push(...checkWeakerGate(config, notChecked));
   out(failures.length === 0 ? 'VERIFY PASSED' : `VERIFY FAILED:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
+  if (notChecked.length > 0) {
+    const decision = config.weakerGate ? ` (owner decision: ${config.weakerGate.decision})` : '';
+    out(`  not checked (weaker gate, ${config.adapter} adapter): ${notChecked.join(', ')}${decision}`);
+  }
   if (failingTests !== '') out(`\nFailing tests (fix these at the root cause):\n${failingTests}`);
-  return { pass: failures.length === 0, failures };
+  return { pass: failures.length === 0, failures, notChecked };
 }
 
 module.exports = { strongVerify, loadConfig, mutationTimeoutMs, cleanupTempDirs };
