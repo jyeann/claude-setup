@@ -19,6 +19,8 @@ const { parseTasks, validateTasks } = require('./tasks');
 const CLOSING_LINE = /^\s*(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\s*$/gim;
 // "#N" not preceded by a word character, "/" or "&": skips "acme/other#5" and HTML entities like "&#39;".
 const REF = /(?<![\w/&])#(\d+)\b/g;
+// The generated-at time in the header line; `check` ignores it.
+const GENERATED_AT = / at \d{4}-\d\d-\d\dT[\d:.]+Z\./;
 
 // log: commits as `<sha>\0<message>\x01` (git log --format=%H%x00%B%x01). Returns the issue numbers
 // closed by commits that were not reverted. Revert commits never close anything themselves.
@@ -165,4 +167,27 @@ function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Se
   return { text, errors };
 }
 
-module.exports = { buildTaskList, closingRefs, bodyBlockers, ticketBranchIssue, prClosingRefs };
+// Compares a task list on disk with a freshly generated one, ignoring the generated-at time in the
+// header. Returns the ids of the tasks whose section differs, was added or was removed, plus "header"
+// when anything before the first task differs. Empty means the file matches.
+function diffTaskLists(expected, actual) {
+  const sections = (text) => {
+    const map = new Map();
+    let key = 'header';
+    const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+    lines[0] = lines[0].replace(GENERATED_AT, ' at <time>.');
+    for (const line of lines) {
+      const heading = /^##\s+([^:\s]+)\s*:/.exec(line);
+      if (heading || /^##\s/.test(line)) key = heading ? heading[1] : line.trim();
+      map.set(key, `${map.get(key) || ''}${line}\n`);
+    }
+    return map;
+  };
+  const a = sections(expected);
+  const b = sections(actual);
+  const keys = [...new Set([...a.keys(), ...b.keys()])].filter((k) => a.get(k) !== b.get(k));
+  const num = (k) => Number(/^T(\d+)$/.exec(k)?.[1] ?? Infinity);
+  return keys.sort((x, y) => (x === 'header' ? -1 : y === 'header' ? 1 : num(x) - num(y) || x.localeCompare(y)));
+}
+
+module.exports = { buildTaskList, closingRefs, bodyBlockers, diffTaskLists, ticketBranchIssue, prClosingRefs };

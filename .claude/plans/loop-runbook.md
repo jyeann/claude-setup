@@ -5,7 +5,7 @@ Pattern: sequential | Mode: safe
 ## Goal
 Work through every AFK task in `TASKS.md` until all are done and the test suite is green.
 `TASKS.md` is generated from a spec issue's tickets by `tasks-sync.js pull` (format: `.claude/harness/templates/tasks.md`); never edit it.
-Pull it with: `node .claude/harness/bin/tasks-sync.js pull --spec <n> --from-json <issues.json>` (see `docs/agents/issue-tracker.md`).
+Pull it with: `node .claude/harness/bin/tasks-sync.js pull --spec <n>` (through `gh`; without it, `--from-json <issues.json>` saved with the GitHub MCP tools, see `docs/agents/issue-tracker.md`).
 
 ## Run it under the harness (enforced limits)
 Prose limits depend on the agent obeying them. Start the run with the harness so they are enforced:
@@ -38,7 +38,7 @@ Every halt gets one bounded diagnosis turn (`HARNESS-DIAGNOSIS.md`) before the r
 - Record the baseline in `.claude/plans/loop-log.md`: failing tests, coverage.
 
 ## Each iteration
-1. Save the issues JSON again and pull the task list (`tasks-sync.js pull`, above), then run `node .claude/harness/bin/next-task.js TASKS.md`. If a task is
+1. Pull the task list (`tasks-sync.js pull`, above; with `--from-json`, save the JSON again first), then run `node .claude/harness/bin/next-task.js TASKS.md`. If a task is
    `doing` on your ticket branch, resume it first. Exit 0 lists the ready tasks (AFK, unblocked): take the first `T<N>`
    and create its ticket branch (rule 1). Exit 3 means stop: `ALL_DONE` = success, `NEEDS_HUMAN` or `STUCK` = escalate,
    `IN_PROGRESS` = an interrupted ticket branch or checkpoint exists: `git switch` to that ticket branch, run

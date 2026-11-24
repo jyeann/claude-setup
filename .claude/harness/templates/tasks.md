@@ -1,6 +1,6 @@
 # Tasks
 
-> **Generated, do not edit.** `node .claude/harness/bin/tasks-sync.js pull --spec <n> --from-json <issues.json>` writes this
+> **Generated, do not edit.** `node .claude/harness/bin/tasks-sync.js pull --spec <n>` writes this
 > file from a spec issue's tickets (task `T<N>` = issue `#N`, `afk`/`hitl` labels = type, `Blocked by` = blocked-by) and
 > overwrites hand edits. Change the issues, or commit with `Closes #N`, then pull again. The tasks below are an example.
 >
