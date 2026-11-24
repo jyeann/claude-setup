@@ -1,0 +1,55 @@
+{
+  "_about": "Adapter catalogue (#62, spec #55). Read by orch-product-team when it proposes a stack at kickoff and by pipeline.js for the design phase's Stack section; no always-loaded rule refers to it. Fixture paths are relative to the claude-setup repository root (fixtures are not installed into product repositories).",
+  "statuses": {
+    "proven": "fixture green in CI and at least one product built with it",
+    "experimental": "fixture green only",
+    "planned": "no adapter yet: choosing this stack needs one of the unsupported-stack options"
+  },
+  "unsupportedOptions": {
+    "supported alternative": "choose a stack whose adapter is proven or experimental",
+    "weaker gate": "run an existing adapter without the checks it cannot run; the missing checks are recorded in decisions.md and in verify.config.json weakerGate, and verify.js prints them on every run",
+    "adapter first": "build the adapter first, as its own spec, then continue this product"
+  },
+  "adapters": [
+    {
+      "id": "node",
+      "status": "proven",
+      "stacks": ["JavaScript or TypeScript on Node.js, tests on node:test (TypeScript through Node's type stripping)"],
+      "productKinds": ["web", "API", "CLI", "library", "MCP server", "bot"],
+      "checks": ["tests", "replicates", "type check", "coverage", "test-quality", "holdout", "journeys", "mutation"],
+      "missingChecks": [],
+      "limits": [".tsx and .jsx files are not supported (Node's type stripping does not handle JSX)", "the type check runs only when typecheck.command is set"],
+      "fixture": "testbench/retro-board"
+    },
+    {
+      "id": "vitest-stryker",
+      "status": "experimental",
+      "stacks": ["Vite + React + TypeScript: Vitest, Stryker on the vitest runner, Playwright"],
+      "productKinds": ["web"],
+      "checks": ["tests", "replicates", "type check", "coverage", "test-quality", "holdout", "journeys", "mutation"],
+      "missingChecks": [],
+      "limits": ["TypeScript 7 breaks Stryker 10.1.1: pin typescript@^6", "Stryker's TypeScript checker is off by default; tsc --noEmit runs once as the required type check"],
+      "fixture": ".claude/harness/fixtures/slug-react"
+    },
+    {
+      "id": "junit",
+      "status": "experimental",
+      "stacks": ["a project whose runner the gate reads JUnit XML from: vitest or playwright"],
+      "productKinds": ["web", "API", "CLI", "library"],
+      "checks": ["tests", "replicates", "type check", "coverage", "holdout", "journeys", "mutation"],
+      "missingChecks": [
+        { "check": "test-quality", "when": "always" },
+        { "check": "coverage", "when": "the main runner writes no lcov (playwright)" },
+        { "check": "mutation", "when": "mutation.command is not set" }
+      ],
+      "limits": ["report contract proven with a stand-in runner only", "vitest runner proven through the vitest-stryker fixture", "playwright as the main runner unproven", "each missing check needs the owner's weaker-gate decision in design.md's Stack section and in verify.config.json weakerGate"],
+      "fixture": ".claude/harness/test/fixtures/standin-runner.sh"
+    },
+    { "id": "python", "status": "planned", "stacks": ["Python"], "productKinds": ["API", "CLI", "library", "bot"], "checks": [], "missingChecks": [], "limits": [], "fixture": null },
+    { "id": "rust", "status": "planned", "stacks": ["Rust"], "productKinds": ["CLI", "library", "API"], "checks": [], "missingChecks": [], "limits": [], "fixture": null },
+    { "id": "dotnet", "status": "planned", "stacks": [".NET"], "productKinds": ["API", "desktop", "library"], "checks": [], "missingChecks": [], "limits": [], "fixture": null },
+    { "id": "expo-react-native", "status": "planned", "stacks": ["mobile: Expo / React Native"], "productKinds": ["mobile"], "checks": [], "missingChecks": [], "limits": [], "fixture": null },
+    { "id": "electron", "status": "planned", "stacks": ["desktop: Electron"], "productKinds": ["desktop"], "checks": [], "missingChecks": [], "limits": [], "fixture": null },
+    { "id": "wechat", "status": "planned", "stacks": ["WeChat mini program"], "productKinds": ["mini program"], "checks": [], "missingChecks": [], "limits": [], "fixture": null }
+  ]
+}

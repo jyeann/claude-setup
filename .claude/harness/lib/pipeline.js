@@ -10,6 +10,8 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { runVerify } = require('./verify');
 const { fetchIssue, fetchIssueComments } = require('./gh-issues');
+const { OPTIONS, loadCatalogue, readStack } = require('./catalogue');
+const { adapterProtected, matchesProtected } = require('./protected');
 
 const VERIFY_BIN = path.join(__dirname, '..', 'bin', 'verify.js');
 const TASKS_SYNC_BIN = path.join(__dirname, '..', 'bin', 'tasks-sync.js');
@@ -22,6 +24,7 @@ const AMEND = /^\s*(?:[-*]\s*)?AMEND:?\s+`?([^\s`]+)`?/gm;
 // repository, which gh resolves from the clone): a run cannot point its gates at another repository's issue.
 const SPEC_ISSUE = /^\s*(?:[-*]\s*)?Spec issue:\s*#(\d+)\s*$/mi;
 const LOOK = /^\s*(?:[-*]\s*)?Look:\s*\S/mi;
+const STATUS_WORD = /\b(?:proven|experimental|planned)\b/i;
 // The one page the owner reads before spec-approved (templates/spec-approved-page.md, #47).
 const PAGE = 'spec-approved-page.md';
 const PAGE_SECTIONS = ['Problem and who it is for', 'Not building', 'The real choices', 'Screens', 'Done means', "What we're unsure about", 'Who judges each layer'];
@@ -51,6 +54,26 @@ function doc(dir, name, label, extra = () => []) {
 
 const ids = (text, re) => [...new Set(text.match(re) ?? [])];
 
+// The adapter the design phase chose must be the one in verify.config.json (none: node, the gate's default), and
+// a weakerGate must be the one design.md's Stack section records, which the owner approved at spec-approved.
+// decisions.md may mirror it, but it is in no approval or freeze, so it is never the source.
+function stackPlanProblems({ docs }, config) {
+  const stack = readStack(read(path.join(docs, 'design.md')), loadCatalogue());
+  if (stack.option === 'adapter first' && !stack.adapter) return ['design.md\'s Stack section takes option "adapter first": build the adapter as its own spec and add it to the adapter catalogue, then name it in the Stack section ("Adapter: <id> (<status>)") before planning this product'];
+  const out = [];
+  if (stack.adapter && (config.adapter ?? 'node') !== stack.adapter) {
+    const now = config.adapter === undefined ? 'has no "adapter" (so node)' : `"adapter" is "${config.adapter}"`;
+    out.push(`verify.config.json ${now}, but design.md's Stack section chose ${stack.adapter}: write the chosen adapter into verify.config.json`);
+  }
+  if (config.weakerGate !== undefined && config.weakerGate !== null) {
+    const missing = Array.isArray(config.weakerGate.missing) ? config.weakerGate.missing : [];
+    const same = (a, b) => [...a].sort().join(',') === [...b].sort().join(',');
+    if (stack.option !== 'weaker gate') out.push('verify.config.json has a weakerGate, but design.md\'s Stack section does not take option "weaker gate": a weaker gate is the owner\'s choice at spec-approved; record "Unsupported: <stack>; option: weaker gate" and "Weaker gate: <checks>" there, or remove weakerGate');
+    else if (!same(missing, stack.weakerGate)) out.push(`verify.config.json weakerGate.missing is ${missing.join(', ') || 'empty'}, but design.md's Stack section approves a weaker gate without ${stack.weakerGate.join(', ')} only: make them match; widening it needs an approach redirect`);
+  }
+  return out;
+}
+
 function planProblems({ product, docs }) {
   const out = [];
   if (read(path.join(product, 'spec.md')) === null) out.push('spec.md is missing in the product directory');
@@ -61,6 +84,7 @@ function planProblems({ product, docs }) {
   if (config) {
     if (!config.holdout?.command) out.push('verify.config.json has no holdout.command: hidden acceptance tests are part of the gate');
     if (!config.journeys?.command || !config.journeys?.uxFile) out.push('verify.config.json has no journeys.command and journeys.uxFile: the browser walkthrough of ux.md is part of the gate');
+    out.push(...stackPlanProblems({ docs }, config));
   }
   if (!filesUnder(path.join(product, 'acceptance')).some((f) => TEST_FILE.test(f))) out.push('no acceptance tests in acceptance/ (the test author writes them before any builder starts)');
   if (read(path.join(product, 'TASKS.md')) === null && read(path.join(docs, 'TASKS.md')) === null) out.push('TASKS.md is missing: run tasks-sync pull --spec <n> to generate it from the spec issue (product or docs directory)');
@@ -85,7 +109,27 @@ function pageProblems(docs) {
     if (!body.trim() || PLACEHOLDER.test(body)) return [`${PAGE} section "${name}" is not filled: replace the template placeholders with this product's content`];
     return [];
   });
+  out.push(...stackPartProblems(bodies.get('The real choices'), docs));
   if (CODE_FENCE.test(text)) out.push(`${PAGE} contains a code block: write the page in plain language, with no code`);
+  return out;
+}
+
+// The stack is a one-way choice, shown under "The real choices" as a "### Stack" part: the proposed stack and
+// 1-2 alternatives, each with its adapter status. Checked only once that section is filled.
+function stackPartProblems(lines, docs) {
+  if (!lines) return [];
+  const body = lines.join('\n');
+  if (!body.trim() || PLACEHOLDER.test(body)) return [];
+  const part = /^###\s+Stack\s*$/mi.exec(body);
+  if (!part) return [`${PAGE} section "The real choices" has no "### Stack" part: add the proposed stack and 1-2 alternatives, each with its adapter status and the checks the gate would not run`];
+  const text = body.slice(part.index + part[0].length).split(/^###\s/m)[0];
+  const out = [];
+  if (!STATUS_WORD.test(text)) out.push(`${PAGE} "### Stack" names no adapter status: give each stack its status from the adapter catalogue (proven, experimental or planned) and the checks the gate would not run`);
+  if (!/\balternatives?\b/i.test(text)) out.push(`${PAGE} "### Stack" names no alternative: give 1-2 alternatives to the proposed stack, each with its status`);
+  if (readStack(read(path.join(docs, 'design.md')), loadCatalogue()).option) {
+    const missing = OPTIONS.filter((o) => !new RegExp(`\\b${o}\\b`, 'i').test(text));
+    if (missing.length) out.push(`design.md records an unsupported stack, but "### Stack" does not give the three options (missing: ${missing.join(', ')}): a supported alternative, a weaker gate (with the checks it leaves out), or building the adapter first`);
+  }
   return out;
 }
 
@@ -239,7 +283,21 @@ function phaseOf(ctx, file) {
   if (!inside(ctx.product, abs)) return null;
   const p = rel(ctx.product, abs);
   if (p === 'TASKS.md' || p.split('/').some((s) => s.startsWith('.') || s === 'node_modules' || s === 'coverage')) return null;
-  return FROZEN_IN_PRODUCT.test(p) ? 'plan' : 'build';
+  return FROZEN_IN_PRODUCT.test(p) || isToolConfig(ctx.product, p) ? 'plan' : 'build';
+}
+
+// The tool configs of the adapter named in verify.config.json (lib/protected.js), frozen with the gate files.
+const toolConfigList = (product) => adapterProtected(read(path.join(product, 'verify.config.json')));
+const isToolConfig = (product, p, list = toolConfigList(product)) => list.some((entry) => matchesProtected(p, entry));
+
+// Every file but .git and node_modules: a tool config in a dot folder (.storybook/vite.config.ts) is frozen too.
+function walkAll(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    if (e.isDirectory() && (e.name === '.git' || e.name === 'node_modules')) return [];
+    const p = path.join(dir, e.name);
+    return e.isDirectory() ? walkAll(p) : [p];
+  });
 }
 
 function walk(dir) {
@@ -407,7 +465,10 @@ async function defaultTasksCheck({ spec, file, cwd, timeout = 180000 }) {
 function frozenFiles({ root, product, docs }) {
   const single = [path.join(product, 'spec.md'), path.join(product, 'verify.config.json'), path.join(docs, 'ux.md')];
   const trees = ['acceptance', 'holdout'].flatMap((d) => filesUnder(path.join(product, d)));
-  return Object.fromEntries([...single, ...trees].filter((f) => fs.existsSync(f)).map((f) => [rel(root, f), sha(fs.readFileSync(f))]));
+  const list = toolConfigList(product);
+  const exact = list.filter((e) => !e.includes('*')).map((e) => path.join(product, e)).filter((f) => inside(product, f));
+  const tools = list.some((e) => e.includes('*')) ? walkAll(product).filter((f) => isToolConfig(product, rel(product, f), list)) : [];
+  return Object.fromEntries([...new Set([...single, ...trees, ...exact, ...tools])].filter((f) => fs.existsSync(f)).map((f) => [rel(root, f), sha(fs.readFileSync(f))]));
 }
 
 function amendCounts(docs) {
@@ -449,7 +510,7 @@ const PHASES = [
     const missing = ids(read(path.join(docs, 'brief.md')) ?? '', /\bSC\d+\b/g).filter((sc) => !new RegExp(`\\b${sc}\\b`).test(t));
     return missing.length ? [`ux.md has no journey for success criteria ${missing.join(', ')}`] : [];
   })],
-  ['design', ({ docs }) => doc(docs, 'design.md', 'system design')],
+  ['design', ({ docs }) => doc(docs, 'design.md', 'system design', (t) => readStack(t, loadCatalogue()).problems)],
   ['spec', specProblems],
   ['spec-approved', ownerGate('spec-approved')],
   ['plan', async (ctx) => {
