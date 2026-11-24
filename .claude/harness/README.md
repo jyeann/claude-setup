@@ -75,6 +75,21 @@ Supported: projects that run tests with Node's built-in runner and native type s
 
 Requirements and limits: Node/`node:test` projects (JavaScript, or TypeScript as above); the mutation run copies `srcDirs`, the test dirs and `mutation.copy` to a temp dir (add `tsconfig.json` there if your test command reads it), first proves that copy passes its own tests, and never touches your real files; a child process that is killed by a signal writes no coverage, so servers must handle `SIGTERM` and exit 0 (the gate says so when a file shows 0%); the mutation operator set is small and equivalent mutants make 100% unrealistic, hence a 60% default floor; the sample changes with the source (seeded from it) so the agent cannot memorise it. Not covered: logic placed outside `srcDirs`, non-`node:test` runners, JSX, and deleting a source file (set `coverage.minSourceFiles`; the git-tracked list is not consulted).
 
+### Report contract (`"adapter": "junit"`, ADR-0003)
+With `"adapter": "junit"` the gate judges test results from a **JUnit XML** report written by the project's own runner, so the runner need not be JavaScript. Without `adapter` (or with `"node"`) nothing changes.
+```json
+{ "adapter": "junit", "runner": "pytest", "testCommand": "pytest tests",
+  "holdout": { "command": "pytest /abs/holdout" },
+  "journeys": { "command": "npx playwright test", "runner": "playwright", "uxFile": "docs/ux.md" } }
+```
+`runner` (`vitest`, `playwright` or `pytest`; `holdout.runner` and `journeys.runner` default to it) says which flags the gate appends to the command and which stdout summary it reads: Vitest `--reporter=default --reporter=junit --outputFile.junit=<file>`, pytest `--junitxml=<file>`, Playwright `--reporter=junit,line --output=<dir>` with the report path in `PLAYWRIGHT_JUNIT_OUTPUT_FILE`, set only for that child process. The flags go at the end of the command, so the command must end with the runner itself (`npm test -- ` style wrappers need the `--`).
+- **Trust rules.** A non-zero exit fails whatever the report says. Every run (the main run, each replicate, the holdout, the journeys) gets a fresh report directory outside the project, created after the run starts and deleted after reading; the gate refuses to start if the temp directory is inside the project. A missing report (the message names the flags), one modified before the run started, a malformed one, or one whose totals (tests, failures, skipped) differ from the runner's own summary line fails the step, showing both sets of numbers.
+- **Same checks as the node path.** Skipped and todo tests fail, `minTests` and replicates apply, the holdout prints counts only (never a hidden test's name, message, command or path, even when its report is rejected), and journey ids in `uxFile` must each have a passing JUnit test whose name contains them. Failing tests are printed as `not ok N - <name>` lines with an `error:` line in the "Failing tests" block, so the no-progress breaker and failure clustering work unchanged.
+- **Not yet measured.** Source coverage (lcov, #58), test quality and mutation (#59) print `not available for the junit adapter`, and every run ends with `not checked (weaker gate, junit adapter): ...`. Treat a pass as "the tests pass, honestly reported", not as the full definition of done.
+- **Remaining risk.** Test code runs with the same rights as the runner, so it could write a consistent fake report *and* print a matching summary. The gate-owned path outside the project, the flags appended at run time and a protected `verify.config.json` make that deliberate cheating rather than an accident, which review and the hidden holdout are there to catch; the gate alone cannot rule it out. A report copied in with a fresh modification time is likewise caught only by the summary check.
+
+Neutrality is tested with `test/fixtures/standin-runner.sh`, a POSIX shell script that behaves like pytest, and with replays of the real Vitest and Playwright reports from the spike (`test/fixtures/reports/`, `docs/process/spike-gate-adapters.md`).
+
 ## Whole-pipeline gate (`bin/pipeline.js`)
 ```bash
 node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product app --docs docs/app' \
