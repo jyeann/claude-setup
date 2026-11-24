@@ -28,6 +28,7 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | Improver | `agents/harness-improver.md`, `/harness-improve` | Read-only agent proposes ONE change from the evidence; a human merges it. |
 
 | Reference check | `bin/check-refs.js` + `lib/refs.js` | Fails on commands, agents, skills or rules that point at a script, skill, rules dir, agent or removed command that does not exist. Runs in CI via the test suite, so an upstream sync that re-adds a broken item is caught. |
+| Layout check | `bin/check-layout.js` + `lib/layout.js` | Opt-in per repository through `.claude/layout.json`: fails when a forbidden folder exists or a tracked doc cites a forbidden path. References written as `git show <rev>:<path>` are history and allowed. This repo forbids `examples/` and `docs/product/` (products are built in their own repository; the test bench is `testbench/`). Runs in CI via the test suite. |
 
 Everything except the secret scan, the dangerous-command blocklist and tracing is inert unless `.harness/state.json` says a run is active.
 
@@ -76,7 +77,7 @@ Requirements and limits: Node/`node:test` projects (JavaScript, or TypeScript as
 
 ## Whole-pipeline gate (`bin/pipeline.js`)
 ```bash
-node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product examples/app --docs docs/product/app' \
+node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product app --docs docs/app' \
   --task "one-line idea" --open-gate-files --no-commit-gate --max 40 --stall 4
 ```
 The Stop hook only holds an agent while verify fails, so with `verify.js` as the command the agent is held during the build and free to end the turn (usually to ask a question) in every other phase. `pipeline.js check` is a verify command for the whole of `orch-product-team`: it checks the nine phases in order (brief, UX, design, plan, build, review, QA, release, retro), stops at the first incomplete one and prints what is missing last, so that is what the Stop hook feeds back. The build phase runs the product's own `verify.js`; later phases are only looked at once it is green, and it is re-run on every check.
