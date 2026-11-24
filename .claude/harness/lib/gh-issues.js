@@ -1,7 +1,8 @@
 'use strict';
 // Reads a spec issue's tickets and the repository's open PRs live from GitHub through `gh api`, in the
 // same input shape that `tasks-sync pull --from-json` takes ({ issues, external, pullRequests }), so the
-// live and saved-JSON paths build the same task list. `run(args)` is injectable for tests and returns spawnSync's { status, stdout, stderr, error }.
+// live and saved-JSON paths build the same task list. `run(args)` is injectable for tests and returns
+// spawnSync's { status, stdout, stderr, error }.
 const { spawnSync } = require('node:child_process');
 const { bodyBlockers } = require('./tasks-sync');
 
