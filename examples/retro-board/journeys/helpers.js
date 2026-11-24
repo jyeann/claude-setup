@@ -111,6 +111,12 @@ async function expectText(locator, expected, opts = POLL) {
   if (typeof expected === 'string') assert.equal(await text(locator.first()), expected);
 }
 
+// A vote shows at once; the server confirms it a moment later, and until then #votes-left has aria-busy="true".
+// Wait for that before anything that needs the server to have the vote: a reload, a restart, closing the retro.
+async function votesSaved(page) {
+  await page.locator(`${t('votes-left')}:not([aria-busy="true"])`).waitFor({ ...POLL, state: 'attached' });
+}
+
 // Wait until fn() resolves truthy, polling the page the way a person watches it; fails after `timeout`.
 async function eventually(fn, message, timeout = 5000) {
   const end = Date.now() + timeout;
@@ -132,4 +138,4 @@ async function recordAnnouncements(page) {
   return { all: () => page.evaluate(() => window.__said), heard: (msg, timeout = 5000) => eventually(async () => (await page.evaluate(() => window.__said)).includes(msg), `#live-polite never said "${msg}"`, timeout) };
 }
 
-module.exports = { ROOT, POLL, t, startApp, harness, createBoard, addCard, card, cardTexts, text, activeTestId, expectText, eventually, recordAnnouncements };
+module.exports = { ROOT, POLL, t, startApp, harness, createBoard, addCard, card, cardTexts, text, activeTestId, expectText, eventually, recordAnnouncements, votesSaved };

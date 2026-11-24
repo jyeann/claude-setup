@@ -64,6 +64,23 @@ export function sortCards(cards, byVotes) {
 // must not change it (it used to remove Delete from other people's cards for the facilitator).
 export const withPageRole = (view, pageRole) => (view && pageRole && view.role !== pageRole ? { ...view, role: pageRole } : view);
 
+// `pending` holds this browser's vote writes the server has not answered yet, oldest first, as
+// {id, voted}: the state the person chose for that card. A board view from the server can predate some of
+// them (the response to an earlier vote), so lay the choices on top; otherwise that view flips a newer
+// vote back until its own response arrives, and a click in that gap toggles the wrong way.
+export function withPendingVotes(view, pending) {
+  if (!view || !pending || pending.length === 0) return view;
+  const out = { ...view, cards: view.cards.map((c) => ({ ...c })) };
+  for (const { id, voted } of pending) {
+    const c = out.cards.find((x) => x.id === id);
+    if (!c || c.voted === voted) continue;
+    c.voted = voted;
+    c.votes += voted ? 1 : -1;
+    out.votesLeft += voted ? -1 : 1;
+  }
+  return out;
+}
+
 // Compare the cards we show with a fresh list. `ownIds` are excluded from "from others".
 export function diffCards(prevCards, nextCards) {
   const prev = new Set(prevCards.map((c) => c.id));

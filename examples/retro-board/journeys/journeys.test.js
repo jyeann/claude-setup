@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { harness, t, POLL, createBoard, addCard, card, cardTexts, text, activeTestId, expectText, eventually, recordAnnouncements } = require('./helpers');
+const { harness, t, POLL, createBoard, addCard, card, cardTexts, text, activeTestId, expectText, eventually, recordAnnouncements, votesSaved } = require('./helpers');
 
 const run = harness(test);
 const HINTS = { 'went-well': 'Nothing here yet. What went well this sprint?', 'to-improve': 'Nothing here yet. What should we do better?', actions: 'Nothing here yet. What will we do about it?' };
@@ -139,6 +139,7 @@ test('J5: three votes per browser, taken back and kept over a reload; a second b
   assert.equal(await count(b, 'Three'), 0);
   assert.equal(await vote(b, 'Four').isDisabled(), false);
 
+  await votesSaved(b);
   await b.reload();
   await card(b, 'One').waitFor(POLL);
   assert.equal(await text(b.locator(t('votes-left'))), '1 vote left');
@@ -150,6 +151,67 @@ test('J5: three votes per browser, taken back and kept over a reload; a second b
   await vote(a, 'One').click();
   await expectText(card(a, 'One').locator(t('vote-count')), /^2/);
   await expectText(card(b, 'One').locator(t('vote-count')), /^2/);
+}));
+
+test('J5 on a slow connection: votes clicked faster than the server answers end as clicked, after a reload too', () => run(async ({ app, open }) => {
+  const a = await open(app.url);
+  const link = await createBoard(a, app.url);
+  const b = await open(link);
+  for (const c of ['One', 'Two']) await addCard(b, 'went-well', c);
+  const vote = (page, c) => card(page, c).locator(t('vote-btn'));
+  const count = async (page, c) => Number.parseInt(await text(card(page, c).locator(t('vote-count'))), 10);
+  // Hold each vote request less than the one before it: requests in flight together reach the server newest first.
+  let held = 0;
+  const answered = [];
+  b.on('response', (r) => { if (r.url().endsWith('/vote')) answered.push(r.request().method()); });
+  await b.route('**/vote', async (route) => {
+    const delay = Math.max(0, 600 - 200 * held);
+    held += 1;
+    await new Promise((resolve) => { setTimeout(resolve, delay); });
+    await route.continue();
+  });
+
+  await vote(b, 'One').click();
+  await vote(b, 'Two').click();
+  await vote(b, 'Two').click(); // take it back before the server has answered
+  await expectText(b.locator(t('votes-left')), '2 votes left');
+  await eventually(() => answered.length === 3, 'all three vote requests answered');
+  await votesSaved(b);
+  assert.equal(await text(b.locator(t('votes-left'))), '2 votes left', 'the answers do not undo a later click');
+  assert.equal(await text(vote(b, 'Two')), 'Vote');
+
+  await b.reload();
+  await card(b, 'Two').waitFor(POLL);
+  assert.equal(await text(b.locator(t('votes-left'))), '2 votes left');
+  assert.deepEqual([await count(b, 'One'), await count(b, 'Two')], [1, 0]);
+}));
+
+test('J5 on a slow connection: the answer to an earlier vote does not flip back a vote still on its way', () => run(async ({ app, open }) => {
+  const a = await open(app.url);
+  const link = await createBoard(a, app.url);
+  const b = await open(link);
+  for (const c of ['One', 'Two']) await addCard(b, 'went-well', c);
+  const vote = (page, c) => card(page, c).locator(t('vote-btn'));
+  const count = async (page, c) => Number.parseInt(await text(card(page, c).locator(t('vote-count'))), 10);
+  // Hold every vote request until the test lets it go.
+  const held = [];
+  await b.route('**/vote', (route) => { held.push(route); });
+  const nextHeld = (n) => eventually(() => held.length >= n, `vote request ${n} sent`);
+
+  await vote(b, 'One').click();
+  await vote(b, 'Two').click();
+  await nextHeld(1);
+  await held[0].continue(); // the server answers the vote on One; Two is still waiting
+  await nextHeld(2); // sent once the page has handled that answer
+  assert.equal(await text(b.locator(t('votes-left'))), '1 vote left', 'the answer for One leaves the vote on Two on screen');
+  assert.equal(await text(vote(b, 'Two')), 'Remove vote');
+  await held[1].continue();
+  await votesSaved(b);
+
+  await b.reload();
+  await card(b, 'Two').waitFor(POLL);
+  assert.equal(await text(b.locator(t('votes-left'))), '1 vote left');
+  assert.deepEqual([await count(b, 'One'), await count(b, 'Two')], [1, 1]);
 }));
 
 test('J6: delete own card with an inline confirm; it disappears for everyone; the facilitator can delete any card', () => run(async ({ app, open }) => {
@@ -192,6 +254,7 @@ test('J7: sort by votes changes only this viewer, toggles back, and is remembere
   await card(a, 'New tie').waitFor(POLL);
   for (const c of ['Top', 'Old tie', 'New tie']) await card(b, c).locator(t('vote-btn')).click();
   await expectText(b.locator(t('votes-left')), 'No votes left');
+  await votesSaved(b);
   await card(a, 'Top').locator(t('vote-btn')).click(); // Top: 2, the ties: 1 each
   await expectText(card(b, 'Top').locator(t('vote-count')), /^2/);
 
@@ -252,6 +315,7 @@ test('J9: close and reopen: banner and controls change for everyone; only the fa
   await addCard(b, 'went-well', 'Participant card');
   await card(a, 'Participant card').waitFor(POLL);
   await card(b, 'Participant card').locator(t('vote-btn')).click();
+  await votesSaved(b); // before the retro closes
   const said = await recordAnnouncements(b);
 
   await a.locator(t('close-retro')).click();
@@ -286,6 +350,7 @@ test('J10: export markdown preview, copy and download, open or closed', () => ru
   for (const page of [a, b]) for (const c of ['Pair more', 'Write the runbook']) await card(page, c).locator(t('vote-btn')).click();
   await expectText(card(a, 'Pair more').locator(t('vote-count')), /^2/);
   await expectText(card(a, 'Write the runbook').locator(t('vote-count')), /^2/);
+  await votesSaved(a); // the export page is a new page load
 
   await a.locator(t('export-link')).click();
   await a.waitForURL(/\/export$/);
@@ -323,6 +388,7 @@ test('J11: after a restart both links show the same board; an open page goes off
   await addCard(b, 'to-improve', 'Survives restart');
   await card(b, 'Survives restart').locator(t('vote-btn')).click();
   await expectText(b.locator(t('votes-left')), '2 votes left');
+  await votesSaved(b);
   await a.locator(t('close-retro')).click();
   await b.locator(t('closed-banner')).waitFor(POLL);
   const said = await recordAnnouncements(b);
@@ -382,6 +448,7 @@ test('J13: first use in two browsers, start to downloaded export, using only vis
   for (const page of [a, b]) {
     for (let i = 0; i < 3; i += 1) await page.locator('button').filter({ hasText: /^Vote$/ }).first().click(); // by its visible label
     await expectText(page.locator(t('votes-left')), 'No votes left');
+    await votesSaved(page);
   }
   await a.getByRole('button', { name: 'Close retro' }).click();
   await b.locator(t('closed-banner')).waitFor(POLL);

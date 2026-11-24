@@ -4,7 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const { harness, t, POLL, createBoard, addCard, card, cardTexts, text, activeTestId, expectText, eventually, recordAnnouncements } = require('./helpers');
+const { harness, t, POLL, createBoard, addCard, card, cardTexts, text, activeTestId, expectText, eventually, recordAnnouncements, votesSaved } = require('./helpers');
 
 const run = harness(test);
 const COLUMNS = ['went-well', 'to-improve', 'actions'];
@@ -150,6 +150,7 @@ test('UC7: three votes, disabled at zero, a vote taken back, all unchanged after
   assert.equal(await vote(b, 'Four').isDisabled(), false);
   await vote(b, 'Three').click();
   await expectText(b.locator(t('votes-left')), 'No votes left');
+  await votesSaved(b);
   const before = await Promise.all(['One', 'Two', 'Three', 'Four'].map(async (c) => [await votes(b, c), await vote(b, c).getAttribute('aria-pressed')]));
   await b.reload();
   await card(b, 'Four').waitFor(POLL);
@@ -288,6 +289,7 @@ test('UC13: stopping the server shows the offline banner in both browsers; after
   await addCard(b, 'actions', 'Kept too');
   await vote(b, 'Kept').click();
   await expectText(b.locator(t('votes-left')), '2 votes left');
+  await votesSaved(b);
   await card(a, 'Kept too').waitFor(POLL);
   await a.locator(t('close-retro')).click();
   await b.locator(t('closed-banner')).waitFor(POLL);
@@ -363,6 +365,7 @@ test('UC15: the whole first-use flow in two browsers with no console errors, the
   for (const page of [a, b]) for (const key of COLUMNS) await vote(page, `${key} A`).click();
   await expectText(a.locator(t('votes-left')), 'No votes left');
   await expectText(b.locator(t('votes-left')), 'No votes left');
+  for (const page of [a, b]) await votesSaved(page); // before the retro closes
 
   // Layout, while the controls are on screen.
   const boxes = (page) => page.locator('section.column').evaluateAll((els) => els.map((el) => { const r = el.getBoundingClientRect(); return { left: Math.round(r.left), top: Math.round(r.top) }; }));

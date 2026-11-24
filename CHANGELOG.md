@@ -16,6 +16,10 @@
 
 - **Gate setup examples are harness fixtures** (#30, spec #27): `examples/todo-api`, `examples/slug-ts` and `examples/sheet-engine` moved unchanged to `.claude/harness/fixtures/`, and the harness README links there. `install.js` does not copy `fixtures/` into other projects: they are specs and acceptance tests without `src/`, so a target's test runner would only find failing tests.
 
+### Fixed
+
+- **retro-board votes clicked faster than the server answers** (#28): vote requests could reach the server out of order, and an earlier answer flipped a later vote back on screen, so a quick "Remove vote" could be lost. Votes now go out one at a time and answers keep the votes still pending; `#votes-left` is `aria-busy` until they are saved. Journeys wait for that before a reload, restart or close, which removes the J5 flake.
+
 ### Removed
 
 - **link-shortener, packing-list and wiki** (#29, spec #27): `examples/{link-shortener,packing-list,wiki}/`, their run records in `docs/product/`, `docs/product/agent-runs.json`, `docs/product/human-corrected.json`, and the `gate-link-shortener` CI job and required check. Git history keeps them (last at `bfad3bb`). `agents-kpi.js` reads the two JSON files only when passed `--finals` or `--human-corrected`, so nothing depends on them by default.
