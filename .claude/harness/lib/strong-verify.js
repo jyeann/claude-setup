@@ -11,8 +11,8 @@
 // Config lives in verify.config.json; protect it (and this file) so the agent cannot weaken the gate.
 // With "adapter": "junit" the test steps (1, replicates, holdout, journeys) are judged from a JUnit report and
 // the runner's own summary instead of node:test output (lib/reports/, ADR-0003). Coverage then comes from the
-// runner's lcov when the runner can write one (#58); test quality and mutation are reported as not checked
-// until their readers exist.
+// runner's lcov when the runner can write one (#58), and mutation from Stryker's mutation-testing-elements report
+// when mutation.command is set (lib/reports/mutation-run.js, #59); test quality is reported as not checked.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -27,6 +27,7 @@ const { makeTemp, removeTemp, cleanupTempDirs } = require('./temp-dirs');
 const { RUNNERS } = require('./reports/runners');
 const { runReported, counts, formatFailures, passedNames } = require('./reports/test-run');
 const { indexLcov, fileCoverage, coverageHints, isBlankSource, countLines } = require('./reports/lcov');
+const { checkReportMutation } = require('./reports/mutation-run');
 
 const SOURCE_FILE = /\.[cm]?[jt]s$/; // .tsx/.jsx are not supported: Node's type stripping does not handle JSX
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]s$/;
@@ -43,6 +44,11 @@ function loadConfig(file) {
   let raw;
   try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { throw new Error(`Cannot read config ${file}: ${err.message}`); }
   if (typeof raw.testCommand !== 'string' || !raw.testCommand.trim()) throw new Error('config.testCommand (string) is required');
+  const reportMutation = Object.keys(raw.mutation ?? {}).filter((k) => REPORT_MUTATION_KEYS.includes(k));
+  if ((raw.adapter ?? 'node') === 'node' && reportMutation.length > 0) {
+    throw new Error(`${reportMutation.map((k) => `mutation.${k}`).join(', ')} apply only with "adapter": "junit"; the node adapter mutates with its built-in sampler`);
+  }
+  if (raw.mutation && Object.hasOwn(raw.mutation, 'incremental')) throw new Error('mutation.incremental is not allowed: the gate never runs mutation incrementally (its cache lives in the project)');
   const config = {
     adapter: raw.adapter ?? 'node',
     runner: raw.runner ?? null,
@@ -59,8 +65,26 @@ function loadConfig(file) {
     typecheck: raw.typecheck ? { timeoutMs: 120_000, ...raw.typecheck } : null,
     mutation: { samples: 6, minKillRate: 0.6, copy: ['acceptance', 'package.json'], timeoutMs: 120_000, timeoutFactor: 3, minTimeoutMs: 10_000, ...raw.mutation },
   };
+  if (config.adapter !== 'node') config.mutation = { checkers: [], ignored: [], exclude: [], budgetMs: 300_000, ...config.mutation };
   validate(config);
   return config;
+}
+
+// Keys of the report-judged mutation step (#59); the node adapter's built-in sampler does not read them.
+const REPORT_MUTATION_KEYS = ['command', 'testRunner', 'checkers', 'ignored', 'exclude', 'budgetMs'];
+
+function validateReportMutation({ adapter, mutation }) {
+  if (adapter === 'node') return;
+  if (!Array.isArray(mutation.exclude) || !mutation.exclude.every((e) => typeof e === 'string' && e.trim())) throw new Error('mutation.exclude must be an array of paths (left out of the mutation sample, printed as a weakening)');
+  if (mutation.command === undefined) return;
+  const { command, testRunner, checkers, ignored, budgetMs } = mutation;
+  if (typeof command !== 'string' || !command.trim()) throw new Error('mutation.command must be a non-empty string (e.g. "npx stryker run")');
+  if (typeof testRunner !== 'string' || !testRunner.trim()) throw new Error('mutation.testRunner (string) is required with mutation.command (Stryker\'s --testRunner, e.g. "vitest")');
+  if (!Number.isInteger(budgetMs) || budgetMs < 1) throw new Error('mutation.budgetMs must be a positive integer (milliseconds for the whole mutation step)');
+  if (!Array.isArray(checkers) || !checkers.every((c) => typeof c === 'string' && /^[\w@/.-]+$/.test(c))) throw new Error('mutation.checkers must be an array of names (e.g. ["typescript"]); [] turns checkers off');
+  if (!Array.isArray(ignored) || !ignored.every((e) => e && typeof e.file === 'string' && Number.isInteger(e.line) && e.line >= 1 && typeof e.mutator === 'string')) {
+    throw new Error('mutation.ignored entries need "file", "line" and "mutator" (one Ignored mutant the owner accepts)');
+  }
 }
 
 // `node` (default) is the built-in node:test path. `junit` judges any runner from its JUnit report and its own
@@ -84,6 +108,7 @@ function validateAdapter({ adapter, runner, holdout, journeys }) {
 
 function validate(config) {
   validateAdapter(config);
+  validateReportMutation(config);
   const { weakerGate } = config;
   if (weakerGate !== null && (!Array.isArray(weakerGate.missing) || !weakerGate.missing.every((c) => typeof c === 'string')
     || typeof weakerGate.decision !== 'string' || !weakerGate.decision.trim())) {
@@ -478,10 +503,32 @@ function checkWeakerGate(config, notChecked) {
   return [`weaker gate: weakerGate.missing must list exactly ${notChecked.join(', ') || 'nothing'}${detail}`];
 }
 
+// What verify.config.json leaves unmeasured, printed at the end of every run (#55, #58, #59).
+function configWeakenings(config) {
+  const { exclude = [], ignored = [] } = config.adapter === 'node' ? {} : config.mutation;
+  return [
+    config.coverage.exclude.length > 0 ? `coverage.exclude ${config.coverage.exclude.join(', ')}` : null,
+    exclude.length > 0 ? `mutation.exclude ${exclude.join(', ')}` : null,
+    ignored.length > 0 ? `mutation.ignored ${ignored.map((e) => `${e.file}:${e.line} ${e.mutator}`).join(', ')}` : null,
+  ].filter(Boolean);
+}
+
+async function runReportMutation(root, config, out) {
+  const { exclude } = config.mutation;
+  if (exclude.length > 0) out(`  weakening: mutation.exclude leaves ${exclude.join(', ')} unmutated`);
+  const files = sourceFiles(root, config).filter((f) => !isExcluded(f, exclude));
+  const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  const texts = new Map(files.map((f) => [f, read(f)]));
+  // Every file the mutant run executes: source and tests, the acceptance dir included when present.
+  const dirs = [...new Set([...config.srcDirs, ...config.testQuality.dirs, 'acceptance'])];
+  const scanned = new Map(dirs.flatMap((d) => walk(root, d, JSX_SOURCE_FILE)).map((f) => [f, read(f)]));
+  return checkReportMutation(root, config, files, texts, out, scanned);
+}
+
 async function strongVerify(root, config, { fast = false, out = console.log } = {}) {
   const reports = config.adapter !== 'node';
   const notChecked = [];
-  const notAvailable = (step, label) => { notChecked.push(label); out(`  ${step}: not available for the ${config.adapter} adapter`); };
+  const notAvailable = (step, label, hint = '') => { notChecked.push(label); out(`  ${step}: not available for the ${config.adapter} adapter${hint}`); };
   const covDir = makeTemp('verify-cov-');
   const failures = [];
   let failingTests = '';
@@ -543,10 +590,12 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     else failures.push(...await (reports ? checkReportJourneys : checkJourneys)(root, config, out));
 
     out('[7/7] mutation spot-check');
-    if (reports) notAvailable('mutation', 'mutation');
+    if (reports && config.mutation.command === undefined) notAvailable('mutation', 'mutation', ' (set mutation.command)');
     else if (fast) out('  mutation: skipped (--fast); the full run is the definition of done');
     else if (failures.length > 0) out('  mutation: skipped until the checks above pass');
-    else failures.push(...await checkMutation(root, config, baselineMs, out));
+    else if (reports) {
+      failures.push(...await runReportMutation(root, config, out));
+    } else failures.push(...await checkMutation(root, config, baselineMs, out));
   } finally {
     removeTemp(covDir);
   }
@@ -556,7 +605,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     const decision = config.weakerGate ? ` (owner decision: ${config.weakerGate.decision})` : '';
     out(`  not checked (weaker gate, ${config.adapter} adapter): ${notChecked.join(', ')}${decision}`);
   }
-  const weakenings = config.coverage.exclude.length > 0 ? [`coverage.exclude ${config.coverage.exclude.join(', ')}`] : [];
+  const weakenings = configWeakenings(config);
   if (weakenings.length > 0) out(`  weakened (verify.config.json): ${weakenings.join('; ')}`);
   if (failingTests !== '') out(`\nFailing tests (fix these at the root cause):\n${failingTests}`);
   return { pass: failures.length === 0, failures, notChecked, weakenings };
