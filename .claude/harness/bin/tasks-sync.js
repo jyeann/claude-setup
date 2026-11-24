@@ -4,13 +4,12 @@
 //        tasks-sync.js check --spec <n> [--from-json <issues.json>] [--repo owner/name] [--file TASKS.md] [--base <ref>]
 //
 // pull writes the generated task list from a spec issue's tickets. Without --from-json it reads the spec
-// issue's sub-issues, their native blockers and the state of outside blockers live through `gh`
+// issue's sub-issues, their native blockers, the state of outside blockers and the repo's open PRs live through `gh`
 // (lib/gh-issues.js). The JSON is an array of issues (raw GitHub REST issues work, e.g. the spec issue's
 // sub-issues), or
 //   { "issues": [...], "external": [{number, state}], "pullRequests": [{number, state, title, body, ...}] }
 // where `external` gives the state of blockers outside the spec and `pullRequests` the repo's open PRs
-// (e.g. `gh pr list --json number,state,title,body,isDraft,closingIssuesReferences`; the live path does not
-// fetch PRs yet). Shapes: lib/tasks-sync.js.
+// (e.g. `gh pr list --json number,state,title,body,isDraft,closingIssuesReferences`). Shapes: lib/tasks-sync.js.
 //
 // check regenerates the task list in memory and compares it with the file, ignoring the generated-at time.
 //

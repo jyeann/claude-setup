@@ -397,6 +397,7 @@ process.stdout.write(body && body.raw !== undefined ? body.raw : JSON.stringify(
 `;
 
 const R = 'repos/{owner}/{repo}/issues';
+const P = 'repos/{owner}/{repo}/pulls';
 // Raw REST shapes: sub-issues carry issue_dependencies_summary; blocked_by lists full issues.
 const SUB_ISSUES = [
   { number: 20, title: 'Ticket 20', state: 'closed', state_reason: 'completed', labels: [{ name: 'afk' }], body: '', issue_dependencies_summary: { total_blocked_by: 0 } },
@@ -411,11 +412,21 @@ const ROUTES = {
   [`${R}/23/dependencies/blocked_by`]: [],
   [`${R}/5`]: { number: 5, state: 'open' },
   [`${R}/6`]: { number: 6, state: 'closed' },
+  // Raw REST pulls: no closing references, so a whole "Closes #N" line in the title or body is what counts.
+  [P]: [
+    { number: 40, state: 'open', draft: false, title: 'feat: ticket 21', body: 'In plain words: done.\n\nCloses #21' },
+    { number: 41, state: 'open', draft: true, title: 'wip', body: 'Closes #23' },
+  ],
 };
 // The same tickets as saved JSON for --from-json.
 const SAVED = {
   issues: SUB_ISSUES.map((i) => ({ ...i, blockedBy: i.number === 21 ? [{ number: 20, state: 'CLOSED' }] : [] })),
   external: [{ number: 5, state: 'OPEN' }, { number: 6, state: 'CLOSED' }],
+  // The same PRs as `gh pr list --json number,state,title,body,isDraft,closingIssuesReferences` gives them.
+  pullRequests: [
+    { number: 40, state: 'OPEN', isDraft: false, title: 'feat: ticket 21', body: 'In plain words: done.\n\nCloses #21', closingIssuesReferences: [{ number: 21 }] },
+    { number: 41, state: 'OPEN', isDraft: true, title: 'wip', body: 'Closes #23', closingIssuesReferences: [{ number: 23 }] },
+  ],
 };
 
 // A scratch directory with the gh stub. run(...args) spawns tasks-sync there; gh: { routes, fail } or 'missing'.
@@ -453,12 +464,15 @@ test('pull without --from-json fetches sub-issues, labels, state, bodies and nat
     const t = new Map(parseTasks(s.read('TASKS.md')).map((x) => [x.id, x]));
     assert.equal(t.get('T20').status, 'done');
     assert.deepEqual(t.get('T21').blockedBy, ['T20']);
+    assert.equal(t.get('T21').status, 'done', 'open PR #40 closes it');
+    assert.match(s.read('TASKS.md'), /Issue: #21\. Open PR #40 closes it/);
     assert.equal(t.get('T22').type, 'HITL');
     assert.equal(t.get('T22').status, 'blocked', 'open outside blocker #5');
-    assert.equal(t.get('T23').status, 'todo', 'closed outside blocker #6');
+    assert.equal(t.get('T23').status, 'todo', 'closed outside blocker #6; draft PR #41 does not count');
     assert.deepEqual(t.get('T23').blockedBy, ['T21']);
     const paths = r.calls.map((c) => c.find((a) => a.startsWith('repos/')));
     assert.ok(paths.includes(`${R}/19/sub_issues?per_page=100`));
+    assert.ok(paths.includes(`${P}?state=open&per_page=100`), 'open PRs, paginated');
     assert.ok(r.calls.every((c) => c[0] === 'api'));
     assert.ok(!paths.some((p) => p.startsWith(`${R}/20/dependencies`)), 'a ticket without blockers in its summary is not asked again');
     assert.ok(!paths.includes(`${R}/21`), 'an in-spec blocker is not fetched as external');
@@ -474,6 +488,8 @@ test('live and saved-JSON pulls produce the same task list', () => {
     s.write('saved.json', SAVED);
     assert.equal(s.run(['pull', '--spec', '19', '--from-json', 'saved.json', '--out', 'saved.md']).status, 0);
     assert.equal(stripTime(s.read('live.md')), stripTime(s.read('saved.md')));
+    assert.match(s.read('live.md'), /## T21:[\s\S]*?- status: done\n\nIssue: #21\. Open PR #40 closes it/);
+    assert.match(s.read('live.md'), /## T23:[\s\S]*?- status: todo\n/, 'a draft PR does not count');
   } finally {
     s.done();
   }
@@ -541,10 +557,10 @@ test('check exits 1 naming the tasks that were hand-edited, changed, added or re
     s.write('saved.json', SAVED);
     assert.equal(s.run(['pull', '--spec', '19', '--from-json', 'saved.json', '--out', 'plan/TASKS.md']).status, 0);
     const original = s.read('plan/TASKS.md');
-    s.write('plan/TASKS.md', original.replace(/(## T21:[\s\S]*?- status: )todo/, '$1done'));
+    s.write('plan/TASKS.md', original.replace(/(## T23:[\s\S]*?- status: )todo/, '$1done'));
     const edited = s.run(['check', '--spec', '19', '--from-json', 'saved.json', '--file', 'plan/TASKS.md']);
     assert.equal(edited.status, 1);
-    assert.match(edited.stdout, /plan\/TASKS\.md differs from spec issue #19 in: T21$/m);
+    assert.match(edited.stdout, /plan\/TASKS\.md differs from spec issue #19 in: T23$/m);
     assert.match(edited.stdout, /tasks-sync pull --spec 19/);
 
     s.write('plan/TASKS.md', original);
@@ -644,5 +660,5 @@ test('fetchSpecIssues classifies gh failures through an injected runner', () => 
   assert.equal(other.unreachable, false);
   assert.match(other.message, /HTTP 404/);
   assert.equal(err({ error: new Error('EPERM') }).unreachable, false);
-  assert.deepEqual(fetchSpecIssues(19, { run: runner({ status: 0, stdout: '[[]]' }) }), { issues: [], external: [] });
+  assert.deepEqual(fetchSpecIssues(19, { run: runner({ status: 0, stdout: '[[]]' }) }), { issues: [], external: [], pullRequests: [] });
 });
