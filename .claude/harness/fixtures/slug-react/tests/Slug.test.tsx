@@ -29,5 +29,6 @@ describe('<Slug />', () => {
     root = await rendered(() => { const r = createRoot(freshContainer()); r.render(<Slug />); return r; });
     await type(input(), 'word '.repeat(9));
     expect(text('[data-testid="slug"]')).toBe('word-word-word-word-word-word-word-word-word');
+    expect(text('[role="alert"]')).toBe('Slug is longer than 40 characters');
   });
 });
