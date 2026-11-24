@@ -51,6 +51,9 @@ const VITEST_STRYKER = Object.freeze({
   mutation: { command: 'npx stryker run', testRunner: 'vitest', checkers: [] },
 });
 
+// Commands that succeed without checking anything; refused as the preset's required type check.
+const NO_OP_COMMANDS = ['', 'true', ':', 'exit 0'];
+
 function expandPreset(raw) {
   if (raw.adapter !== PRESET_NAME) return raw;
   const fixed = (key, value, want) => {
@@ -64,6 +67,8 @@ function expandPreset(raw) {
     throw new Error(`a type check is required for the ${PRESET_NAME} adapter (Vitest and esbuild strip types without checking them); leave typecheck out for "${VITEST_STRYKER.typecheck}" or set typecheck.command`);
   }
   if (Object.hasOwn(raw, 'weakerGate')) throw new Error(`the ${PRESET_NAME} adapter runs every check; weakerGate does not apply`);
+  const typecheck = String(raw.typecheck?.command ?? VITEST_STRYKER.typecheck).trim();
+  if (NO_OP_COMMANDS.includes(typecheck)) throw new Error(`the required type check must run the compiler; "${typecheck}" does nothing (e.g. "${VITEST_STRYKER.typecheck}")`);
   return {
     ...raw,
     runner: 'vitest',
@@ -152,6 +157,7 @@ function validate(config) {
   }
   const { coverage, mutation, replicates, holdout, journeys, typecheck, testQuality } = config;
   if (!Array.isArray(testQuality.srcAliases) || !testQuality.srcAliases.every((a) => typeof a === 'string' && a !== '')) throw new Error('testQuality.srcAliases must be an array of non-empty strings (import prefixes such as "@/" that point into srcDirs)');
+  if (!testQuality.srcAliases.every((a) => a.endsWith('/'))) throw new Error('testQuality.srcAliases entries must end with "/" (an import prefix such as "@/"; a bare "@" would also match package names like "@scope/pkg")');
   const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
   if (!Number.isInteger(replicates) || replicates < 1 || replicates > 5) throw new Error('replicates must be an integer between 1 and 5');
   if (holdout && (typeof holdout.command !== 'string' || !holdout.command.trim())) throw new Error('holdout.command (string) is required when holdout is set');
