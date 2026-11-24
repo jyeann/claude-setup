@@ -4,7 +4,7 @@ Pattern: sequential | Mode: safe
 
 ## Goal
 Work through every AFK task in `TASKS.md` until all are done and the test suite is green.
-`TASKS.md` format: `.claude/harness/templates/tasks.md` (build it with the `plan-to-tasks` skill).
+`TASKS.md` format: `.claude/harness/templates/tasks.md`. It is generated, never hand-written: tickets are GitHub issues under a spec issue (`/mattpocock-skills:to-tickets`), and `node .claude/harness/bin/tasks-sync.js pull --spec <n>` writes the task list from them.
 
 ## Run it under the harness (enforced limits)
 Prose limits depend on the agent obeying them. Start the run with the harness so they are enforced:

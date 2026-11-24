@@ -28,7 +28,7 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | Improver | `agents/harness-improver.md`, `/harness-improve` | Read-only agent proposes ONE change from the evidence; a human merges it. |
 
 | Reference check | `bin/check-refs.js` + `lib/refs.js` | Fails on commands, agents, skills or rules that point at a script, skill, rules dir, agent or removed command that does not exist. Runs in CI via the test suite, so an upstream sync that re-adds a broken item is caught. |
-| Layout check | `bin/check-layout.js` + `lib/layout.js` | Opt-in per repository through `.claude/layout.json`: fails when a forbidden folder exists or a tracked doc cites a forbidden path. References written as `git show <rev>:<path>` are history and allowed. This repo's policy forbids the old product folders listed there (products are built in their own repository; the test bench is `testbench/`). Runs in CI via the test suite. |
+| Layout check | `bin/check-layout.js` + `lib/layout.js` | Opt-in per repository through `.claude/layout.json`: fails when a forbidden folder exists, a tracked doc cites a forbidden path, or it names a retired skill (`retiredNames`, matched as a whole name, path forms included). References written as `git show <rev>:<path>` are history and allowed. This repo's policy forbids the old product folders listed there (products are built in their own repository; the test bench is `testbench/`) and the retired task-list skill that `to-tickets` and `tasks-sync` replaced. Runs in CI via the test suite. |
 
 Everything except the secret scan, the dangerous-command blocklist and tracing is inert unless `.harness/state.json` says a run is active.
 
