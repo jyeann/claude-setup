@@ -39,8 +39,13 @@ exit 0
 `;
 
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+// Stand-ins for the spike's files, as long as the real ones (the lcov names lines up to 28 and 4).
+const lines = (n, prefix) => Array.from({ length: n }, (_, i) => `export const ${prefix}${i + 1} = ${i + 1};`).join('\n');
+const SLUG = `${lines(30, 'slug')}\n`;
+const MAIN = `${lines(5, 'main')}\n`;
+const writeLcov = (text) => { const file = path.join(tmp('verify-lcov-custom-'), 'lcov.info'); fs.writeFileSync(file, text); return file; };
 
-function project({ lcov = PASS_LCOV, extra = '', files = { 'src/Slug.tsx': 'export const slug = 1;\n' }, config = {} } = {}) {
+function project({ lcov = PASS_LCOV, extra = '', files = { 'src/Slug.tsx': SLUG }, config = {} } = {}) {
   const dir = tmp('verify-lcov-');
   const write = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
   write('vitest.sh', VITEST);
@@ -81,7 +86,7 @@ test('one --coverage.include per srcDir, trailing slashes dropped', () => {
 });
 
 test('.tsx counts as source for the vitest runner: an untested main.tsx at 0% fails the per-file floor', () => {
-  const r = verify(project({ files: { 'src/Slug.tsx': 'x\n', 'src/main.tsx': 'y\n' } }));
+  const r = verify(project({ files: { 'src/Slug.tsx': SLUG, 'src/main.tsx': MAIN } }));
   assert.equal(r.status, 1, text(r));
   assert.match(r.stdout, /^ {2}src\/main\.tsx {2}0% \(0\/1\) uncovered lines: 4$/m);
   assert.match(r.stdout, /coverage: src\/main\.tsx is 0%, below the 50% per-file floor/);
@@ -89,14 +94,14 @@ test('.tsx counts as source for the vitest runner: an untested main.tsx at 0% fa
 });
 
 test('a source file missing from the lcov report fails, naming it', () => {
-  const r = verify(project({ lcov: NO_INCLUDE_LCOV, files: { 'src/Slug.tsx': 'x\n', 'src/main.tsx': 'y\n' } }));
+  const r = verify(project({ lcov: NO_INCLUDE_LCOV, files: { 'src/Slug.tsx': SLUG, 'src/main.tsx': MAIN } }));
   assert.equal(r.status, 1, text(r));
   assert.match(r.stdout, /^ {2}src\/main\.tsx {2}missing from the lcov report$/m);
   assert.match(r.stdout, /coverage: src\/main\.tsx is missing from the lcov report; every source file under src must appear in it/);
 });
 
 test('coverage.exclude leaves a file out but is printed as a weakening', () => {
-  const r = verify(project({ lcov: NO_INCLUDE_LCOV, files: { 'src/Slug.tsx': 'x\n', 'src/main.tsx': 'y\n' }, config: { coverage: { exclude: ['src/main.tsx'] } } }));
+  const r = verify(project({ lcov: NO_INCLUDE_LCOV, files: { 'src/Slug.tsx': SLUG, 'src/main.tsx': MAIN }, config: { coverage: { exclude: ['src/main.tsx'] } } }));
   assert.equal(r.status, 0, text(r));
   assert.match(r.stdout, /^ {2}weakening: coverage\.exclude leaves src\/main\.tsx unmeasured$/m);
   assert.match(r.stdout, /^ {2}weakened \(verify\.config\.json\): coverage\.exclude src\/main\.tsx$/m);
@@ -132,7 +137,7 @@ test('a missing, stale or malformed lcov fails the coverage step, naming the fla
 });
 
 test('a test file inside srcDirs fails the lcov coverage step, as test quality does on the node path', () => {
-  const r = verify(project({ files: { 'src/Slug.tsx': 'x\n', 'src/Slug.test.tsx': 'y\n' } }));
+  const r = verify(project({ files: { 'src/Slug.tsx': SLUG, 'src/Slug.test.tsx': 'y\n' } }));
   assert.equal(r.status, 1, text(r));
   assert.match(r.stdout, /src\/Slug\.test\.tsx is a test file inside the source dir/);
 });
@@ -141,6 +146,35 @@ test('minSourceFiles applies to lcov coverage: deleting source cannot raise the 
   const r = verify(project({ config: { coverage: { minSourceFiles: 2 } } }));
   assert.equal(r.status, 1, text(r));
   assert.match(r.stdout, /coverage: expected at least 2 source file\(s\) under src, found 1; do not delete source to raise coverage/);
+});
+
+test('a coverage ignore hint in a source file fails, naming file and line, whatever its comment form or case', () => {
+  for (const hint of ['/* v8 ignore next */', '/* V8 IGNORE START */', '// c8 ignore next', '/* istanbul ignore if */', '/* node:coverage ignore next */']) {
+    const r = verify(project({ files: { 'src/Slug.tsx': `${lines(2, 'a')}\n${hint}\n${lines(27, 'b')}\n` } }));
+    assert.equal(r.status, 1, `${hint}: ${text(r)}`);
+    assert.match(r.stdout, /coverage: src\/Slug\.tsx:3 has a coverage ignore hint; lines it hides are not measured\. Remove it, or list the file in coverage\.exclude/, hint);
+  }
+});
+
+test('a hint in a file listed in coverage.exclude does not fail: the exclusion is printed as a weakening instead', () => {
+  const r = verify(project({ lcov: NO_INCLUDE_LCOV, files: { 'src/Slug.tsx': SLUG, 'src/main.tsx': `/* v8 ignore start */\n${MAIN}` }, config: { coverage: { exclude: ['src/main.tsx'] } } }));
+  assert.equal(r.status, 0, text(r));
+  assert.match(r.stdout, /weakening: coverage\.exclude leaves src\/main\.tsx unmeasured/);
+});
+
+test('a non-empty source file whose record has no executable lines fails; a blank or comment-only file does not', () => {
+  const empty = writeLcov('SF:src/Slug.tsx\nDA:4,1\nend_of_record\nSF:src/empty.ts\nLF:0\nLH:0\nend_of_record\n');
+  let r = verify(project({ lcov: empty, files: { 'src/Slug.tsx': SLUG, 'src/empty.ts': 'export const hidden = () => 1;\n' } }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /coverage: src\/empty\.ts: no executable lines reported for a non-empty file/);
+  r = verify(project({ lcov: empty, files: { 'src/Slug.tsx': SLUG, 'src/empty.ts': '// nothing here yet\n/* really */\n\n' } }));
+  assert.equal(r.status, 0, text(r));
+});
+
+test('a DA: line beyond the end of the source file fails, naming file and line', () => {
+  const r = verify(project({ files: { 'src/Slug.tsx': `${lines(20, 'short')}\n` } }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /coverage: src\/Slug\.tsx: the lcov report names line 21, but the file has 20 line\(s\); the report does not describe this file/);
 });
 
 test('no source file under srcDirs fails as on the node path', () => {

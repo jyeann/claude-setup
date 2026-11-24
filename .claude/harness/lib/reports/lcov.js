@@ -58,18 +58,23 @@ function parseLcov(text) {
 const toPosix = (p) => p.replace(/\\/g, '/');
 const ABSOLUTE = /^(?:\/|[A-Za-z]:\/)/;
 
+// Letter case is ignored only where the file system usually ignores it (Windows, macOS); on Linux `Src/a.ts`
+// and `src/a.ts` are different files.
+const caseInsensitive = (platform) => platform === 'win32' || platform === 'darwin';
+
 // The project-relative POSIX path of an `SF:` entry, or null when it lies outside every root. Relative entries
-// are relative to the project root (Vitest, Jest, c8 write them so); absolute ones must start with a root, whose
-// letter case is ignored (Windows and macOS file systems are case-insensitive, and drive letters vary).
-function toProjectPath(sf, roots) {
+// are relative to the project root (Vitest, Jest, c8 write them so); absolute ones must start with a root
+// (ignoring letter case on Windows and macOS, where drive letters and folder case vary).
+function toProjectPath(sf, roots, { platform = process.platform } = {}) {
   const file = toPosix(sf);
   if (!ABSOLUTE.test(file)) {
     const rel = path.posix.normalize(file);
     return rel === '.' || rel === '..' || rel.startsWith('../') ? null : rel;
   }
+  const fold = caseInsensitive(platform) ? (s) => s.toLowerCase() : (s) => s;
   for (const root of roots) {
     const base = `${toPosix(root).replace(/\/+$/, '')}/`;
-    if (file.length > base.length && file.slice(0, base.length).toLowerCase() === base.toLowerCase()) {
+    if (file.length > base.length && fold(file.slice(0, base.length)) === fold(base)) {
       const rel = path.posix.normalize(file.slice(base.length));
       if (!rel.startsWith('../') && rel !== '..' && rel !== '.') return rel;
     }
@@ -77,24 +82,27 @@ function toProjectPath(sf, roots) {
   return null;
 }
 
-// Map<source file, Map<line, hits>> for the gate's own source files. A record matches a file exactly, or
-// ignoring letter case when exactly one file matches that way; records for other files are ignored. Several
-// records for one file (a merged report) add up.
-function indexLcov(records, { roots, files }) {
+// Map<source file, Map<line, hits>> for the gate's own source files. A record matches a file exactly, or on
+// Windows and macOS ignoring letter case when exactly one file matches that way; records for other files are
+// ignored. Several records for one file (a merged report) keep the highest hit count per line: summing would
+// count one execution twice when the same run is reported twice.
+function indexLcov(records, { roots, files, platform = process.platform }) {
   const exact = new Set(files);
   const folded = new Map();
-  for (const f of files) {
-    const key = f.toLowerCase();
-    folded.set(key, folded.has(key) ? null : f);
+  if (caseInsensitive(platform)) {
+    for (const f of files) {
+      const key = f.toLowerCase();
+      folded.set(key, folded.has(key) ? null : f);
+    }
   }
   const byFile = new Map();
   for (const record of records) {
-    const rel = toProjectPath(record.file, roots);
+    const rel = toProjectPath(record.file, roots, { platform });
     if (rel === null) continue;
     const file = exact.has(rel) ? rel : folded.get(rel.toLowerCase());
     if (!file) continue;
     const lines = byFile.get(file) ?? new Map();
-    for (const [n, hits] of record.lines) lines.set(n, (lines.get(n) ?? 0) + hits);
+    for (const [n, hits] of record.lines) lines.set(n, Math.max(lines.get(n) ?? 0, hits));
     byFile.set(file, lines);
   }
   return byFile;
@@ -110,4 +118,16 @@ function fileCoverage(lines) {
   return { executable, covered, uncoveredLines, pct };
 }
 
-module.exports = { parseLcov, LcovError, toProjectPath, indexLcov, fileCoverage };
+// Comments that tell a coverage tool to skip lines (`/* v8 ignore next */`, `// c8 ignore start`,
+// `/* istanbul ignore else */`, `/* node:coverage ignore next */`, any letter case, also on a `*` continuation
+// line of a block comment). Lines they hide vanish from lcov, so a hard file could score 100% unseen.
+const HINT = /(?:\/\*+|\/\/|^\s*\*)\s*(?:v8|c8|istanbul|node:coverage)\s+ignore\b/i;
+const coverageHints = (text) => String(text).split(/\r?\n/).flatMap((line, i) => (HINT.test(line) ? [i + 1] : []));
+
+// True when nothing but comments and whitespace is left (a file that legitimately has no executable line).
+const isBlankSource = (text) => String(text).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '').trim() === '';
+
+// Number of lines as an editor counts them: a final newline does not start another line.
+const countLines = (text) => (text === '' ? 0 : text.split(/\r?\n/).length - (/\r?\n$/.test(text) ? 1 : 0));
+
+module.exports = { parseLcov, LcovError, toProjectPath, indexLcov, fileCoverage, coverageHints, isBlankSource, countLines };

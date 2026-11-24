@@ -26,7 +26,7 @@ const { TS_FILE, DECLARATION_FILE, stripTypes } = require('./typescript');
 const { makeTemp, removeTemp, cleanupTempDirs } = require('./temp-dirs');
 const { RUNNERS } = require('./reports/runners');
 const { runReported, counts, formatFailures, passedNames } = require('./reports/test-run');
-const { indexLcov, fileCoverage } = require('./reports/lcov');
+const { indexLcov, fileCoverage, coverageHints, isBlankSource, countLines } = require('./reports/lcov');
 
 const SOURCE_FILE = /\.[cm]?[jt]s$/; // .tsx/.jsx are not supported: Node's type stripping does not handle JSX
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]s$/;
@@ -200,6 +200,12 @@ function checkLcovCoverage(root, config, run, out) {
   if (files.length < config.coverage.minSourceFiles) {
     failures.push(`coverage: expected at least ${config.coverage.minSourceFiles} source file(s) under ${config.srcDirs.join(', ')}, found ${files.length}; do not delete source to raise coverage`);
   }
+  // Ignore hints make lines vanish from lcov, so they are refused outright; coverage.exclude (printed) is the
+  // only way to leave code unmeasured.
+  const texts = new Map(files.map((rel) => [rel, fs.readFileSync(path.join(root, rel), 'utf8')]));
+  for (const [rel, text] of texts) {
+    for (const line of coverageHints(text)) failures.push(`coverage: ${rel}:${line} has a coverage ignore hint; lines it hides are not measured. Remove it, or list the file in coverage.exclude (printed as a weakening)`);
+  }
   if (run.coverageProblems.length > 0) return [...failures, ...run.coverageProblems.map((p) => `coverage: ${p}`)];
   const roots = [...new Set([path.resolve(root), fs.realpathSync(root)])];
   const byFile = indexLcov(run.lcov, { roots, files });
@@ -212,6 +218,10 @@ function checkLcovCoverage(root, config, run, out) {
       failures.push(`coverage: ${rel} is missing from the lcov report; every source file under ${config.srcDirs.join(', ')} must appear in it (the gate passes --coverage.include for each srcDir; a file the report leaves out fails rather than being skipped)`);
       continue;
     }
+    const length = countLines(texts.get(rel));
+    const beyond = [...lines.keys()].find((n) => n > length);
+    if (beyond !== undefined) failures.push(`coverage: ${rel}: the lcov report names line ${beyond}, but the file has ${length} line(s); the report does not describe this file`);
+    if (lines.size === 0 && !isBlankSource(texts.get(rel))) failures.push(`coverage: ${rel}: no executable lines reported for a non-empty file (only a file that is blank after removing comments may have none)`);
     const r = fileCoverage(lines);
     executable += r.executable;
     covered += r.covered;
