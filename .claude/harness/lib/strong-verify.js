@@ -10,8 +10,9 @@
 // (typecheck.command) is a separate step, because stripping does not check types.
 // Config lives in verify.config.json; protect it (and this file) so the agent cannot weaken the gate.
 // With "adapter": "junit" the test steps (1, replicates, holdout, journeys) are judged from a JUnit report and
-// the runner's own summary instead of node:test output (lib/reports/, ADR-0003); coverage, test quality and
-// mutation are then reported as not checked until their readers exist.
+// the runner's own summary instead of node:test output (lib/reports/, ADR-0003). Coverage then comes from the
+// runner's lcov when the runner can write one (#58); test quality and mutation are reported as not checked
+// until their readers exist.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -25,9 +26,18 @@ const { TS_FILE, DECLARATION_FILE, stripTypes } = require('./typescript');
 const { makeTemp, removeTemp, cleanupTempDirs } = require('./temp-dirs');
 const { RUNNERS } = require('./reports/runners');
 const { runReported, counts, formatFailures, passedNames } = require('./reports/test-run');
+const { indexLcov, fileCoverage } = require('./reports/lcov');
 
 const SOURCE_FILE = /\.[cm]?[jt]s$/; // .tsx/.jsx are not supported: Node's type stripping does not handle JSX
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]s$/;
+const JSX_SOURCE_FILE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+const JSX_TEST_FILE = /\.(?:test|spec)\.(?:[cm]?[jt]s|[jt]sx)$/;
+
+// .tsx/.jsx count only when the runner compiles JSX and declares it (#58); the node path keeps its patterns.
+const filePatterns = (config) => (config.adapter !== 'node' && RUNNERS[config.runner]?.jsx
+  ? { source: JSX_SOURCE_FILE, test: JSX_TEST_FILE }
+  : { source: SOURCE_FILE, test: TEST_FILE });
+const lcovCoverage = (config) => config.adapter !== 'node' && typeof RUNNERS[config.runner]?.coverage === 'function';
 
 function loadConfig(file) {
   let raw;
@@ -107,9 +117,12 @@ function walk(root, dir, accept) {
 }
 
 const isExcluded = (rel, exclude) => exclude.some((e) => rel === e || rel.startsWith(e.endsWith('/') ? e : `${e}/`));
-const sourceFiles = (root, config) => config.srcDirs
-  .flatMap((d) => walk(root, d, SOURCE_FILE))
-  .filter((f) => !TEST_FILE.test(f) && !DECLARATION_FILE.test(f) && !isExcluded(f, config.coverage.exclude));
+const sourceFiles = (root, config) => {
+  const { source, test } = filePatterns(config);
+  return config.srcDirs
+    .flatMap((d) => walk(root, d, source))
+    .filter((f) => !test.test(f) && !DECLARATION_FILE.test(f) && !isExcluded(f, config.coverage.exclude));
+};
 
 function ranges(lines) {
   const out = [];
@@ -163,6 +176,48 @@ function checkCoverage(root, config, covDir, out) {
       const hint = r.pct === 0 ? ' (0% usually means the file was never loaded, or a child process running it was killed by a signal before it could write coverage: handle SIGTERM and exit 0)' : '';
       failures.push(`coverage: ${rel} is ${r.pct}%, below the ${config.coverage.minFileLines}% per-file floor${hint}`);
     }
+  }
+  const total = executable === 0 ? 100 : Math.round((covered / executable) * 10000) / 100;
+  out(`  total source line coverage: ${total}% (floor ${config.coverage.minLines}%)`);
+  if (total < config.coverage.minLines) failures.push(`coverage: total ${total}% is below the ${config.coverage.minLines}% floor`);
+  return failures;
+}
+
+// coverage.exclude takes files out of the measurement, so every run says so (#55: printed as a weakening).
+function printExcluded(config, out) {
+  if (config.coverage.exclude.length > 0) out(`  weakening: coverage.exclude leaves ${config.coverage.exclude.join(', ')} unmeasured`);
+}
+
+// Coverage judged from the runner's lcov (#58). The file set comes from srcDirs, never from the report: a source
+// file without a record fails by name, because a file left out of the report would otherwise raise the score.
+function checkLcovCoverage(root, config, run, out) {
+  const files = sourceFiles(root, config);
+  printExcluded(config, out);
+  const inSource = config.srcDirs.flatMap((d) => walk(root, d, filePatterns(config).test))
+    .map((rel) => `coverage: ${rel} is a test file inside the source dir (it is excluded from coverage); keep tests in ${config.testQuality.dirs.join(', ')}`);
+  if (files.length === 0) return [`no source files found under ${config.srcDirs.join(', ')}`, ...inSource];
+  const failures = [...inSource];
+  if (files.length < config.coverage.minSourceFiles) {
+    failures.push(`coverage: expected at least ${config.coverage.minSourceFiles} source file(s) under ${config.srcDirs.join(', ')}, found ${files.length}; do not delete source to raise coverage`);
+  }
+  if (run.coverageProblems.length > 0) return [...failures, ...run.coverageProblems.map((p) => `coverage: ${p}`)];
+  const roots = [...new Set([path.resolve(root), fs.realpathSync(root)])];
+  const byFile = indexLcov(run.lcov, { roots, files });
+  let executable = 0;
+  let covered = 0;
+  for (const rel of files) {
+    const lines = byFile.get(rel);
+    if (!lines) {
+      out(`  ${rel}  missing from the lcov report`);
+      failures.push(`coverage: ${rel} is missing from the lcov report; every source file under ${config.srcDirs.join(', ')} must appear in it (the gate passes --coverage.include for each srcDir; a file the report leaves out fails rather than being skipped)`);
+      continue;
+    }
+    const r = fileCoverage(lines);
+    executable += r.executable;
+    covered += r.covered;
+    const detail = r.uncoveredLines.length ? ` uncovered lines: ${ranges(r.uncoveredLines)}` : '';
+    out(`  ${rel}  ${r.pct}% (${r.covered}/${r.executable})${detail}`);
+    if (r.pct < config.coverage.minFileLines) failures.push(`coverage: ${rel} is ${r.pct}%, below the ${config.coverage.minFileLines}% per-file floor`);
   }
   const total = executable === 0 ? 100 : Math.round((covered / executable) * 10000) / 100;
   out(`  total source line coverage: ${total}% (floor ${config.coverage.minLines}%)`);
@@ -291,7 +346,8 @@ async function checkReportReplicates(root, config, first, out) {
 }
 
 async function checkReportTests(root, config, fast, out) {
-  const run = await runReported(config.testCommand, config.runner, { cwd: root, timeoutMs: config.timeoutMs });
+  const coverage = lcovCoverage(config) ? config.srcDirs : null;
+  const run = await runReported(config.testCommand, config.runner, { cwd: root, timeoutMs: config.timeoutMs, coverage });
   const tests = judgeReportTests(run, config);
   const failures = [...tests.failures];
   let failingTests = '';
@@ -304,7 +360,7 @@ async function checkReportTests(root, config, fast, out) {
     if (fast) out('  replicates: skipped (--fast); the full run is the definition of done');
     else failures.push(...await checkReportReplicates(root, config, run, out));
   }
-  return { failures, failingTests };
+  return { failures, failingTests, run };
 }
 
 // Counts only: no test name, message, path or output of the hidden set is ever printed.
@@ -420,12 +476,14 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
   const failures = [];
   let failingTests = '';
   let baselineMs = 0;
+  let reportRun = null;
   try {
     out('[1/7] tests');
     if (reports) {
       const tests = await checkReportTests(root, config, fast, out);
       failures.push(...tests.failures);
       failingTests = tests.failingTests;
+      reportRun = tests.run;
     } else {
       const startedAt = Date.now();
       const result = await runVerify(config.testCommand, { cwd: root, timeoutMs: config.timeoutMs, env: { NODE_V8_COVERAGE: covDir } });
@@ -448,8 +506,12 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     else failures.push(...await checkTypes(root, config, out));
 
     out('[3/7] source coverage');
-    if (reports) notAvailable('coverage', 'coverage');
-    else failures.push(...checkCoverage(root, config, covDir, out));
+    if (reports && lcovCoverage(config)) failures.push(...checkLcovCoverage(root, config, reportRun, out));
+    else if (reports) notAvailable('coverage', 'coverage');
+    else {
+      printExcluded(config, out);
+      failures.push(...checkCoverage(root, config, covDir, out));
+    }
     out('[4/7] test quality');
     if (reports) notAvailable('test quality', 'test-quality');
     else {
@@ -484,8 +546,10 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     const decision = config.weakerGate ? ` (owner decision: ${config.weakerGate.decision})` : '';
     out(`  not checked (weaker gate, ${config.adapter} adapter): ${notChecked.join(', ')}${decision}`);
   }
+  const weakenings = config.coverage.exclude.length > 0 ? [`coverage.exclude ${config.coverage.exclude.join(', ')}`] : [];
+  if (weakenings.length > 0) out(`  weakened (verify.config.json): ${weakenings.join('; ')}`);
   if (failingTests !== '') out(`\nFailing tests (fix these at the root cause):\n${failingTests}`);
-  return { pass: failures.length === 0, failures, notChecked };
+  return { pass: failures.length === 0, failures, notChecked, weakenings };
 }
 
-module.exports = { strongVerify, loadConfig, mutationTimeoutMs, cleanupTempDirs };
+module.exports = { strongVerify, loadConfig, mutationTimeoutMs, cleanupTempDirs, filePatterns };

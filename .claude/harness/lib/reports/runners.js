@@ -53,6 +53,8 @@ function pytestSummary(output) {
 
 // handover(dir) -> { file, args, env }: the report file in the gate's directory, the flags appended to the
 // command, and environment variables for that one child process (Playwright has no flag for the path).
+// A runner that can write lcov has coverage(dir, srcDirs) -> { file, args } (#58); `jsx: true` makes .tsx/.jsx
+// count as source and test files (only a runner that compiles JSX may declare it).
 const RUNNERS = {
   vitest: {
     handover: (dir) => {
@@ -62,6 +64,15 @@ const RUNNERS = {
     flags: '--reporter=default --reporter=junit --outputFile.junit=<file>',
     summary: vitestSummary,
     summaryShape: '"Tests  N passed (N)"',
+    jsx: true,
+    // Spike amendment 4 on #55: without --coverage.include untested files are missing from lcov, and without
+    // --coverage.reportOnFailure a failing run writes none.
+    coverage: (dir, srcDirs) => {
+      const reports = path.join(dir, 'coverage');
+      const include = srcDirs.map((d) => `--coverage.include=${d.replace(/\/+$/, '')}/**`);
+      return { file: path.join(reports, 'lcov.info'), args: ['--coverage.enabled', '--coverage.reporter=lcovonly', `--coverage.reportsDirectory=${reports}`, ...include, '--coverage.reportOnFailure'] };
+    },
+    coverageFlags: '--coverage.enabled --coverage.reporter=lcovonly --coverage.reportsDirectory=<dir> --coverage.include=<srcDir>/** --coverage.reportOnFailure',
   },
   playwright: {
     handover: (dir) => {
