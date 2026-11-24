@@ -122,7 +122,7 @@ function project({ files = {}, config = {} } = {}) {
   write('tests/Widget.test.tsx', GOOD_TEST);
   for (const [rel, text] of Object.entries(files)) write(rel, text);
   const cfg = {
-    adapter: 'vitest-stryker', testCommand: 'sh vitest.sh run', minTests: 2, replicates: 1, typecheck: { command: 'true' },
+    adapter: 'vitest-stryker', testCommand: 'sh vitest.sh run', minTests: 2, replicates: 1, typecheck: { command: 'node -e ""' },
     mutation: { command: `node ${JSON.stringify(STRYKER)} --scenario scenario.json run`, samples: 2 }, ...config,
   };
   write('verify.config.json', JSON.stringify(cfg));
@@ -251,4 +251,51 @@ test('check-protected adds the adapter\'s configs from the base branch\'s verify
   git('commit', '-q', '-am', 'edit');
   const ok = spawnSync('node', [CHECK_PROTECTED, '--base', 'main'], { cwd: repo, encoding: 'utf8' });
   assert.equal(ok.status, 0, `${ok.stdout}${ok.stderr}`);
+});
+
+// ---- review fixes (PR #70)
+
+test('configs named in the gate\'s commands are protected: --config, -c, --project, -p and --config=', () => {
+  const config = JSON.stringify({
+    adapter: 'vitest-stryker',
+    testCommand: 'npx vitest run --config configs/vitest.unit.mts',
+    typecheck: { command: 'npx tsc --noEmit -p tsconfig.build.json && npx tsc -p ./web/tsconfig.app.json' },
+    holdout: { command: 'npx vitest run -c "configs/vitest.holdout.ts" --dir hidden' },
+    journeys: { command: 'npx playwright test --config=e2e/pw.ts' },
+    mutation: { command: 'npx stryker run --project=other.json' },
+  });
+  const list = adapterProtected(config);
+  for (const p of ['configs/vitest.unit.mts', 'tsconfig.build.json', 'web/tsconfig.app.json', 'configs/vitest.holdout.ts', 'e2e/pw.ts', 'other.json']) {
+    assert.ok(list.includes(p), p);
+  }
+  assert.ok(!list.includes('hidden'), '--dir is not a config');
+  const odd = adapterProtected(JSON.stringify({ adapter: 'vitest-stryker', testCommand: 'npx vitest run -c $CFG --config /abs/v.ts -p' }));
+  assert.ok(!odd.some((p) => p.startsWith('-') || p.includes('$') || path.isAbsolute(p)), odd.join());
+  assert.equal(checkWrite(write('/p/configs/vitest.unit.mts'), { active: true, protectedPaths: list }, '/p').block, true);
+});
+
+test('the junit adapter protects the configs of the runners it uses, Stryker\'s when mutation runs, and tsconfig with a type check', () => {
+  const vitest = adapterProtected(JSON.stringify({ adapter: 'junit', runner: 'vitest', testCommand: 'npx vitest run' }));
+  for (const p of ['vitest.config.*', 'vitest.workspace.*', 'vite.config.*']) assert.ok(vitest.includes(p), p);
+  for (const p of ['playwright.config.*', 'stryker.conf.*', 'tsconfig*.json']) assert.ok(!vitest.includes(p), p);
+  const all = adapterProtected(JSON.stringify({
+    adapter: 'junit', runner: 'vitest', testCommand: 'x', journeys: { command: 'npx playwright test', runner: 'playwright' },
+    typecheck: { command: 'npx tsc --noEmit' }, mutation: { command: 'npx stryker run', testRunner: 'vitest' },
+  }));
+  for (const p of ADAPTER_PROTECTED['vitest-stryker']) assert.ok(all.includes(p), p);
+  assert.deepEqual(adapterProtected(JSON.stringify({ adapter: 'junit', runner: 'playwright', testCommand: 'npx playwright test' })), ['playwright.config.*']);
+  assert.deepEqual(adapterProtected(JSON.stringify({ adapter: 'junit', runner: 'standin-pytest', testCommand: 'x' })), []);
+});
+
+test('the required type check must run the compiler: a no-op command is refused', () => {
+  for (const command of ['true', ' : ', 'exit 0', '  ']) {
+    assert.throws(() => load({ adapter: 'vitest-stryker', typecheck: { command } }), /the required type check must run the compiler/, JSON.stringify(command));
+  }
+  assert.equal(load({ adapter: 'vitest-stryker', typecheck: { command: 'npx tsc --noEmit' } }).typecheck.command, 'npx tsc --noEmit');
+  assert.equal(load({ adapter: 'junit', runner: 'vitest', testCommand: 'x', typecheck: { command: 'true' } }).typecheck.command, 'true', 'junit is unchanged');
+});
+
+test('testQuality.srcAliases entries must end with "/"', () => {
+  assert.throws(() => load({ adapter: 'vitest-stryker', testQuality: { srcAliases: ['@'] } }), /testQuality\.srcAliases entries must end with "\/"/);
+  assert.deepEqual(load({ adapter: 'vitest-stryker', testQuality: { srcAliases: ['@/', '~/'] } }).testQuality.srcAliases, ['@/', '~/']);
 });
