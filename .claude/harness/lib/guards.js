@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { parseCommands, stripHeredocs } = require('./shell');
+const { matchesProtected } = require('./protected');
 
 const ok = Object.freeze({ block: false, reason: '' });
 const deny = (reason) => ({ block: true, reason });
@@ -41,6 +42,10 @@ const CREDENTIAL = /(?:api[_-]?key|secret|token|passw(?:or)?d)\s*[:=]\s*['"]([A-
 const PLACEHOLDER = /example|placeholder|changeme|your[-_]|xxxx|dummy|fake|sample|redacted/i;
 
 const stripDot = (p) => p.replace(/^\.\//, '');
+// A protected entry with "*" (an adapter's tool config, e.g. `vitest.config.*`) matches a file name at any depth;
+// every other entry matches as a prefix, as before.
+const GLOB = (p) => p.includes('*');
+const hitsEntry = (rel, p) => (GLOB(p) ? matchesProtected(rel, p) : rel.startsWith(p));
 
 // Held-out tests: the dir lives outside the project and its path is never shown to the agent. While a run is
 // active neither the path nor the env var that carries it may be mentioned, and Read/Grep/Glob may not reach it.
@@ -229,9 +234,9 @@ function guardedMatcher(ctx) {
       a = a.slice(projectDir.length + 1);
     }
     const asDir = a.endsWith('/') ? a : `${a}/`;
-    return guarded.some((p) => a.startsWith(p) || asDir.startsWith(p));
+    return guarded.some((p) => hitsEntry(a, p) || (!GLOB(p) && asDir.startsWith(p)));
   };
-  const mentions = (text) => guarded.some((p) => text.includes(p));
+  const mentions = (text) => guarded.some((p) => text.includes(GLOB(p) ? p.slice(0, p.indexOf('*')) : p));
   return { isGuarded, mentions };
 }
 
@@ -364,7 +369,7 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   const file = input.file_path ?? input.notebook_path ?? '';
   if (ctx.active && file) {
     const guarded = [...HARNESS_PATHS, ...(ctx.protectedPaths ?? []).map(stripDot)];
-    const hit = candidateRelPaths(file, projectDir).some((rel) => guarded.some((p) => rel.startsWith(p)));
+    const hit = candidateRelPaths(file, projectDir).some((rel) => guarded.some((p) => hitsEntry(rel, p)));
     if (hit) return deny(`${file} is protected during a harness run (guardrails, state and acceptance tests are read-only).`);
   }
   if (TEMPLATE_ENV.test(path.basename(file))) return ok;

@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { adapterProtected } = require('./protected');
 
 const STATE_DIR = '.harness';
 const STATE_FILE = 'state.json';
@@ -47,8 +48,12 @@ function normaliseHidden(entries, projectDir) {
   });
 }
 
-function withGatePaths(entries) {
-  return [...entries, ...GATE_PATHS.filter((p) => !entries.includes(p))];
+// The gate files, plus the tool configs of the adapter that the project's verify.config.json names (#60).
+function withGatePaths(entries, projectDir) {
+  let configText = null;
+  try { configText = projectDir ? fs.readFileSync(path.join(projectDir, 'verify.config.json'), 'utf8') : null; } catch { /* no config yet */ }
+  const gate = [...GATE_PATHS, ...adapterProtected(configText)];
+  return [...entries, ...gate.filter((p) => !entries.includes(p))];
 }
 
 function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, hiddenPaths = [], maxMinutes = null, noProgressLimit = null, startedAt = Date.now(), checkpoint = true, checkpointPush = false, maxIterations, stallLimit, protectedPaths = [], commitGate = true, gateFilesOpen = false, verifyTimeoutMs, lintCommand, projectDir }) {
@@ -80,7 +85,7 @@ function buildState({ verifyCommand, task = '', taskFile = '', diagnose = true, 
     hiddenPaths: hidden,
     // gateFilesOpen: a whole-pipeline run has to write the spec and acceptance tests itself; pipeline.js
     // freezes them by hash once the plan phase is complete instead.
-    protectedPaths: ((list) => (gateFilesOpen ? list : withGatePaths(list)))([...new Set([...normaliseProtected(protectedPaths, projectDir), ...hiddenInside])]),
+    protectedPaths: ((list) => (gateFilesOpen ? list : withGatePaths(list, projectDir)))([...new Set([...normaliseProtected(protectedPaths, projectDir), ...hiddenInside])]),
     commitGate,
     ...(verifyTimeoutMs ? { verifyTimeoutMs } : {}),
     ...(lintCommand?.trim() ? { lintCommand: lintCommand.trim() } : {}),

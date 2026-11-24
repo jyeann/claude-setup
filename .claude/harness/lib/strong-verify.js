@@ -13,6 +13,8 @@
 // the runner's own summary instead of node:test output (lib/reports/, ADR-0003). Coverage then comes from the
 // runner's lcov when the runner can write one (#58), and mutation from Stryker's mutation-testing-elements report
 // when mutation.command is set (lib/reports/mutation-run.js, #59); test quality is reported as not checked.
+// "adapter": "vitest-stryker" is a preset on that path (#60): Vitest, Stryker on the vitest runner, Playwright
+// journeys and a required type check, with test quality on (the JS checker reads .tsx tests), so nothing is missing.
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -40,9 +42,48 @@ const filePatterns = (config) => (config.adapter !== 'node' && RUNNERS[config.ru
   : { source: SOURCE_FILE, test: TEST_FILE });
 const lcovCoverage = (config) => config.adapter !== 'node' && typeof RUNNERS[config.runner]?.coverage === 'function';
 
+// What "adapter": "vitest-stryker" fills in (the spike, #56): tsc runs once as the required type check, and
+// Stryker's TypeScript checker stays off by default (+68% mutation time); a project may opt in with checkers.
+const PRESET_NAME = 'vitest-stryker';
+const VITEST_STRYKER = Object.freeze({
+  testCommand: 'npx vitest run',
+  typecheck: 'npx tsc --noEmit -p tsconfig.json',
+  mutation: { command: 'npx stryker run', testRunner: 'vitest', checkers: [] },
+});
+
+// Commands that succeed without checking anything; refused as the preset's required type check.
+const NO_OP_COMMANDS = ['', 'true', ':', 'exit 0'];
+
+function expandPreset(raw) {
+  if (raw.adapter !== PRESET_NAME) return raw;
+  const fixed = (key, value, want) => {
+    if (value !== undefined && value !== want) throw new Error(`${key} is "${want}" for the ${PRESET_NAME} adapter; use "adapter": "junit" with "runner" for another combination`);
+  };
+  fixed('runner', raw.runner, 'vitest');
+  fixed('mutation.testRunner', raw.mutation?.testRunner, 'vitest');
+  fixed('holdout.runner', raw.holdout?.runner, 'vitest');
+  fixed('journeys.runner', raw.journeys?.runner, 'playwright');
+  if (Object.hasOwn(raw, 'typecheck') && (raw.typecheck === null || typeof raw.typecheck !== 'object')) {
+    throw new Error(`a type check is required for the ${PRESET_NAME} adapter (Vitest and esbuild strip types without checking them); leave typecheck out for "${VITEST_STRYKER.typecheck}" or set typecheck.command`);
+  }
+  if (Object.hasOwn(raw, 'weakerGate')) throw new Error(`the ${PRESET_NAME} adapter runs every check; weakerGate does not apply`);
+  const typecheck = String(raw.typecheck?.command ?? VITEST_STRYKER.typecheck).trim();
+  if (NO_OP_COMMANDS.includes(typecheck)) throw new Error(`the required type check must run the compiler; "${typecheck}" does nothing (e.g. "${VITEST_STRYKER.typecheck}")`);
+  return {
+    ...raw,
+    runner: 'vitest',
+    testCommand: raw.testCommand ?? VITEST_STRYKER.testCommand,
+    typecheck: { command: VITEST_STRYKER.typecheck, ...raw.typecheck },
+    mutation: { ...VITEST_STRYKER.mutation, ...raw.mutation },
+    holdout: raw.holdout ? { runner: 'vitest', ...raw.holdout } : raw.holdout,
+    journeys: raw.journeys ? { runner: 'playwright', ...raw.journeys } : raw.journeys,
+  };
+}
+
 function loadConfig(file) {
   let raw;
   try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { throw new Error(`Cannot read config ${file}: ${err.message}`); }
+  raw = expandPreset(raw);
   if (typeof raw.testCommand !== 'string' || !raw.testCommand.trim()) throw new Error('config.testCommand (string) is required');
   const reportMutation = Object.keys(raw.mutation ?? {}).filter((k) => REPORT_MUTATION_KEYS.includes(k));
   if ((raw.adapter ?? 'node') === 'node' && reportMutation.length > 0) {
@@ -58,7 +99,7 @@ function loadConfig(file) {
     minTests: raw.minTests ?? 1,
     srcDirs: raw.srcDirs ?? ['src'],
     coverage: { minLines: 80, minFileLines: 50, minSourceFiles: 1, exclude: [], ...raw.coverage },
-    testQuality: { dirs: ['tests'], minAssertionsPerFile: 3, ...raw.testQuality },
+    testQuality: { dirs: ['tests'], minAssertionsPerFile: 3, srcAliases: [], ...raw.testQuality },
     replicates: raw.replicates ?? 2,
     holdout: raw.holdout ? { minTests: 1, runner: raw.runner ?? null, ...raw.holdout } : null,
     journeys: raw.journeys ? { minTests: 1, runner: raw.runner ?? null, ...raw.journeys } : null,
@@ -89,7 +130,7 @@ function validateReportMutation({ adapter, mutation }) {
 
 // `node` (default) is the built-in node:test path. `junit` judges any runner from its JUnit report and its own
 // stdout summary (ADR-0003); `runner` names how the gate hands that runner the report path (lib/reports/runners.js).
-const ADAPTERS = ['node', 'junit'];
+const ADAPTERS = ['node', 'junit', PRESET_NAME];
 
 function validateAdapter({ adapter, runner, holdout, journeys }) {
   if (!ADAPTERS.includes(adapter)) throw new Error(`adapter must be one of ${ADAPTERS.join(', ')}`);
@@ -114,7 +155,9 @@ function validate(config) {
     || typeof weakerGate.decision !== 'string' || !weakerGate.decision.trim())) {
     throw new Error('weakerGate needs "missing" (array of check names) and "decision" (where the owner\'s decision is recorded)');
   }
-  const { coverage, mutation, replicates, holdout, journeys, typecheck } = config;
+  const { coverage, mutation, replicates, holdout, journeys, typecheck, testQuality } = config;
+  if (!Array.isArray(testQuality.srcAliases) || !testQuality.srcAliases.every((a) => typeof a === 'string' && a !== '')) throw new Error('testQuality.srcAliases must be an array of non-empty strings (import prefixes such as "@/" that point into srcDirs)');
+  if (!testQuality.srcAliases.every((a) => a.endsWith('/'))) throw new Error('testQuality.srcAliases entries must end with "/" (an import prefix such as "@/"; a bare "@" would also match package names like "@scope/pkg")');
   const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
   if (!Number.isInteger(replicates) || replicates < 1 || replicates > 5) throw new Error('replicates must be an integer between 1 and 5');
   if (holdout && (typeof holdout.command !== 'string' || !holdout.command.trim())) throw new Error('holdout.command (string) is required when holdout is set');
@@ -260,14 +303,18 @@ function checkLcovCoverage(root, config, run, out) {
   return failures;
 }
 
+// The JS checker: the node adapter and vitest-stryker (whose .tsx tests it reads through filePatterns).
+const hasTestQuality = (config) => config.adapter === 'node' || config.adapter === PRESET_NAME;
+
 function checkTestQuality(root, config) {
-  const { dirs, minAssertionsPerFile } = config.testQuality;
-  const files = dirs.flatMap((d) => walk(root, d, TEST_FILE));
-  const hidden = config.srcDirs.flatMap((d) => walk(root, d, TEST_FILE))
+  const { dirs, minAssertionsPerFile, srcAliases } = config.testQuality;
+  const { test: testFile } = filePatterns(config);
+  const files = dirs.flatMap((d) => walk(root, d, testFile));
+  const hidden = config.srcDirs.flatMap((d) => walk(root, d, testFile))
     .map((rel) => `test quality: ${rel} is a test file inside the source dir (it is excluded from coverage); keep tests in ${dirs.join(', ')}`);
   if (dirs.length > 0 && files.length === 0) return [`no unit tests found in ${dirs.join(', ')}`, ...hidden];
   return hidden.concat(files.flatMap((rel) => {
-    const { issues } = analyzeTestFile(fs.readFileSync(path.join(root, rel), 'utf8'), { srcDirs: config.srcDirs, minAssertions: minAssertionsPerFile });
+    const { issues } = analyzeTestFile(fs.readFileSync(path.join(root, rel), 'utf8'), { srcDirs: config.srcDirs, minAssertions: minAssertionsPerFile, srcAliases });
     return issues.map((issue) => `test quality: ${rel} ${issue}`);
   }));
 }
@@ -570,7 +617,7 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
       failures.push(...checkCoverage(root, config, covDir, out));
     }
     out('[4/7] test quality');
-    if (reports) notAvailable('test quality', 'test-quality');
+    if (!hasTestQuality(config)) notAvailable('test quality', 'test-quality');
     else {
       const quality = checkTestQuality(root, config);
       failures.push(...quality);
