@@ -20,6 +20,8 @@ const TEMPLATE_PAGE = path.join(__dirname, '..', 'templates', 'spec-approved-pag
 // The real choices carry the Stack part (#62): the proposed stack and its alternatives, each with its status.
 const PAGE_STACK = '\n### Stack\n\nNode.js, gate adapter node (proven), every check runs. Alternative: Vite and React, adapter vitest-stryker (experimental).\n';
 const PAGE = `# Spec-approved page: adder\n${PAGE_SECTIONS.map((name) => `\n## ${name}\n\nFilled in for the adder product.\n${name === 'The real choices' ? PAGE_STACK : ''}`).join('')}`;
+// A page for a stack with no adapter: the three options, each with what the gate would check.
+const PAGE_UNSUPPORTED = PAGE.replace(PAGE_STACK, '\n### Stack\n\nPython has no adapter yet (planned). Options: a supported alternative, Node.js (proven); a weaker gate on junit (experimental) without coverage, test quality and mutation; or building the adapter first as its own spec.\n');
 const DESIGN = `# Design\n${LONG}\n\n## Stack\n\nAdapter: node (proven)\nAlternative: vitest-stryker (experimental)\n`;
 // The spec issue as GitHub returns it; both owner gates passed unless a test says otherwise.
 const labelled = (...labels) => async ({ spec }) => ({ issue: { number: spec, labels: labels.map((name) => ({ name })) } });
@@ -913,30 +915,65 @@ test('the spec-approved page shows the stack under the real choices, with adapte
   assert.match(template, /supported alternative[\s\S]*weaker gate[\s\S]*adapter first/);
 });
 
-test('plan writes the chosen adapter into verify.config.json', async () => {
-  const missing = await check(project({ 'app/verify.config.json': { ...CONFIG, journeys: { ...CONFIG.journeys, uxFile: '../docs/ux.md' } } }));
+test('the page\'s Stack part names at least one alternative, and all three options for an unsupported stack', async () => {
+  const noAlt = PAGE.replace(PAGE_STACK, '\n### Stack\n\nNode.js, gate adapter node (proven), every check runs.\n');
+  const r1 = await check(project({ 'docs/spec-approved-page.md': noAlt }));
+  assert.equal(r1.blocked, 'spec');
+  assert.match(problemsOf(r1, 'spec').join('\n'), /"### Stack" names no alternative/);
+  const unsupported = { 'docs/design.md': stackDesign('Unsupported: Python + FastAPI; option: adapter first') };
+  const r2 = await check(project(unsupported));
+  assert.equal(r2.blocked, 'spec');
+  assert.match(problemsOf(r2, 'spec').join('\n'), /design\.md records an unsupported stack, but "### Stack" does not give the three options \(missing: supported alternative, weaker gate, adapter first\)/);
+  const r3 = await check(project({ ...unsupported, 'docs/spec-approved-page.md': PAGE_UNSUPPORTED }), passGate, tasksMatch, labelled('afk'));
+  assert.equal(statusOf(r3).spec, 'done');
+});
+
+test('plan writes the chosen adapter into verify.config.json; a config without one is the node adapter', async () => {
+  const plainConfig = { 'app/verify.config.json': { ...CONFIG, journeys: { ...CONFIG.journeys, uxFile: '../docs/ux.md' } } };
+  assert.equal((await check(project(plainConfig))).pass, true, 'an existing node config without "adapter" keeps working');
+  const missing = await check(project({ ...plainConfig, 'docs/design.md': stackDesign('Adapter: vitest-stryker (experimental)') }));
   assert.equal(missing.blocked, 'plan');
-  assert.match(problemsOf(missing, 'plan').join('\n'), /verify\.config\.json has no "adapter", but design\.md's Stack section chose node: write the chosen adapter into verify\.config\.json/);
+  assert.match(problemsOf(missing, 'plan').join('\n'), /verify\.config\.json has no "adapter" \(so node\), but design\.md's Stack section chose vitest-stryker: write the chosen adapter into verify\.config\.json/);
   const other = await check(project({ 'app/verify.config.json': withAdapter('junit') }));
   assert.match(problemsOf(other, 'plan').join('\n'), /verify\.config\.json "adapter" is "junit", but design\.md's Stack section chose node/);
 });
 
 test('plan cannot complete while the Stack section says the adapter is built first', async () => {
-  const r = await check(project({ 'docs/design.md': stackDesign('Unsupported: Python + FastAPI; option: adapter first') }));
+  const r = await check(project({ 'docs/design.md': stackDesign('Unsupported: Python + FastAPI; option: adapter first'), 'docs/spec-approved-page.md': PAGE_UNSUPPORTED }));
   assert.equal(r.blocked, 'plan');
   assert.match(problemsOf(r, 'plan').join('\n'), /"adapter first": build the adapter as its own spec/);
 });
 
-test('a weaker gate in verify.config.json needs the missing checks recorded in decisions.md', async () => {
-  const weakerGate = { missing: ['coverage', 'test-quality', 'mutation'], decision: 'decisions.md: Weaker gate' };
-  const files = { 'docs/design.md': stackDesign('Unsupported: Python + pytest; option: weaker gate\nAdapter: junit (experimental)'), 'app/verify.config.json': withAdapter('junit', { runner: 'vitest', weakerGate }) };
-  const r = await check(project(files));
-  assert.equal(r.blocked, 'plan');
-  assert.match(problemsOf(r, 'plan').join('\n'), /decisions\.md has no "Weaker gate: coverage, test-quality, mutation" line/);
-  const wrong = await check(project({ ...files, 'docs/decisions.md': `${DECISIONS}Weaker gate: coverage\n` }));
-  assert.match(problemsOf(wrong, 'plan').join('\n'), /no "Weaker gate: coverage, test-quality, mutation" line/);
-  const recorded = await check(project({ ...files, 'docs/decisions.md': `${DECISIONS}- Weaker gate: mutation, coverage, test-quality (owner, 2026-11-24)\n` }));
+const WEAKER = { missing: ['coverage', 'test-quality', 'mutation'], decision: 'design.md: Stack' };
+const weakerStack = (line) => stackDesign(`Unsupported: Python + pytest; option: weaker gate\nAdapter: junit (experimental)\n${line}`);
+const weakerFiles = (line) => ({ 'docs/design.md': weakerStack(line), 'docs/spec-approved-page.md': PAGE_UNSUPPORTED, 'app/verify.config.json': withAdapter('junit', { runner: 'vitest', weakerGate: WEAKER }) });
+
+test('a weaker gate is recorded in design.md\'s Stack section, where the owner approves it; a decisions.md line alone does not count', async () => {
+  const alone = await check(project({ ...weakerFiles(''), 'docs/decisions.md': `${DECISIONS}Weaker gate: coverage, test-quality, mutation\n` }));
+  assert.equal(alone.blocked, 'design');
+  assert.match(problemsOf(alone, 'design').join('\n'), /option "weaker gate" needs a line "Weaker gate: <checks>" in the Stack section/);
+  const wrong = await check(project(weakerFiles('Weaker gate: coverage')));
+  assert.equal(wrong.blocked, 'plan');
+  assert.match(problemsOf(wrong, 'plan').join('\n'), /verify\.config\.json weakerGate\.missing is coverage, test-quality, mutation, but design\.md's Stack section approves a weaker gate without coverage only/);
+  const recorded = await check(project(weakerFiles('- Weaker gate: mutation, coverage, test-quality')));
   assert.equal(recorded.pass, true, formatReport(recorded));
+});
+
+test('a weakerGate in verify.config.json needs the weaker-gate option in the Stack section', async () => {
+  const r = await check(project({ 'docs/design.md': stackDesign('Adapter: junit (experimental)\nAlternative: node (proven)'), 'app/verify.config.json': withAdapter('junit', { runner: 'vitest', weakerGate: WEAKER }) }));
+  assert.equal(r.blocked, 'plan');
+  assert.match(problemsOf(r, 'plan').join('\n'), /verify\.config\.json has a weakerGate, but design\.md's Stack section does not take option "weaker gate"/);
+});
+
+test('changing the weaker-gate line in design.md after spec-approved voids the approval', async () => {
+  const root = project(weakerFiles('Weaker gate: coverage, test-quality, mutation'));
+  const o = owner(root);
+  o.label('afk', 'spec-approved', 'accepted');
+  assert.equal((await checkSaved(root)).pass, true);
+  write(root, { 'docs/design.md': weakerStack('Weaker gate: coverage, test-quality, mutation, journeys') });
+  const r = await checkSaved(root);
+  assert.deepEqual(r.waiting, { gate: 'spec-approved', spec: 19 });
+  assert.match(problemsOf(r, 'spec-approved').join('\n'), /docs\/design\.md changed after the owner approved it/);
 });
 
 const VITE = {
@@ -973,6 +1010,16 @@ test('a tool config named in a command is frozen too, and the node adapter freez
   assert.equal((await check(plain)).pass, true);
   fs.writeFileSync(path.join(plain, 'app/vitest.config.ts'), 'export default { x: 1 };\n');
   assert.equal(statusOf(await check(plain)).plan, 'done', 'not frozen by name: only the accepted approval sees the change');
+});
+
+test('tool configs in dot folders and configs named in commands are frozen wherever they are', async () => {
+  const root = project({ ...VITE, 'app/verify.config.json': withAdapter('vitest-stryker', { typecheck: { command: 'npx tsc --noEmit -p node_modules/.cfg/tsconfig.json' } }), 'app/.storybook/vite.config.ts': 'export default {};\n', 'app/node_modules/.cfg/tsconfig.json': '{}\n' });
+  assert.equal((await check(root)).pass, true);
+  fs.writeFileSync(path.join(root, 'app/.storybook/vite.config.ts'), 'export default { x: 1 };\n');
+  fs.writeFileSync(path.join(root, 'app/node_modules/.cfg/tsconfig.json'), '{"compilerOptions":{"noCheck":true}}\n');
+  const problems = problemsOf(await check(root), 'plan').join('\n');
+  assert.match(problems, /app\/\.storybook\/vite\.config\.ts changed after the plan phase froze it/);
+  assert.match(problems, /app\/node_modules\/\.cfg\/tsconfig\.json changed after the plan phase froze it/);
 });
 
 test('a correctness redirect does not free the adapter\'s tool configs from the freeze', async () => {

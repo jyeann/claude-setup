@@ -75,7 +75,7 @@ test('the catalogue is not referenced from always-loaded rules (token cost uncha
 const design = (stack) => `# Design\n\nSome text.\n\n## Stack\n\n${stack}\n\n## Data\n\nAdapter: rust (planned) is outside the section.\n`;
 
 test('a Stack section naming a catalogue adapter with its status is complete', () => {
-  assert.deepEqual(readStack(design('Adapter: node (proven)'), catalogue), { problems: [], adapter: 'node', option: null });
+  assert.deepEqual(readStack(design('Adapter: node (proven)'), catalogue), { problems: [], adapter: 'node', option: null, weakerGate: null });
   assert.deepEqual(readStack(design('- Adapter: `vitest-stryker` (experimental)\nAlternative: node (proven)'), catalogue).adapter, 'vitest-stryker');
 });
 
@@ -92,13 +92,26 @@ test('an adapter outside the catalogue, a wrong status or a planned adapter is r
   assert.match(readStack(design('Adapter: node (proven)\nAdapter: junit (experimental)'), catalogue).problems[0], /names more than one adapter/);
 });
 
+test('design.md with more than one Stack section is refused', () => {
+  const twice = `${design('Adapter: node (proven)')}\n## Stack\n\nAdapter: vitest-stryker (experimental)\n`;
+  assert.match(readStack(twice, catalogue).problems[0], /design\.md has more than one "## Stack" section/);
+});
+
+test('the junit entry states its limits plainly', () => {
+  const { limits } = findAdapter(catalogue, 'junit');
+  assert.ok(limits.includes('report contract proven with a stand-in runner only'));
+  assert.ok(limits.includes('vitest runner proven through the vitest-stryker fixture'));
+  assert.ok(limits.includes('playwright as the main runner unproven'));
+});
+
 test('an unsupported stack records one of the three options', () => {
   const first = readStack(design('Unsupported: Python + FastAPI; option: adapter first'), catalogue);
-  assert.deepEqual(first, { problems: [], adapter: null, option: 'adapter first' });
-  const weaker = readStack(design('Unsupported: Python + FastAPI; option: weaker gate\nAdapter: junit (experimental)'), catalogue);
-  assert.deepEqual(weaker, { problems: [], adapter: 'junit', option: 'weaker gate' });
+  assert.deepEqual(first, { problems: [], adapter: null, option: 'adapter first', weakerGate: null });
+  const weaker = readStack(design('Unsupported: Python + FastAPI; option: weaker gate\nAdapter: junit (experimental)\n- Weaker gate: coverage, test-quality'), catalogue);
+  assert.deepEqual(weaker, { problems: [], adapter: 'junit', option: 'weaker gate', weakerGate: ['coverage', 'test-quality'] });
+  assert.match(readStack(design('Unsupported: Python; option: weaker gate\nAdapter: junit (experimental)'), catalogue).problems[0], /option "weaker gate" needs a line "Weaker gate: <checks>" in the Stack section/);
   const alt = readStack(design('Unsupported: Rust; option: supported alternative\nAdapter: node (proven)'), catalogue);
-  assert.deepEqual(alt, { problems: [], adapter: 'node', option: 'supported alternative' });
+  assert.deepEqual(alt, { problems: [], adapter: 'node', option: 'supported alternative', weakerGate: null });
   assert.match(readStack(design('Unsupported: Rust; option: supported alternative'), catalogue).problems[0], /option "supported alternative" runs an adapter from the catalogue: add "Adapter: <id> \(<status>\)"/);
   assert.match(readStack(design('Unsupported: Rust; option: wing it'), catalogue).problems[0], /records no option: write "Unsupported: <stack>; option: supported alternative\|weaker gate\|adapter first"/);
 });
