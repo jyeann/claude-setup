@@ -9,6 +9,22 @@ before(async () => {
   L = await import(pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'logic.js')).href);
 });
 
+test('pending votes are laid over an older server view so a newer choice is not flipped back', () => {
+  const server = { version: 4, votesLeft: 2, cards: [{ id: '1', votes: 1, voted: true }, { id: '2', votes: 0, voted: false }, { id: '3', votes: 2, voted: true }] };
+  const shown = L.withPendingVotes(server, [{ id: '2', voted: true }, { id: '3', voted: false }]);
+  assert.equal(shown.votesLeft, 2, 'one vote taken, one given back');
+  assert.deepEqual(shown.cards.map((c) => [c.id, c.votes, c.voted]), [['1', 1, true], ['2', 1, true], ['3', 1, false]]);
+  assert.equal(server.cards[1].voted, false, 'the server view is not mutated');
+});
+
+test('pending votes the server view already shows, or for removed cards, change nothing', () => {
+  const server = { version: 5, votesLeft: 1, cards: [{ id: '1', votes: 3, voted: true }] };
+  const shown = L.withPendingVotes(server, [{ id: '1', voted: true }, { id: '9', voted: true }]);
+  assert.deepEqual(shown, server);
+  assert.equal(L.withPendingVotes(server, []), server, 'nothing pending returns the same view');
+  assert.equal(L.withPendingVotes(null, [{ id: '1', voted: true }]), null);
+});
+
 test('votes left label is singular for one and says No votes left at zero', () => {
   assert.equal(L.votesLeftLabel(3), '3 votes left');
   assert.equal(L.votesLeftLabel(1), '1 vote left');

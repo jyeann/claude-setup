@@ -11,6 +11,10 @@
 
 - **wiki** (`examples/wiki`, version 1.0.0): a local-first Markdown wiki. Notes are plain `<Title>.md` files in one vault folder. The browser UI provides `[[wikilinks]]`, backlinks, rename that rewrites links, Ctrl+K search, a graph view and conflict-safe saves. It runs on Node 22 with no dependencies and no build step, bound to loopback by default. See `examples/wiki/README.md` for run steps, limits and known limitations.
 
+### Fixed
+
+- **retro-board votes clicked faster than the server answers** (#28): vote requests could reach the server out of order, and an earlier answer flipped a later vote back on screen, so a quick "Remove vote" could be lost. Votes now go out one at a time and answers keep the votes still pending; `#votes-left` is `aria-busy` until they are saved. Journeys wait for that before a reload, restart or close, which removes the J5 flake.
+
 ### Removed
 
 - The ECC catalogue beyond what `orch-product-team` calls (21 agents, 48 skills, 43 commands, the `orch-*` single-feature workflows): a full product run used none of it. `hello-overkill` moved to jyeann/HW-PIRPLE-1. `examples/notes-api` and a stale `HARNESS-DIAGNOSIS.md`.

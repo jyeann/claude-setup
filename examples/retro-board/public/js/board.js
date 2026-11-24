@@ -1,7 +1,7 @@
 import { boardApi, ApiError } from './api.js';
 import {
   COLUMNS, MAX_CARD, columnLabel, counterText, validateCardText, votesLeftLabel, voteButtonLabel,
-  sortCards, withPageRole, pollAnnouncements, nextDelay, parseBoardPath, addFailureOutcome, pollFailureKind, shareStartsOpen,
+  sortCards, withPageRole, withPendingVotes, pollAnnouncements, nextDelay, parseBoardPath, addFailureOutcome, pollFailureKind, shareStartsOpen,
 } from './logic.js';
 import { announcePolite, announceAssertive, toast, focusEl, focusHeading, flashLabel, copyText, selectContents } from './live.js';
 
@@ -46,7 +46,9 @@ const state = {
   tmp: 0,
   built: false,
   rescued: {},
+  votes: [], // vote writes not answered yet, oldest first: {id, voted}
 };
+let voteTurn = Promise.resolve(); // vote writes go out one at a time, in click order
 let api = route ? boardApi(route.p, route.f) : null;
 const cols = {}; // key -> {section, h2, count, list, empty, form, ta, counter, error, btn, cardEls: Map, temps: Set}
 const ui = {};
@@ -232,6 +234,7 @@ function render(prev) {
   if (prev && !v.closed && prev.closed) restoreDrafts();
 
   ui.votesLeft.textContent = votesLeftLabel(v.votesLeft);
+  showVotesSaving();
   ui.votesLeft.hidden = v.closed;
   ui.votesHint.hidden = v.closed || v.votesLeft > 0;
   ui.sort.setAttribute('aria-pressed', String(state.byVotes));
@@ -408,7 +411,7 @@ function applyOwn(r) {
     state.version = r.data.version;
     state.etag = r.etag;
     const prev = state.view;
-    state.view = withPageRole(r.data, state.role);
+    state.view = withPendingVotes(withPageRole(r.data, state.role), state.votes);
     render(prev);
   }
 }
@@ -416,7 +419,7 @@ function applyOwn(r) {
 function applyView(view, { announce = false, etag } = {}) {
   if (view.version < state.version) return;
   const prev = state.view;
-  state.view = view;
+  state.view = withPendingVotes(view, state.votes);
   state.version = view.version;
   if (etag !== undefined) state.etag = etag;
   render(prev);
@@ -426,45 +429,60 @@ function applyView(view, { announce = false, etag } = {}) {
   }
 }
 
+// Until the server has answered, #votes-left says so (aria-busy), so nothing reads a vote as saved too early.
+function showVotesSaving() {
+  if (ui.votesLeft) ui.votesLeft.setAttribute('aria-busy', String(state.votes.length > 0));
+}
+
+// The vote shows at once. Its request waits for the previous vote's answer: two requests in flight can reach
+// the server in either order (a "remove vote" before its "vote"), and every answer is laid under the votes
+// still waiting (withPendingVotes), so an earlier answer never flips a later click back.
 async function toggleVote(id) {
   const card = state.view.cards.find((c) => c.id === id);
   if (!card) return;
-  const was = card.voted;
-  if (!was && state.view.votesLeft <= 0) return;
-  const before = clone(state.view);
-  const next = clone(state.view);
-  const nc = next.cards.find((c) => c.id === id);
-  nc.voted = !was;
-  nc.votes += was ? -1 : 1;
-  next.votesLeft += was ? 1 : -1;
-  state.view = next;
+  const voted = !card.voted;
+  if (voted && state.view.votesLeft <= 0) return;
+  const op = { id, voted };
+  const before = state.view;
+  state.votes.push(op);
+  state.view = withPendingVotes(state.view, [op]);
   render(before);
   state.pending++;
+  const myTurn = voteTurn;
+  let done;
+  voteTurn = new Promise((resolve) => { done = resolve; });
+  const settle = () => { const i = state.votes.indexOf(op); if (i >= 0) state.votes.splice(i, 1); };
   try {
-    const r = await (was ? api.unvote(id) : api.vote(id));
+    await myTurn;
+    const r = await (voted ? api.vote(id) : api.unvote(id));
+    settle();
     applyOwn(r);
     announcePolite(votesLeftLabel(state.view.votesLeft));
   } catch (err) {
+    settle();
+    const shown = state.view;
+    const undone = withPendingVotes(shown, [{ id, voted: !voted }]);
     if (err instanceof ApiError && err.status === 404) {
-      state.view = before;
-      state.view.cards = state.view.cards.filter((c) => c.id !== id);
-      render(before);
+      state.view = { ...undone, cards: undone.cards.filter((c) => c.id !== id) };
+      render(shown);
       toast('That card was removed.');
       announcePolite('That card was removed.');
     } else if (err instanceof ApiError && err.board) {
-      state.view = before; state.version = Math.min(state.version, before.version);
+      state.version = Math.min(state.version, err.board.version);
       applyView(withPageRole(err.board, state.role));
       toast('Could not save your vote. Try again.');
       announceAssertive('Could not save your vote. Try again.');
     } else {
-      state.view = before;
-      render(next);
+      state.view = undone;
+      render(shown);
       toast('Could not save your vote. Try again.');
       announceAssertive('Could not save your vote. Try again.');
       pollSoon();
     }
   } finally {
     state.pending--;
+    showVotesSaving();
+    done();
   }
 }
 
