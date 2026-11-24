@@ -1,12 +1,16 @@
 'use strict';
 // Generates the build loop's task list (TASKS.md, format in templates/tasks.md) from a spec issue's
 // tickets. GitHub issues are the source; the task list is never edited by hand. Status is derived from
-// facts, not typed: a closed issue or a commit on this branch that closes it is done. See docs/adr/0001.
+// facts, not typed (see deriveStatus and docs/adr/0001).
 //
 // Input issue shape (raw GitHub REST issues work as they are):
 //   { number, title, state: "open"|"closed", state_reason?, labels: [name | {name}], body,
 //     blockedBy?: [{ number, state }] | { nodes: [{ number, state }] }, pull_request? }
 // Blockers outside the spec issue get their state from blockedBy, or from `external` (see buildTaskList).
+//
+// Pull request shape (raw REST pulls or `gh pr list --json number,state,title,body,isDraft,closingIssuesReferences`):
+//   { number, state: "open"|"OPEN"|..., title, body, draft? | isDraft?,
+//     closingIssuesReferences?: [{ number }] | { nodes: [{ number }] } }
 
 const { parseTasks, validateTasks } = require('./tasks');
 
@@ -32,6 +36,31 @@ function closingRefs(log) {
     for (const m of c.message.matchAll(CLOSING_LINE)) refs.add(Number(m[1]));
   }
   return refs;
+}
+
+// Ticket branch: a branch with a path segment `issue-<N>` or `issue-<N>-<slug>` (lowercase), e.g.
+// `issue-22`, `claude/issue-22-derived-status`, `loop/issue-22`. Pass a branch name without its refs/heads/,
+// refs/remotes/<remote>/ or refs/harness/wip/ prefix. Returns N, or null. Strict on purpose: `fix-22`,
+// `issue22`, `my-issue-22` or a date never match.
+function ticketBranchIssue(branch) {
+  for (const segment of String(branch).split('/')) {
+    const m = /^issue-(\d+)(?:-[a-z0-9][\w.-]*)?$/.exec(segment);
+    if (m) return Number(m[1]);
+  }
+  return null;
+}
+
+// Open, non-draft PRs that close a ticket: Map<issue number, PR number>. A PR closes #N through GitHub's
+// closingIssuesReferences, or a whole closing line ("Closes #N") in its title or body, as for commits.
+function prClosingRefs(pullRequests) {
+  const closes = new Map();
+  for (const p of pullRequests || []) {
+    if (String(p.state || '').toLowerCase() !== 'open' || p.draft || p.isDraft) continue;
+    const nums = dependencyList(p.closingIssuesReferences).map((r) => Number(r.number));
+    for (const text of [p.title, p.body]) for (const m of String(text || '').matchAll(CLOSING_LINE)) nums.push(Number(m[1]));
+    for (const n of nums) if (!closes.has(n)) closes.set(n, Number(p.number));
+  }
+  return closes;
 }
 
 const isClosed = (state) => String(state || '').toLowerCase() === 'closed';
@@ -70,17 +99,22 @@ function ticketType(issue) {
 }
 
 // Status, first match wins. Closed as not planned is never done: its dependents must not start.
-function deriveStatus(t, { closedByCommit, openOutside }) {
+function deriveStatus(t, { closedByCommit, closedByPr, inProgress, openOutside }) {
   if (isClosed(t.state) && t.state_reason === 'not_planned') return { status: 'blocked', note: 'Closed as not planned: re-plan the tickets that depend on it' };
   if (isClosed(t.state) || closedByCommit.has(t.number)) return { status: 'done', note: '' };
+  if (closedByPr.has(t.number)) return { status: 'done', note: `Open PR #${closedByPr.get(t.number)} closes it` };
   if (openOutside.length) return { status: 'blocked', note: `Waiting on open or unknown issue(s) outside the spec: ${openOutside.map((n) => `#${n}`).join(', ')}` };
+  if (inProgress.has(t.number)) return { status: 'doing', note: `Work in progress on ${inProgress.get(t.number)}` };
   return { status: 'todo', note: '' };
 }
 
 // issues: the spec issue's tickets (shape above). external: [{ number, state }] for blockers outside the
-// spec; an outside blocker with no known state counts as open. Returns { text, errors }; text is only
+// spec; an outside blocker with no known state counts as open. closedByCommit: issue numbers closed by a
+// commit on this branch or on their own ticket branch. pullRequests: shape above. inProgress: Map<issue
+// number, ticket branch or checkpoint ref> without a closing commit. Returns { text, errors }; text is only
 // meaningful when errors is empty.
-function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Set(), external = [] } = {}) {
+function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Set(), external = [], pullRequests = [], inProgress = new Map() } = {}) {
+  const closedByPr = prClosingRefs(pullRequests);
   const tickets = issues
     .filter((i) => !i.pull_request)
     .map((i) => ({ ...i, number: Number(i.number) }))
@@ -112,7 +146,7 @@ function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Se
       else if (!outside.has(n)) outside.set(n, known.get(n) === true);
     }
     const openOutside = [...outside].filter(([, closed]) => !closed).map(([n]) => n);
-    const { status, note } = deriveStatus(t, { closedByCommit, openOutside });
+    const { status, note } = deriveStatus(t, { closedByCommit, closedByPr, inProgress, openOutside });
 
     const deps = [...blockers].sort((a, b) => a - b).map((n) => `T${n}`);
     lines.push(
@@ -131,4 +165,4 @@ function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Se
   return { text, errors };
 }
 
-module.exports = { buildTaskList, closingRefs, bodyBlockers };
+module.exports = { buildTaskList, closingRefs, bodyBlockers, ticketBranchIssue, prClosingRefs };

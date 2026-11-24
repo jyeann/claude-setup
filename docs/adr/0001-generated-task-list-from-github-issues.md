@@ -9,6 +9,9 @@ Specs and tickets live as GitHub issues (`working.md`), but the build loop (`nex
 
 ## Consequences
 
-- Only a whole `Closes #N` line in a commit on this branch (since the base branch) counts, and reverted commits do not, so prose or old history cannot mark a ticket done. A closing commit on this branch wins over an open issue on purpose: that is a finished ticket waiting for the owner's merge. An issue closed as not planned is `blocked`, never `done`, so its dependents do not start.
+- Status precedence, first match wins: closed as not planned → `blocked`; issue closed, or a closing commit, or an open PR that closes it → `done`; an open blocker outside the spec → `blocked`; a ticket branch or WIP checkpoint → `doing`; otherwise `todo`.
+- Only a whole `Closes #N` line counts, in a commit on this branch (since the base branch) or on the ticket's own ticket branch, and reverted commits do not, so prose or old history cannot mark a ticket done. An open, non-draft PR closes `#N` the same way in its title or body, or through GitHub's `closingIssuesReferences`; the PR list comes from the saved JSON (`pullRequests`).
+- A **ticket branch** is a local or remote-tracking branch with a path segment `issue-<N>` or `issue-<N>-<slug>` (for example `claude/issue-22-derived-status`); a harness WIP checkpoint `refs/harness/wip/<ticket branch>` counts the same. The pattern is strict so unrelated branches (`fix-22`, `issue22`, a dated loop branch) never match. A stale ticket branch keeps its ticket `doing` until it is deleted or the issue closes. A closing commit on this branch wins over an open issue on purpose: that is a finished ticket waiting for the owner's merge. An issue closed as not planned is `blocked`, never `done`, so its dependents do not start.
 - A hand edit to `TASKS.md` is overwritten on the next pull.
-- Planned, not built yet: the loop committing with `Closes #N` and re-pulling instead of typing status, `doing` from ticket branches and `done` from open PRs (#22); a live `gh` pull and a `tasks-sync.js check` that reports a stale or hand-edited list (#21).
+- The build loop commits each task with `Closes #N` and re-pulls instead of typing status (`loop-runbook.md`), so it runs with `--no-commit-gate`.
+- Planned, not built yet: a live `gh` pull and a `tasks-sync.js check` that reports a stale or hand-edited list (#21).

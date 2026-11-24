@@ -227,3 +227,132 @@ test('pull exits 2 with usage on missing arguments or unreadable JSON', () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- #22: done from open PRs, doing from ticket branches and WIP checkpoints ----
+
+const pr = (number, extra = {}) => ({ number, state: 'open', title: `PR ${number}`, body: '', ...extra });
+
+test('derives done from an open PR that closes the ticket in its body, title or closing references', () => {
+  const t = ok(pull({
+    issues: [20, 21, 22, 23].map((n) => issue(n)),
+    pullRequests: [
+      pr(40, { body: 'Summary\n\nCloses #20' }),
+      pr(41, { title: 'Fixes #21' }),
+      pr(42, { state: 'OPEN', closingIssuesReferences: [{ number: 22 }] }),
+      pr(43, { closingIssuesReferences: { nodes: [{ number: 23 }] } }),
+    ],
+  }));
+  assert.deepEqual([...t.values()].map((x) => x.status), ['done', 'done', 'done', 'done']);
+});
+
+test('ignores closed, merged and draft PRs and closing words in PR prose', () => {
+  const r = pull({
+    issues: [20, 21, 22, 23].map((n) => issue(n)),
+    pullRequests: [
+      pr(40, { state: 'closed', body: 'Closes #20' }),
+      pr(41, { state: 'MERGED', body: 'Closes #21' }),
+      pr(42, { draft: true, body: 'Closes #22' }),
+      pr(43, { isDraft: true, closingIssuesReferences: [{ number: 22 }] }),
+      pr(44, { title: 'feat: this does not fix #23', body: 'see closes #23 later' }),
+    ],
+  });
+  assert.deepEqual([...ok(r).values()].map((x) => x.status), ['todo', 'todo', 'todo', 'todo']);
+});
+
+test('names the closing PR in the task note', () => {
+  const r = pull({ issues: [issue(20)], pullRequests: [pr(40, { body: 'Closes #20' })] });
+  assert.match(r.text, /Issue: #20\. Open PR #40 closes it/);
+});
+
+test('exits 2 when pullRequests is not an array', () => {
+  const r = pull({ issues: [issue(20)], pullRequests: { number: 40 } });
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /pullRequests must be an array/);
+});
+
+test('derives doing from a local ticket branch without a closing commit, and next-task reports IN_PROGRESS', () => {
+  const r = pull([issue(20), issue(21, { body: 'Blocked by: #20' })], {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      git(dir, 'branch', 'loop/issue-20-points');
+    },
+  });
+  const t = ok(r);
+  assert.equal(t.get('T20').status, 'doing');
+  assert.match(r.text, /Issue: #20\. Work in progress on loop\/issue-20-points/);
+  assert.equal(t.get('T21').status, 'todo');
+  assert.equal(r.next.status, 3);
+  assert.equal(r.next.stdout.trim(), 'IN_PROGRESS');
+});
+
+test('derives done from a closing commit on the ticket\'s own branch, even when it is not checked out', () => {
+  const t = ok(pull([issue(20), issue(21)], {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      git(dir, 'checkout', '-q', '-b', 'issue-20');
+      commit(dir, 'feat: points\n\nCloses #20');
+      commit(dir, 'feat: stray\n\nCloses #21');
+      git(dir, 'checkout', '-q', 'main');
+    },
+  }));
+  assert.equal(t.get('T20').status, 'done');
+  assert.equal(t.get('T21').status, 'todo', 'a ticket branch only closes its own ticket');
+});
+
+test('derives doing from a harness WIP checkpoint and a remote ticket branch', () => {
+  const t = ok(pull([issue(20), issue(21), issue(22)], {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      const head = git(dir, 'rev-parse', 'HEAD');
+      git(dir, 'update-ref', 'refs/harness/wip/claude/issue-20-x', head);
+      git(dir, 'update-ref', 'refs/remotes/origin/issue-21', head);
+    },
+  }));
+  assert.equal(t.get('T20').status, 'doing');
+  assert.equal(t.get('T21').status, 'doing');
+  assert.equal(t.get('T22').status, 'todo');
+});
+
+test('never treats branches outside the issue-<N> pattern as ticket branches', () => {
+  const names = ['fix-20', 'release-20', 'issue20', 'my-issue-20', 'issue-20x', 'loop/goal-20261124', 'issues-20', 'Issue-20', '20'];
+  const t = ok(pull([issue(20), issue(20261124)], {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      for (const n of names) git(dir, 'branch', n);
+    },
+  }));
+  assert.equal(t.get('T20').status, 'todo');
+  assert.equal(t.get('T20261124').status, 'todo');
+});
+
+test('keeps the status precedence: closed and blocked-outside win over a ticket branch', () => {
+  const t = ok(pull([
+    issue(20, { state: 'closed' }),
+    issue(21, { body: 'Blocked by: #7' }),
+    issue(22, { state: 'closed', state_reason: 'not_planned' }),
+  ], {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      for (const n of [20, 21, 22]) git(dir, 'branch', `issue-${n}`);
+    },
+  }));
+  assert.equal(t.get('T20').status, 'done');
+  assert.equal(t.get('T21').status, 'blocked');
+  assert.equal(t.get('T22').status, 'blocked');
+});
+
+test('an open PR wins over a ticket branch', () => {
+  const t = ok(pull({ issues: [issue(20)], pullRequests: [pr(40, { body: 'Closes #20' })] }, {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      git(dir, 'branch', 'issue-20');
+    },
+  }));
+  assert.equal(t.get('T20').status, 'done');
+});
