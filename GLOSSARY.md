@@ -52,3 +52,9 @@ The owner gate where the owner accepts the finished result against its spec issu
 **Intervention**:
 A human prompt mid-run that is not an answer to an owner gate; counted as a defect in the KPI.
 _Avoid_: interruption
+
+## Layout
+
+**Test bench**:
+The one reference product kept in this repo (`testbench/retro-board/`, run records in `docs/testbench/retro-board/`) that the process and its gate are proven and tuned on. Other products live in their own repositories.
+_Avoid_: example, sample app, demo

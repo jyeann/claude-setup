@@ -64,7 +64,7 @@ jobs:
           npm install -g playwright@1.63.0
           playwright install --with-deps chromium
       - name: Full verify gate (tests, coverage, test quality, hidden holdout, browser journeys, mutation)
-        working-directory: examples/retro-board
+        working-directory: testbench/retro-board
         run: CLAUDE_PROJECT_DIR="$PWD" NODE_PATH="$(npm root -g)" node ../../.claude/harness/bin/verify.js
 
   eval-kit-selftest:
@@ -83,4 +83,4 @@ jobs:
           npm install -g playwright@1.63.0
           playwright install --with-deps chromium
       - name: Graders accept the golden artifacts and reject degraded ones
-        run: NODE_PATH="$(npm root -g)" node examples/retro-board/tune/selftest.js
+        run: NODE_PATH="$(npm root -g)" node testbench/retro-board/tune/selftest.js
