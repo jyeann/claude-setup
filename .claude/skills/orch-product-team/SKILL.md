@@ -13,7 +13,7 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 
 ## Principles
 
-- **One human gate: final acceptance.** Scope, design, plan and commit approvals are agent decisions. Each is written to `docs/product/<slug>/decisions.md` as: decision, options, chosen, why, decided by. Ask a human only for spend, legal or real personal data.
+- **One human gate: final acceptance.** Scope, design, plan and commit approvals are agent decisions. Each is written to `<product-repo>/docs/product/<slug>/decisions.md` as: decision, options, chosen, why, decided by. Ask a human only for spend, legal or real personal data.
 - **A stop to ask a human is a defect.** The `UserPromptSubmit` hook counts human prompts; every prompt after the first in a session is an intervention and shows in the KPI view. Do not end a turn to ask "shall I continue?".
 - **Delegated agents run in the foreground** so tokens, time and outcome are recorded. Background runs show as "outcome not reported".
 - **Tag every delegated agent** with its phase: `description: "[phase:design] ..."`. The KPI roll-up groups cost by this tag. Pass `effort` explicitly (see Effort).
@@ -22,9 +22,16 @@ interrupted. Build and verify still go through the harness (`/harness-build`, `v
 
 ## Starting the run
 
-Start the harness **before phase 1**, with the whole pipeline as the definition of done:
+A product run never writes into this repository (`claude-setup`). Each product lives in its own repository, called `<product-repo>` below, or at a path the owner gives. Its run records go in `<product-repo>/docs/product/<slug>/`, inside the product's repository.
 
-`node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product examples/<p> --docs docs/product/<p>' --task "<the idea, verbatim>" --open-gate-files --no-commit-gate --max 40 --stall 4`
+1. **Pick the target.** Use the repository or path the owner named. With no target, propose a new repository named after the product (`<slug>`) and ask the owner once: a new repository is a spend and access decision. Do not start the run without the answer.
+2. **Install the harness there** with the `harness-install` skill, or from a clone of this repo: `node .claude/harness/bin/install.js <product-repo>` (add `--dry-run` first to show the changes). Commit the result in `<product-repo>`.
+3. **Work inside `<product-repo>`** from here on: open the session there, so its hooks and settings load. In the commands below, `<product-repo>` is that repository's absolute path.
+4. **Start the harness before phase 1**, with the whole pipeline as the definition of done:
+
+`node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product <product-repo> --docs <product-repo>/docs/product/<slug>' --task "<the idea, verbatim>" --open-gate-files --no-commit-gate --max 40 --stall 4`
+
+When the owner gave a folder inside an existing repository, install the harness at that repository's root and pass the folder as `--product`. The first `pipeline.js check` reports `discover` as the next phase.
 
 - `pipeline.js check` walks the nine phases in order and exits 0 only when each has its output and the product's own `verify.js` gate is green. On every stop attempt the Stop hook runs it and hands back the first unfinished phase and what is missing. That message is the next task: do it, do not ask.
 - `--open-gate-files` leaves `spec.md`, `acceptance/` and `verify.config.json` writable, because this run writes them in phase 4. From the moment phase 4 is complete, `pipeline.js` freezes them, the holdout and `ux.md` by hash. A later change fails the check unless `decisions.md` has a line `AMEND: <path> - <reason>`, one line per change. Only the test author amends a test; a builder never does.
@@ -33,11 +40,11 @@ Start the harness **before phase 1**, with the whole pipeline as the definition 
 - Each stop attempt costs one of the 40 iterations and re-runs the product gate once phase 4 is done, so stay in the turn while an agent works and stop only when a phase is finished.
 - The holdout is not hidden by the harness in this mode, because its author must be able to correct it mid-run. Never give a builder the holdout path or contents. For harness-enforced hiding, use the build-only run below.
 
-**Build-only run (spec and tests already exist, written outside the run):** `node .claude/harness/bin/harness.js init --verify 'cd examples/<p> && CLAUDE_PROJECT_DIR="$PWD" node ../../.claude/harness/bin/verify.js' --task-file examples/<p>/spec.md --protect examples/<p>/acceptance/,examples/<p>/verify.config.json,docs/product/<p>/ --hide examples/<p>/holdout --max 14 --stall 3`. Here the harness write-protects the tests and hides the holdout, but nothing stops the agent ending the turn in the other phases.
+**Build-only run (spec and tests already exist, written outside the run):** in `<product-repo>`, with the harness installed as above: `node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/verify.js' --task-file spec.md --protect acceptance/,verify.config.json,<product-repo>/docs/product/<slug>/ --hide holdout --max 14 --stall 3`. These paths assume the product is at the repository root; for a folder inside it, put the folder in front of `spec.md`, `acceptance/`, `verify.config.json` and `holdout`, and run `verify.js` from that folder. Here the harness write-protects the tests and hides the holdout, but nothing stops the agent ending the turn in the other phases.
 
 ## Phases, roles, artifacts
 
-| # | Phase tag | Who | Output (under `docs/product/<slug>/`) | Exit check |
+| # | Phase tag | Who | Output (under `<product-repo>/docs/product/<slug>/`) | Exit check |
 |---|-----------|-----|----------------------------------------|------------|
 | 1 | `discover` | `product-scoper` | `brief.md` | build/adopt/extend decided; success criteria are user-visible and testable |
 | 2 | `ux` | `ux-designer` (+ `a11y-architect` for review) | `ux.md` | every success criterion has a journey and a UI acceptance check |
@@ -76,11 +83,11 @@ From the per-phase comparison on the retro board (`docs/testbench/retro-board/ef
 | tests (test owner) | `medium` | `low` passed 1 of 2; `high` cost 2x `medium` with the same pass |
 | build | `low` or `medium`, with the full gate including the hidden holdout | `high` failed the gate 2 of 2: in the one run diagnosed, it missed a rule from the design that no visible test covered (control characters in card text) |
 
-Read this carefully: most graders check coverage by keyword, so "all passed" means the checklist was met, not that the work was equal. Trials are few. Re-run `testbench/retro-board/tune/run.js` on a second product before treating any row as settled, and keep a hidden holdout in the build gate: it was the only check that told the effort levels apart on quality.
+Read this carefully: most graders check coverage by keyword, so "all passed" means the checklist was met, not that the work was equal. Trials are few. Re-run `testbench/retro-board/tune/run.js` on a second product (built in its own repository, like any new product) before treating any row as settled, and keep a hidden holdout in the build gate: it was the only check that told the effort levels apart on quality.
 
 ## Limits and resuming
 
-When a usage limit stops an agent, write the state to `docs/product/<slug>/status.md` (phase, what is done, what is next), schedule a resume with `send_later` at the reset time, and continue with `SendMessage` to the stopped agent. Do not wait for a human to say "try again".
+When a usage limit stops an agent, write the state to `<product-repo>/docs/product/<slug>/status.md` (phase, what is done, what is next), schedule a resume with `send_later` at the reset time, and continue with `SendMessage` to the stopped agent. Do not wait for a human to say "try again".
 
 ## KPI proof
 

@@ -16,10 +16,10 @@ function trackedFiles(root) {
 }
 
 // Returns a list of problems, one string each; empty means the layout is clean.
-// policy: {forbiddenDirs: [], forbiddenRefs: [], docExtensions: ['.md'], skip: [], placeholderFiles: []}
-//  - forbiddenRefs match only at the start of a path (not "code-examples/" for "examples/").
+// policy: {forbiddenDirs: [], forbiddenRefs: [], docExtensions: ['.md'], skip: []}
+//  - forbiddenRefs match only at the start of a path (not "code-examples/" for "examples/"), so a path in
+//    another repository written as `<product-repo>/docs/product/...` is not a reference into this one.
 //  - a reference written as `git show <rev>:<path>` points at history and is allowed.
-//  - in placeholderFiles, a reference followed by "<" (a placeholder such as `examples/<p>`) is allowed.
 function checkLayout(root, policy, files = trackedFiles(root)) {
   const problems = [];
   for (const dir of policy.forbiddenDirs || []) {
@@ -29,7 +29,6 @@ function checkLayout(root, policy, files = trackedFiles(root)) {
   if (refs.length === 0) return problems;
   const exts = policy.docExtensions || ['.md'];
   const skip = policy.skip || [];
-  const placeholderFiles = policy.placeholderFiles || [];
   const re = new RegExp(`(?<![\\w./-])(?:${refs.map(escape).join('|')})`, 'g');
   for (const file of files) {
     if (!exts.includes(path.extname(file)) || under(file, skip)) continue;
@@ -39,7 +38,6 @@ function checkLayout(root, policy, files = trackedFiles(root)) {
     lines.forEach((line, i) => {
       for (const m of line.matchAll(re)) {
         if (/git show [^\s:`]+:$/.test(line.slice(0, m.index))) continue;
-        if (placeholderFiles.includes(file) && line[m.index + m[0].length] === '<') continue;
         problems.push(`${file}:${i + 1} cites ${m[0]}`);
       }
     });

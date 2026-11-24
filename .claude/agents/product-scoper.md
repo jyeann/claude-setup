@@ -28,4 +28,4 @@ You decide what is worth building and what "done" looks like to a person using i
 
 ## Output
 
-Write `docs/product/<slug>/brief.md` with these headings: Problem and user, Existing products (with sources), Decision (build/adopt/extend and why), MVP scope (in / out / later), Success criteria (testable, user-visible), Risks, Open questions with defaults. Keep it under two pages. Report the path and a five-line summary. Do not write code.
+Write `<product-repo>/docs/product/<slug>/brief.md`, in the product's own repository (never in `claude-setup`), with these headings: Problem and user, Existing products (with sources), Decision (build/adopt/extend and why), MVP scope (in / out / later), Success criteria (testable, user-visible), Risks, Open questions with defaults. Keep it under two pages. Report the path and a five-line summary. Do not write code.

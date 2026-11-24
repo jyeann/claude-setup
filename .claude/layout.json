@@ -8,11 +8,5 @@
     "plugins/",
     "docs/testbench/retro-board/brief.md"
   ],
-  "_skip": "CHANGELOG.md is history; plugins/ is vendored; brief.md is a run record whose repository check quotes the layout of its time.",
-  "placeholderFiles": [
-    ".claude/skills/orch-product-team/SKILL.md",
-    ".claude/agents/product-scoper.md",
-    ".claude/agents/ux-designer.md"
-  ],
-  "_placeholderFiles": "Temporary: these still use `examples/<p>` and `docs/product/<slug>/` placeholders for where a new product goes in this repo. #32 moves new products to their own repository; when it rewrites these lines (e.g. to `<product-repo>/...`) it removes the files from this list."
+  "_skip": "CHANGELOG.md is history; plugins/ is vendored; brief.md is a run record whose repository check quotes the layout of its time."
 }

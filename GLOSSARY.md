@@ -54,3 +54,7 @@ _Avoid_: interruption
 **Test bench**:
 The one reference product kept in this repo (`testbench/retro-board/`, run records in `docs/testbench/retro-board/`) that the process and its gate are proven and tuned on. Other products live in their own repositories.
 _Avoid_: example, sample app, demo
+
+**Product repository**:
+The repository (or owner-given path) where `orch-product-team` builds one new product, with the harness installed and the run records in `<product-repo>/docs/product/<slug>/`. Never this repo.
+_Avoid_: example folder, product folder
