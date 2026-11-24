@@ -27,7 +27,11 @@ A ticket that needs a human: a product decision, credentials, manual QA or visua
 _Avoid_: backlog file, todo file
 
 **Derived status**:
-A ticket's `todo` / `doing` / `done` / `blocked` in the task list, computed from GitHub and git facts (closed issue, a `Closes #N` commit or PR, a ticket branch, an open blocker outside the spec) rather than typed by anyone.
+A ticket's `todo` / `doing` / `done` / `blocked` in the task list, computed from GitHub and git facts (closed issue, a `Closes #N` commit or open PR, a ticket branch, an open blocker outside the spec) rather than typed by anyone. Precedence is in ADR-0001.
+
+**Ticket branch**:
+A local git branch for one ticket, named with a path segment `issue-<N>` or `issue-<N>-<slug>` (for example `claude/issue-22-derived-status`); it makes the ticket `doing` until a closing commit on the current branch, an open PR or the closed issue makes it `done`.
+_Avoid_: feature branch (for this meaning)
 
 ## Approvals
 
