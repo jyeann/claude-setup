@@ -1,0 +1,12 @@
+{
+  "adapter": "vitest-stryker",
+  "timeoutMs": 240000,
+  "minTests": 10,
+  "replicates": 2,
+  "srcDirs": ["src"],
+  "coverage": { "minLines": 90, "minFileLines": 80, "minSourceFiles": 2, "exclude": [] },
+  "testQuality": { "dirs": ["tests"], "minAssertionsPerFile": 3 },
+  "holdout": { "command": "npx vitest run --dir \"${HARNESS_HIDDEN_DIR:-hidden-tests}\"", "minTests": 3 },
+  "journeys": { "command": "npx vite build && npx playwright test", "uxFile": "ux.md", "minTests": 1 },
+  "mutation": { "samples": 6, "minKillRate": 1, "budgetMs": 240000 }
+}
