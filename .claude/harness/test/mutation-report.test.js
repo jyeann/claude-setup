@@ -198,7 +198,7 @@ test('an Ignored mutant fails unless listed; a listed one is printed as a weaken
   r = verify(project({ scenario, sources: one, mutation: { ignored: [{ file: 'src/a.js', line: 3, mutator: 'StringLiteral' }] } }));
   assert.equal(r.status, 0, text(r));
   assert.match(r.stdout, /weakening: 1 Ignored mutant\(s\) accepted by mutation\.ignored in verify\.config\.json: src\/a\.js:3 StringLiteral \("copy text"\)/);
-  assert.match(r.stdout, /VERIFY PASSED\n {2}weakening: mutation\.ignored accepts 1 Ignored mutant\(s\)/);
+  assert.match(r.stdout, /^ {2}weakened \(verify\.config\.json\): mutation\.ignored src\/a\.js:3 StringLiteral$/m);
 
   r = verify(project({ scenario, sources: one, mutation: { ignored: [{ file: 'src/a.js', line: 4, mutator: 'StringLiteral' }] } }));
   assert.equal(r.status, 1, 'another line does not match');
@@ -281,6 +281,8 @@ test('config: mutation command keys are checked, and refused on the node adapter
     [{ mutation: { command: 'x', testRunner: 'vitest', incremental: true } }, /mutation\.incremental is not allowed/],
     [{ adapter: 'node', runner: undefined, weakerGate: undefined, mutation: { command: 'x', testRunner: 'vitest' } }, /mutation\.command, mutation\.testRunner apply only with "adapter": "junit"/],
     [{ adapter: 'node', runner: undefined, weakerGate: undefined, mutation: { budgetMs: 1000 } }, /apply only with "adapter": "junit"/],
+    [{ adapter: 'node', runner: undefined, weakerGate: undefined, mutation: { exclude: ['src/a.js'] } }, /mutation\.exclude apply only with "adapter": "junit"/],
+    [{ mutation: { command: 'x', testRunner: 'vitest', exclude: 'src/a.js' } }, /mutation\.exclude must be an array of paths/],
   ];
   for (const [config, message] of cases) {
     const dir = project();
@@ -291,4 +293,50 @@ test('config: mutation command keys are checked, and refused on the node adapter
     assert.equal(r.status, 2, `${JSON.stringify(config)}: ${text(r)}`);
     assert.match(r.stderr, message, JSON.stringify(config));
   }
+});
+
+test('mutation.exclude leaves files out of the sample and is printed as a weakening beside coverage.exclude', () => {
+  const dir = project({ mutation: { samples: 9, exclude: ['src/b.js'] }, config: { coverage: { exclude: ['src/c.js'] } } });
+  const r = verify(dir);
+  assert.equal(r.status, 0, text(r));
+  const [run] = runs(dir);
+  assert.equal(run.args[run.args.indexOf('--mutate') + 1], 'src/a.js', 'both lists leave files out, as coverage.exclude does on the node path');
+  assert.match(r.stdout, /^ {2}weakening: mutation\.exclude leaves src\/b\.js unmutated$/m);
+  assert.match(r.stdout, /^ {2}weakened \(verify\.config\.json\): coverage\.exclude src\/c\.js; mutation\.exclude src\/b\.js$/m);
+});
+
+// The vitest runner after #58: coverage from lcov, .tsx as source, so with a mutation command only test quality
+// is left unchecked.
+const VITEST = `#!/bin/sh
+junit=""; covdir=""
+for a in "$@"; do case "$a" in
+  --outputFile.junit=*) junit="\${a#--outputFile.junit=}" ;;
+  --coverage.reportsDirectory=*) covdir="\${a#--coverage.reportsDirectory=}" ;;
+esac; done
+printf '%s\\n' '<testsuites><testsuite name="s" tests="2"><testcase name="a"/><testcase name="b"/></testsuite></testsuites>' > "$junit"
+mkdir -p "$covdir"
+printf 'SF:src/Widget.tsx\\nDA:1,1\\nLF:1\\nLH:1\\nend_of_record\\n' > "$covdir/lcov.info"
+echo "      Tests  2 passed (2)"
+`;
+function vitestProject(weakerGate) {
+  const dir = project({ sources: { 'src/Widget.tsx': 'export const w = 1;\n' }, config: { runner: 'vitest', testCommand: 'sh vitest.sh run', weakerGate } });
+  fs.writeFileSync(path.join(dir, 'vitest.sh'), VITEST);
+  return dir;
+}
+
+test('vitest with a mutation command: .tsx is sampled, and weakerGate.missing must be exactly test-quality', () => {
+  let dir = vitestProject({ missing: ['test-quality'], decision: 'decisions.md row 9' });
+  let r = verify(dir);
+  assert.equal(r.status, 0, text(r));
+  assert.equal(runs(dir)[0].args[runs(dir)[0].args.indexOf('--mutate') + 1], 'src/Widget.tsx');
+  assert.match(r.stdout, /not checked \(weaker gate, junit adapter\): test-quality \(owner decision: decisions\.md row 9\)/);
+
+  r = verify(vitestProject({ missing: ['test-quality', 'mutation'], decision: 'x' }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /weakerGate\.missing must list exactly test-quality \(listed but checked: mutation\)/);
+
+  dir = vitestProject(undefined);
+  r = verify(dir);
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /the junit adapter does not run test-quality; this needs an owner decision recorded as "weakerGate": \{"missing": \["test-quality"\]/);
 });

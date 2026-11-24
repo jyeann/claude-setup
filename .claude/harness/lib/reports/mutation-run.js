@@ -64,7 +64,6 @@ function trustProblems(report, sample) {
 function judge(report, config, out) {
   const { minKillRate, ignored = [] } = config.mutation;
   const failures = [];
-  const weakenings = [];
   const all = Object.entries(report.files).flatMap(([file, { mutants }]) => mutants.map((m) => ({ file, m })));
   const score = scoreMutants(report.counts);
   const c = report.counts;
@@ -83,10 +82,7 @@ function judge(report, config, out) {
   const ignoredMutants = all.filter(({ m }) => m.status === 'Ignored');
   const unlisted = ignoredMutants.filter(({ file, m }) => !listed(ignored, file, m));
   const accepted = ignoredMutants.filter(({ file, m }) => listed(ignored, file, m));
-  if (accepted.length > 0) {
-    out(`  weakening: ${accepted.length} Ignored mutant(s) accepted by mutation.ignored in verify.config.json: ${grouped(accepted)}`);
-    weakenings.push(`mutation.ignored accepts ${accepted.length} Ignored mutant(s)`);
-  }
+  if (accepted.length > 0) out(`  weakening: ${accepted.length} Ignored mutant(s) accepted by mutation.ignored in verify.config.json: ${grouped(accepted)}`);
   if (unlisted.length > 0) {
     failures.push(`mutation: ${unlisted.length} Ignored mutant(s) not listed in mutation.ignored: ${grouped(unlisted)}; a \`Stryker disable\` comment does not pass the gate: test the code, or ask the owner to list the mutant as {"file", "line", "mutator"} in mutation.ignored`);
   }
@@ -94,13 +90,13 @@ function judge(report, config, out) {
   else if (score.rate < minKillRate) {
     failures.push(`mutation: ${score.valid - score.detected}/${score.valid} mutants survived or were not covered; the tests run this code but do not pin its behaviour (see survivors above)`);
   }
-  return { failures, weakenings };
+  return failures;
 }
 
-// -> { failures, weakenings }
+// -> failures
 async function checkReportMutation(root, config, files, texts, out) {
   const { command, testRunner, checkers = [], samples, budgetMs } = config.mutation;
-  if (files.length === 0) return { failures: [`mutation: no source files found under ${config.srcDirs.join(', ')}`], weakenings: [] };
+  if (files.length === 0) return [`mutation: no source files found under ${config.srcDirs.join(', ')}`];
   const sample = sampleFiles(files, texts, samples);
   out(`  mutation: sampled ${sample.length} of ${files.length} source file(s): ${sample.join(', ')}`);
   const dir = makeTemp('verify-mutation-');
@@ -116,7 +112,7 @@ async function checkReportMutation(root, config, files, texts, out) {
     const result = await runVerify(`${command} ${args.map(shellQuote).join(' ')}`, { cwd: root, timeoutMs: budgetMs });
     const used = Date.now() - began;
     out(`  mutation: time used ${used} ms of the ${budgetMs} ms budget`);
-    const failed = (why) => ({ failures: [`mutation: ${why}`], weakenings: [] });
+    const failed = (why) => [`mutation: ${why}`];
     if (result.timedOut || used > budgetMs) {
       return failed(`the step exceeded its budget of ${budgetMs} ms (stopped after ${used} ms); lower mutation.samples, or ask the owner to raise mutation.budgetMs`);
     }
@@ -131,7 +127,7 @@ async function checkReportMutation(root, config, files, texts, out) {
     let report;
     try { report = parseMutationReport(fs.readFileSync(reportFile, 'utf8')); } catch (err) { return failed(err.message); }
     const problems = trustProblems(report, sample);
-    if (problems.length > 0) return { failures: problems.map((p) => `mutation: ${p}`), weakenings: [] };
+    if (problems.length > 0) return problems.map((p) => `mutation: ${p}`);
     return judge(report, config, out);
   } finally {
     removeTemp(dir);
