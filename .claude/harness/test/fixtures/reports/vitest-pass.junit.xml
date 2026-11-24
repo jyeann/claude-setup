@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<testsuites name="vitest tests" tests="4" failures="0" errors="0" time="0.040125307">
+    <testsuite name="tests/Slug.test.tsx" timestamp="2026-11-24T06:11:29.254Z" hostname="vm" tests="4" failures="0" errors="0" skipped="1" time="0.040125307">
+        <testcase classname="tests/Slug.test.tsx" name="slugify &gt; lowercases and joins words with dashes" time="0.002429428">
+        </testcase>
+        <testcase classname="tests/Slug.test.tsx" name="slugify &gt; cuts the slug to the maximum length" time="0.000208824">
+        </testcase>
+        <testcase classname="tests/Slug.test.tsx" name="slugify &gt; keeps unicode letters (not supported yet)" time="0">
+            <skipped/>
+        </testcase>
+        <testcase classname="tests/Slug.test.tsx" name="Slug component &gt; shows the slug of the typed title" time="0.035411863">
+        </testcase>
+    </testsuite>
+</testsuites>

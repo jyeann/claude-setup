@@ -1,0 +1,6 @@
+<testsuites id="" name="" tests="1" failures="0" skipped="0" errors="0" time="1.7263400000000002">
+<testsuite name="slug.spec.ts" timestamp="2026-11-24T06:14:19.825Z" hostname="" tests="1" failures="0" skipped="0" time="0.427" errors="0">
+<testcase name="J1 typing a title shows its slug" classname="slug.spec.ts" time="0.427">
+</testcase>
+</testsuite>
+</testsuites>
