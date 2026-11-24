@@ -12,6 +12,10 @@
 
 - **wiki** (`examples/wiki`, version 1.0.0): a local-first Markdown wiki. Notes are plain `<Title>.md` files in one vault folder. The browser UI provides `[[wikilinks]]`, backlinks, rename that rewrites links, Ctrl+K search, a graph view and conflict-safe saves. It runs on Node 22 with no dependencies and no build step, bound to loopback by default. See `examples/wiki/README.md` for run steps, limits and known limitations.
 
+### Changed
+
+- **Gate setup examples are harness fixtures** (#30, spec #27): `examples/todo-api`, `examples/slug-ts` and `examples/sheet-engine` moved unchanged to `.claude/harness/fixtures/`, and the harness README links there. `install.js` does not copy `fixtures/` into other projects: they are specs and acceptance tests without `src/`, so a target's test runner would only find failing tests.
+
 ### Removed
 
 - The ECC catalogue beyond what `orch-product-team` calls (21 agents, 48 skills, 43 commands, the `orch-*` single-feature workflows): a full product run used none of it. `hello-overkill` moved to jyeann/HW-PIRPLE-1. `examples/notes-api` and a stale `HARNESS-DIAGNOSIS.md`.
