@@ -105,6 +105,29 @@ test('a policy with only retiredNames checks names, and retiredNamesSkip exempts
   assert.deepEqual(checkLayout(dir, policy), ['a.md:1 names retired old-skill', 'adr.md:1 cites examples/']);
 });
 
+test('fails when a current doc uses a retired phrase, in any case or wrapped across lines; retiredPhrasesSkip exempts a folder', () => {
+  const dir = repo({
+    'README.md': 'intro\nThe run has One Human\n  gate at the end.\n',
+    'docs/dod.md': 'no human input until final acceptance\n',
+    'docs/testbench/run/decisions.md': 'The process has one human gate, final acceptance\n',
+    'CHANGELOG.md': 'replaced one human gate\n',
+    'other.md': 'one human gates, everyone human gate and one human-gate are other words\n',
+  });
+  const policy = { ...POLICY, retiredPhrases: ['one human gate', 'no human input until final acceptance'], retiredPhrasesSkip: ['docs/testbench/'] };
+  assert.deepEqual(checkLayout(dir, policy), [
+    'README.md:2 uses retired phrase "One Human gate"',
+    'docs/dod.md:1 uses retired phrase "no human input until final acceptance"',
+  ]);
+  assert.deepEqual(checkLayout(dir, { retiredPhrases: ['one human gate'] }).length, 3);
+});
+
+test('current docs in this repository describe two owner gates, not one human gate (#25)', () => {
+  const policy = JSON.parse(fs.readFileSync(path.join(REPO, '.claude', 'layout.json'), 'utf8'));
+  assert.ok(policy.retiredPhrases.includes('one human gate'));
+  assert.ok(policy.retiredPhrases.includes('no human input until final acceptance'));
+  assert.deepEqual(checkLayout(REPO, { retiredPhrases: policy.retiredPhrases, retiredPhrasesSkip: policy.retiredPhrasesSkip, skip: policy.skip }), []);
+});
+
 test('CLI takes --policy and exits 0 when the repository has no policy', () => {
   const dir = repo({ 'README.md': 'see examples/x\n' });
   const policy = path.join(dir, 'p.json');

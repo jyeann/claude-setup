@@ -3,7 +3,7 @@
 Decision made by the orchestrating agent on 2026-11-18, without waiting for a human, as asked. It is written down so it can be checked and overturned.
 
 ## Decision
-The testing and the product-team process are **complete for this scope**: small, dependency-free web products built by one orchestrator with sonnet, one human gate at the end. They stay complete as long as every condition below holds. No further validation run is needed to call them complete; the triggers further down say when to reopen.
+The testing and the product-team process are **complete for this scope**: small, dependency-free web products built by one orchestrator with sonnet, with the owner asked only at the end (final acceptance). They stay complete as long as every condition below holds. No further validation run is needed to call them complete; the triggers further down say when to reopen.
 
 | # | Condition | Status | Evidence |
 |---|-----------|--------|----------|
@@ -34,10 +34,20 @@ What the packing-list run added:
 
 Until those are fixed and one run passes without them, treat the process as: **builds a working small product unattended, with cost reporting and resume after a usage limit not yet reliable.**
 
+## Update, 2026-11-24: the scope changed (spec #19, spec #27)
+Reopen trigger 2 fired again: agent definitions and `orch-product-team` changed. Every agent now sets `model:` and `effort:` by task class, a `spec-reviewer` agent was added, tickets are now GitHub issues made with `to-tickets`, with a generated task list (#20 to #23, #41), and the run has **two owner gates**, `spec-approved` after the spec and `accepted` after release, with a `waiting` state the KPI counts as gate responses, not interventions (#24). Spec #27 changed where products live: new products are built in their own repository, and `retro-board` is the test bench in `testbench/retro-board/` (#28 to #32).
+
+So the scope of the decision above no longer matches the process: it was small products built in this repository with the owner asked once, at the end; it is now small products built in their own repository with two owner gates, by agents whose definitions changed.
+
+- **Owed, not run:** the per-phase re-measurement that trigger 2 asks for (`testbench/retro-board/tune/run.js`, about $20 and about 2.5 hours). It is waiting for the owner's approval; spec #19 kept it out of scope. Until it runs, the effort defaults in `orch-product-team` are carried over from the old agent definitions, not measured on the new ones.
+- **Planned evidence:** the first full run under the new process is issue #37, an expense splitter built in its own repository with both owner gates. Its KPI (cost, tokens and time per phase, interventions after the first prompt) will show whether the conditions above still hold.
+
+Until both are in, treat the process as described in the 2026-11-20 update, with the two owner gates in place but not yet exercised by a full run.
+
 ## Reopen the decision when any of these happens
 1. A required check fails on `main`.
 2. The model, an agent definition, or `orch-product-team` changes: re-run the per-phase comparison (`node testbench/retro-board/tune/run.js --phases discover,ux,design,tests,build,review,qa,release --levels low,medium,high`, about $20 and 2.5 hours; the self-test in CI is the cheap check in between).
-3. A run needs a human prompt after the first (the KPI view counts them).
+3. A run needs a human prompt after the first that is not a gate response (the KPI view counts interventions).
 4. The process is used on a product that handles money, logins or personal data.
 5. A second full run of the process on a different product fails any condition above.
 
