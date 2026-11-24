@@ -127,6 +127,26 @@ With `"adapter": "junit"` and a `mutation.command`, the mutation step is judged 
 Neutrality is tested with `test/fixtures/standin-runner.sh`, a POSIX shell script that behaves like pytest, and with replays of the real Vitest and Playwright reports from the spike (`test/fixtures/reports/`, `docs/process/spike-gate-adapters.md`).
 
 
+## Adapters
+An adapter is how the gate measures one stack. It is chosen with `"adapter"` in `verify.config.json`; the gate stays the judge and the stack's own tools only write reports (ADR [0003](../../docs/adr/0003-report-contract.md)).
+
+| Adapter | Commands | Reports read | Protected tool configs | Test quality | Proven by |
+|---|---|---|---|---|---|
+| `node` (default) | `testCommand` on `node:test`, optional `typecheck` | `node:test` output, raw V8 coverage, built-in mutation sampler | `verify.config.json` | yes | the harness suite |
+| `junit` | `testCommand` with `runner` (`vitest`, `playwright`); optional `typecheck`, `holdout`, `journeys`, `mutation.command` | JUnit XML, lcov (`vitest`), Stryker JSON with `mutation.command` | by what runs (see above) | **no**: needs a `weakerGate` owner decision | report replays and stand-ins |
+| `vitest-stryker` | preset: `npx vitest run`, `npx tsc --noEmit` (required), `npx stryker run`, Playwright journeys | JUnit XML, lcov, Stryker JSON | `vite`/`vitest`/`stryker`/`playwright` configs and `tsconfig*.json` | yes (`.tsx` included) | `fixtures/slug-react/`, CI job `gate-slug-react` |
+
+**What an adapter provides.** (1) The commands it runs and the flags the gate appends to each, so reports land in a gate-owned directory outside the project. (2) The report formats it reads and the second witness for each (the runner's stdout totals for JUnit; the report's own `config` and file set for Stryker; none for lcov). (3) The tool config files that can change what is measured, which become protected while a run is active and in CI. (4) Whether the test-quality check can read its test files; where it cannot, the check is "not available" and the gate fails without a `weakerGate` owner decision.
+
+**Trust rules** (ADR-0003): a non-zero exit fails; each run gets a fresh report directory outside the project, so only a report written during the run counts; a missing, stale or malformed report fails, naming the flags; report totals must match the runner's own summary; the holdout prints counts only; a check an adapter cannot run is a weaker gate the owner must accept, and it is printed on every run. **Remaining risks:** test code runs with the runner's rights, so it could forge a consistent report and summary (deliberate cheating that review and the hidden holdout are there to catch, not the gate); lcov has no second witness; files a tool config loads (`setupFiles`, a tsconfig `extends` target not named `tsconfig*.json`) are not protected; a whole-pipeline run (`--open-gate-files`) protects none of the configs.
+
+**Adding an adapter.**
+1. **Spike** the stack's real tools in a throwaway project: capture their reports into `test/fixtures/reports/`, measure the run, and write down every place a tool does not behave as the spec assumes (as in `docs/process/spike-gate-adapters.md`).
+2. **Reuse the readers.** If the tools write JUnit XML, lcov or mutation-testing-elements JSON, use `lib/reports/` as is and add only the flags and the summary line; a new format needs its own reader with the same refuse-what-you-do-not-understand rule. Test with stand-ins and the captured reports, never with the stack installed in the harness.
+3. **Fixture.** A small real project under `fixtures/<name>/` with exact pins and a lockfile that passes the full gate, and fails for its own reason under each deliberate weakening (a removed assertion, an untested file, an ignore comment, an edited config, a type error).
+4. **CI job.** A job in `.github/workflows/ci.yml` that runs `npm ci` (or the stack's equivalent) with a cache keyed on the fixture's lockfile, installs what the journey needs, and runs the real gate in the fixture; add its name to `ci/ruleset.json` (applying the ruleset is the owner's step, `ci/protect.sh --apply`). `gate-slug-react` is the example.
+5. **Catalogue entry** (#62): list the adapter, its versions and limits in the stack catalogue so kickoff can offer it.
+
 ## Whole-pipeline gate (`bin/pipeline.js`)
 ```bash
 node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product app --docs docs/app' \

@@ -67,6 +67,30 @@ jobs:
         working-directory: testbench/retro-board
         run: CLAUDE_PROJECT_DIR="$PWD" NODE_PATH="$(npm root -g)" node ../../.claude/harness/bin/verify.js
 
+  gate-slug-react:
+    name: gate-slug-react
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: .claude/harness/fixtures/slug-react
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          # jsdom 31 needs Node ^22.22.2, vitest 5 ^22.12.0: the latest 22.x satisfies both.
+          node-version: 22
+          cache: npm
+          cache-dependency-path: .claude/harness/fixtures/slug-react/package-lock.json
+      - name: Install the fixture's pinned devDependencies
+        run: npm ci
+      - name: Install Chromium for the fixture's own Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Full verify gate with the vitest-stryker adapter (type check, tests, coverage, test quality, holdout, journey, mutation)
+        run: CLAUDE_PROJECT_DIR="$PWD" node ../../bin/verify.js
+
   eval-kit-selftest:
     name: eval-kit-selftest
     runs-on: ubuntu-latest
