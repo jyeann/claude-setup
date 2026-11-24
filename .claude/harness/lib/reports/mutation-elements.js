@@ -44,9 +44,11 @@ function parseMutationReport(text) {
   const files = {};
   Object.entries(raw.files).forEach(([file, entry], fileIndex) => {
     if (!isObject(entry) || !Array.isArray(entry.mutants)) fail(`a file has no mutants list (file ${fileIndex + 1})`);
+    const key = normalisePath(file);
+    if (Object.hasOwn(files, key)) fail(`a file is listed twice (file ${fileIndex + 1}); its mutants would be counted twice`);
     const mutants = entry.mutants.map((m, i) => readMutant(m, fileIndex, i));
     for (const m of mutants) counts[m.status] += 1;
-    files[normalisePath(file)] = { mutants };
+    files[key] = { mutants };
   });
   return { files, counts, config: isObject(raw.config) ? raw.config : null };
 }

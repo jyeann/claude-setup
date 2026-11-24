@@ -517,8 +517,12 @@ async function runReportMutation(root, config, out) {
   const { exclude } = config.mutation;
   if (exclude.length > 0) out(`  weakening: mutation.exclude leaves ${exclude.join(', ')} unmutated`);
   const files = sourceFiles(root, config).filter((f) => !isExcluded(f, exclude));
-  const texts = new Map(files.map((f) => [f, fs.readFileSync(path.join(root, f), 'utf8')]));
-  return checkReportMutation(root, config, files, texts, out);
+  const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
+  const texts = new Map(files.map((f) => [f, read(f)]));
+  // Every file the mutant run executes: source and tests, the acceptance dir included when present.
+  const dirs = [...new Set([...config.srcDirs, ...config.testQuality.dirs, 'acceptance'])];
+  const scanned = new Map(dirs.flatMap((d) => walk(root, d, JSX_SOURCE_FILE)).map((f) => [f, read(f)]));
+  return checkReportMutation(root, config, files, texts, out, scanned);
 }
 
 async function strongVerify(root, config, { fast = false, out = console.log } = {}) {

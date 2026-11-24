@@ -43,6 +43,12 @@ function grouped(items) {
   return [...seen].map(([key, n]) => (n > 1 ? `${key} x${n}` : key)).join('; ');
 }
 
+// Code that can tell which mutant is active (Stryker's global or its environment variables) could fail the
+// tests on purpose so every mutant looks killed; any mention fails the step, naming file and line.
+const ACTIVE_MUTANT = /__stryker__|stryker_active/i;
+const activeMutantHints = (texts) => [...texts].flatMap(([file, text]) => String(text).split(/\r?\n/)
+  .flatMap((line, i) => (ACTIVE_MUTANT.test(line) ? [`mutation: ${file}:${i + 1} looks for Stryker's active mutant (__stryker__ or STRYKER_ACTIVE*); tests must not know which mutant runs`] : [])));
+
 const listed = (ignored, file, m) => ignored.some((e) => e.file === file && e.line === m.line && e.mutator === m.mutator);
 
 // Problems that make the report untrustworthy: it must come from this run and match what the gate asked for.
@@ -94,11 +100,14 @@ function judge(report, config, out) {
 }
 
 // -> failures
-async function checkReportMutation(root, config, files, texts, out) {
+// `scanned` maps every source and test file (path -> text) that the mutant run executes.
+async function checkReportMutation(root, config, files, texts, out, scanned = texts) {
   const { command, testRunner, checkers = [], samples, budgetMs } = config.mutation;
   if (files.length === 0) return [`mutation: no source files found under ${config.srcDirs.join(', ')}`];
+  const hints = activeMutantHints(scanned);
+  if (hints.length > 0) return hints;
   const sample = sampleFiles(files, texts, samples);
-  out(`  mutation: sampled ${sample.length} of ${files.length} source file(s): ${sample.join(', ')}`);
+  out(`  mutation: sampled ${sample.length} of ${files.length} source files (mutation.samples counts files on this path): ${sample.join(', ')}`);
   const dir = makeTemp('verify-mutation-');
   try {
     const startedAt = fs.statSync(dir).mtimeMs;

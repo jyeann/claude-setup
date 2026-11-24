@@ -340,3 +340,27 @@ test('vitest with a mutation command: .tsx is sampled, and weakerGate.missing mu
   assert.equal(r.status, 1, text(r));
   assert.match(r.stdout, /the junit adapter does not run test-quality; this needs an owner decision recorded as "weakerGate": \{"missing": \["test-quality"\]/);
 });
+
+test('a report listing one file under two spellings is refused instead of counting its mutants twice', () => {
+  const m = { id: '1', mutatorName: 'X', status: 'Killed', location: { start: { line: 1, column: 1 } } };
+  const forged = JSON.stringify({ schemaVersion: '1.0', files: { 'src/a.js': { mutants: [m] }, './src/a.js': { mutants: [m, m] } } });
+  assert.throws(() => parseMutationReport(forged), (err) => err instanceof MutationReportError && /a file is listed twice \(file 2\)/.test(err.message));
+});
+
+test('code that detects the active mutant fails the mutation step, naming file and line, before Stryker runs', () => {
+  const dir = project({ sources: { 'src/a.js': 'exports.a = 1;\nif (globalThis.__STRYKER__) throw 0;\n' } });
+  fs.mkdirSync(path.join(dir, 'acceptance'));
+  fs.writeFileSync(path.join(dir, 'acceptance', 'x.test.js'), 'const on = process.env.Stryker_Active_Mutant;\n');
+  fs.writeFileSync(path.join(dir, 'tests', 'a.test.ts'), '\n\nif (process.env.STRYKER_ACTIVE) process.exit(1);\n');
+  const r = verify(dir);
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /mutation: src\/a\.js:2 looks for Stryker's active mutant/);
+  assert.match(r.stdout, /mutation: tests\/a\.test\.ts:3 looks for Stryker's active mutant/);
+  assert.match(r.stdout, /mutation: acceptance\/x\.test\.js:1 looks for Stryker's active mutant/);
+  assert.ok(!fs.existsSync(path.join(dir, 'scenario.json.runs.jsonl')), 'Stryker is not run');
+});
+
+test('the step says what the sample counts: files, not mutants', () => {
+  const r = verify(project());
+  assert.match(r.stdout, /mutation: sampled 2 of 3 source files \(mutation\.samples counts files on this path\)/);
+});
