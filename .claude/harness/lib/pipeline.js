@@ -22,6 +22,10 @@ const AMEND = /^\s*(?:[-*]\s*)?AMEND:?\s+`?([^\s`]+)`?/gm;
 // repository, which gh resolves from the clone): a run cannot point its gates at another repository's issue.
 const SPEC_ISSUE = /^\s*(?:[-*]\s*)?Spec issue:\s*#(\d+)\s*$/mi;
 const LOOK = /^\s*(?:[-*]\s*)?Look:\s*\S/mi;
+// The one page the owner reads before spec-approved (templates/spec-approved-page.md, #47).
+const PAGE = 'spec-approved-page.md';
+const PAGE_SECTIONS = ['Problem and who it is for', 'Not building', 'The real choices', 'Screens', 'Done means', "What we're unsure about", 'Who judges each layer'];
+const PLACEHOLDER = /<[^<>]+>/;
 
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
@@ -61,15 +65,38 @@ function planProblems({ product, docs }) {
   return out;
 }
 
+// The spec-approved page must have every section of the template, each filled (not empty, no placeholder
+// left), and no code: the owner judges it in plain language.
+function pageProblems(docs) {
+  const raw = read(path.join(docs, PAGE));
+  if (raw === null) return [`${PAGE} is missing: copy .claude/harness/templates/${PAGE}, fill every section from brief.md, ux.md, design.md and the one-way rows of decisions.md, and post it on the spec issue`];
+  const text = raw.replace(/<!--[\s\S]*?-->/g, '');
+  const bodies = new Map();
+  let current = null;
+  for (const line of text.split('\n')) {
+    const h = /^##\s+(.+?)\s*$/.exec(line);
+    if (h) { current = h[1]; bodies.set(current, []); } else if (current !== null) bodies.get(current).push(line);
+  }
+  const out = PAGE_SECTIONS.flatMap((name) => {
+    if (!bodies.has(name)) return [`${PAGE} has no section "${name}": add the heading "## ${name}" and fill it`];
+    const body = bodies.get(name).join('\n');
+    if (!body.trim() || PLACEHOLDER.test(body)) return [`${PAGE} section "${name}" is not filled: replace the template placeholders with this product's content`];
+    return [];
+  });
+  if (/```/.test(text)) out.push(`${PAGE} contains a code block: write the page in plain language, with no code`);
+  return out;
+}
+
 // Phase 4a: the spec issue is written (to-spec) and the look chosen from rendered variations (prototype).
-// Both are recorded in decisions.md, which is where the gates find the spec issue number.
+// Both are recorded in decisions.md, which is where the gates find the spec issue number. The
+// spec-approved page is written last, so the owner judges one page at the gate.
 function specProblems({ docs }) {
   const text = read(path.join(docs, 'decisions.md'));
   if (text === null) return ['decisions.md is missing: every decision made without a human is logged there, starting with the spec issue'];
   const out = [];
   if (!SPEC_ISSUE.test(text)) out.push('decisions.md has no "Spec issue: #N" line: write the spec issue in this product\'s repository (to-spec), then record its number on a line of its own');
   if (!LOOK.test(text)) out.push('decisions.md has no "Look:" line: render variations (prototype), choose one, put it in the spec issue and record it as "Look: <choice and where it is rendered>" ("Look: none" for a product without a screen)');
-  return out;
+  return [...out, ...pageProblems(docs)];
 }
 
 const specIssueOf = (docs) => Number((SPEC_ISSUE.exec(read(path.join(docs, 'decisions.md')) ?? '') ?? [])[1]) || null;
@@ -281,4 +308,4 @@ function formatReport({ pass, blocked, waiting, phases, gateOutput, warnings = [
   ].join('\n');
 }
 
-module.exports = { checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
+module.exports = { PAGE_SECTIONS, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
