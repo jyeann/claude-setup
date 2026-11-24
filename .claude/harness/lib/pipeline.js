@@ -145,15 +145,31 @@ function pinnedSpec(ctx) {
 // the latest such comment is the verdict. A redirect sends the run back to the layer's phase only.
 const LAYERS = Object.freeze({ problem: 'discover', impression: 'ux', approach: 'design', correctness: 'build', craft: 'build' });
 const MAX_ROUNDS = 3;
-const VERDICT_LINE = /^[ \t]*verdict:(.*)$/im;
+// A verdict line starts the line (up to 3 spaces). Lines inside fenced or indented code and blockquotes
+// are quotes, never verdicts, so an agent quoting the expected form does not post one.
+const VERDICT_LINE = /^ {0,3}verdict:(.*)$/i;
+const FENCE = /^ {0,3}(```|~~~)/;
+function verdictLines(text) {
+  const found = [];
+  let fence = null;
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const f = FENCE.exec(line);
+    if (f) { if (fence === null) fence = f[1]; else if (f[1] === fence) fence = null; continue; }
+    if (fence !== null || /^\s*>/.test(line) || /^(?: {4}|\t)/.test(line)) continue;
+    const m = VERDICT_LINE.exec(line);
+    if (m) found.push(m[1]);
+  }
+  return found;
+}
 const ENTRY = /\s*([^\s=]+)=([^\s"“]*)(?:\s*(?:"([^"]*)"|“([^”]*)”))?/y;
 const EXPECTED = `verdict: ${Object.keys(LAYERS).map((l) => `${l}=pass|redirect "<reason>"`).join(' ')}`;
 
 // null when the text has no verdict line; otherwise { ok, redirects: [{ layer, phase, reason }], errors }.
 function parseVerdict(text) {
-  const line = VERDICT_LINE.exec(String(text ?? ''));
-  if (!line) return null;
-  const rest = line[1];
+  const lines = verdictLines(text);
+  if (lines.length === 0) return null;
+  if (lines.length > 1) return { ok: false, redirects: [], errors: [`the comment has more than one verdict line (${lines.length}); post one`] };
+  const [rest] = lines;
   const given = new Map();
   const named = new Set();
   const errors = [];
@@ -195,7 +211,14 @@ function latestVerdict(issue) {
 const gatesFile = (ctx) => freezeFile(ctx).replace(/\.json$/, '.gates.json');
 function readGates(ctx) {
   const saved = read(gatesFile(ctx));
-  return { rounds: {}, history: [], seen: {}, redirects: [], reopened: [], approvals: {}, voided: {}, ...(saved ? JSON.parse(saved) : {}) };
+  let state = {};
+  try {
+    state = saved === null ? {} : JSON.parse(saved);
+  } catch (err) {
+    // Fail closed: rounds and approvals cannot be guessed.
+    throw new Error(`${rel(ctx.root, gatesFile(ctx))} is corrupt (${err.message}): restore it from the owner's last known state or ask the owner; never delete it to pass a gate`);
+  }
+  return { rounds: {}, history: [], seen: {}, redirects: [], reopened: [], approvals: {}, voided: {}, ...state };
 }
 function saveGates(ctx) {
   fs.mkdirSync(path.dirname(gatesFile(ctx)), { recursive: true });
@@ -239,14 +262,15 @@ function approvedFiles(ctx, gate) {
   return hashed(ctx, (f) => f === page || phases.includes(phaseOf(ctx, f)));
 }
 const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((f) => a[f] !== b[f]);
-const reopenedBy = (ctx) => new Set(ctx.gates.reopened.map((r) => r.phase));
+// The phases reopened by redirects (at one gate, or at any gate for the freeze).
+const reopenedBy = (ctx, gate) => new Set(ctx.gates.reopened.filter((r) => gate === undefined || r.gate === gate).map((r) => r.phase));
 
 // An approval holds while its files are unchanged, changed with an AMEND line, or reopened by a redirect.
 function voidedFiles(ctx, gate) {
   const approval = ctx.gates.approvals[gate];
   const now = approvedFiles(ctx, gate);
   const counts = amendCounts(ctx.docs);
-  const reopened = reopenedBy(ctx);
+  const reopened = reopenedBy(ctx, gate);
   const changed = changedKeys(now, approval.files);
   const unexplained = changed.filter((f) => (counts[f] ?? 0) <= (approval.amends[f] ?? 0) && !reopened.has(phaseOf(ctx, f)));
   if (unexplained.length === 0 && changed.length) {
@@ -306,6 +330,9 @@ function ownerGate(gate) {
     }
     if (latest?.unreadable) return wait(`${latest.unreadable}: save the issue with its comments, or let gh reach GitHub`);
     if (latest && !latest.ok) return wait(`the latest verdict on spec issue #${spec} cannot be read (${latest.errors.join('; ')}), so it is not a pass. Ask the owner to post it again in this form: ${EXPECTED}`);
+    // Correctness and craft are judged on the built product, at accepted.
+    const early = gate === 'spec-approved' ? latest?.redirects.filter((x) => x.phase === 'build') ?? [] : [];
+    if (early.length) return wait(`${early.map((x) => `${x.layer} is judged at accepted`).join('; ')}, so a redirect on it at spec-approved is not read and the gate is not passed. Ask the owner to post the verdict again with ${early.map((x) => `${x.layer}=pass`).join(' ')}, in this form: ${EXPECTED}`);
     if (latest?.redirects.length) {
       if (!g.seen[latest.id]) {
         takeRedirect(ctx, gate, latest);

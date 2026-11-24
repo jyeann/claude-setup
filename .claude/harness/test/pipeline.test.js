@@ -678,7 +678,10 @@ test('a redirect at accepted resets the freeze only for the redirected phase out
   o.say(redirect('impression', 'the sum is hard to find'));
   assert.equal((await checkSaved(root)).blocked, 'ux');
   edit(root, 'docs/ux.md');
-  // ux.md was frozen and approved at spec-approved; the redirect reopened it, so neither complains.
+  // The spec-approved approval of ux.md is void (the redirect came at accepted); one new verdict answers it.
+  assert.equal((await checkSaved(root)).blocked, 'spec-approved');
+  o.say(PASS);
+  // ux.md was frozen in the plan phase; the redirect reopened it, so the freeze does not complain.
   const r = await checkSaved(root);
   assert.equal(statusOf(r).plan, 'done');
   assert.equal(statusOf(r)['spec-approved'], 'done');
@@ -807,4 +810,65 @@ test('the default issue reader fetches the comments when the issue has any, and 
   const saved = await checkSaved(root);
   assert.deepEqual(saved.waiting, { gate: 'spec-approved', spec: 19 });
   assert.match(problemsOf(saved, 'spec-approved').join('\n'), /has 2 comments but not their text/);
+});
+
+test('verdict lines quoted in a code block or a blockquote are not verdicts', () => {
+  assert.equal(parseVerdict(`What changed. You said:\n> ${redirect('impression', 'too cluttered')}\n`), null);
+  assert.equal(parseVerdict(`Expected form:\n\`\`\`\n${PASS}\n\`\`\`\n`), null);
+  assert.equal(parseVerdict(`~~~text\n${PASS}\n~~~\n`), null);
+  assert.equal(parseVerdict(`    ${PASS}\n`), null, 'an indented code block');
+  assert.equal(parseVerdict(`\`\`\`\n${PASS}\n\`\`\`\n${redirect('craft', 'messy')}`).redirects[0].layer, 'craft');
+});
+
+test('a comment with more than one verdict line is malformed', () => {
+  const v = parseVerdict(`${PASS}\n${redirect('craft', 'messy')}`);
+  assert.equal(v.ok, false);
+  assert.match(v.errors.join('\n'), /more than one verdict line/);
+});
+
+test('a quoted verdict in a later comment does not pass the gate', async () => {
+  const root = project();
+  const o = owner(root);
+  o.say(redirect('impression', 'too cluttered'));
+  assert.equal((await checkSaved(root)).blocked, 'ux');
+  edit(root, 'docs/ux.md');
+  o.label('afk', 'spec-approved');
+  o.say(`Redone the ux. Expected form:\n\`\`\`\n${PASS}\n\`\`\``);
+  assert.equal((await checkSaved(root)).blocked, 'spec-approved');
+});
+
+test('a redirect at accepted voids the spec-approved approval of the files it changes', async () => {
+  const root = project();
+  const o = owner(root);
+  o.label('afk', 'spec-approved');
+  o.say(PASS);
+  assert.equal((await checkSaved(root)).blocked, 'accepted');
+  o.say(redirect('impression', 'the sum is hard to find'));
+  assert.equal((await checkSaved(root)).blocked, 'ux');
+  edit(root, 'docs/ux.md');
+  // ux.md was approved at spec-approved; the change was asked for at accepted, so spec-approved asks again.
+  const r = await checkSaved(root);
+  assert.deepEqual(r.waiting, { gate: 'spec-approved', spec: 19 });
+  assert.match(problemsOf(r, 'spec-approved').join('\n'), /docs\/ux\.md changed after the owner approved it at spec-approved/);
+});
+
+test('a correctness or craft redirect at spec-approved is malformed: those layers are judged at accepted', async () => {
+  for (const layer of ['correctness', 'craft']) {
+    const root = project();
+    const o = owner(root);
+    o.label('afk', 'spec-approved');
+    o.say(redirect(layer, 'too early'));
+    const r = await checkSaved(root);
+    assert.deepEqual(r.waiting, { gate: 'spec-approved', spec: 19 }, layer);
+    assert.match(problemsOf(r, 'spec-approved').join('\n'), new RegExp(`${layer} is judged at accepted`));
+  }
+});
+
+test('a corrupt gate state file fails closed and names the file', async () => {
+  const root = project();
+  owner(root).label('afk', 'spec-approved');
+  await checkSaved(root);
+  assert.ok(fs.existsSync(path.join(root, '.harness/pipeline/app.gates.json')));
+  fs.writeFileSync(path.join(root, '.harness/pipeline/app.gates.json'), '{ nope');
+  await assert.rejects(checkSaved(root), /\.harness\/pipeline\/app\.gates\.json is corrupt/);
 });

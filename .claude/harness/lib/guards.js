@@ -159,6 +159,39 @@ function gateLabelEdit(args) {
   return args[0] === 'label' || args.some((a) => /^--(?:add|remove)-label\b/.test(a) || /(?:^|\/)labels\b|^labels?(?:\[\])?=/.test(a));
 }
 
+// Layer verdicts (#48): only the owner writes a `verdict:` line on the spec issue, and GitHub cannot tell the
+// owner from the agent using the owner's token. So a gh command may not carry a verdict line anywhere: in an
+// argument (--body, -b, -f/-F body=), a here-string, a heredoc fed to it, or a file it or a piped cat reads
+// (--body-file, -F body=@file, --input). A verdict line starts a line, a quoted string, a JSON "\n" or a key=.
+const VERDICT_TEXT = /(?:^|\\n|["'=])[ \t]*verdict:/im;
+const BODY_FILE_FLAGS = new Set(['--body-file', '-F', '--field', '--input']);
+function bodyFiles(commands) {
+  const files = [];
+  for (const { argv } of commands) {
+    if (argv[0] === 'cat') files.push(...argv.slice(1).filter((a) => !a.startsWith('-')));
+    if (argv[0] !== 'gh') continue;
+    argv.forEach((a, i) => {
+      const value = BODY_FILE_FLAGS.has(a) ? argv[i + 1] : (/^--(?:body-file|input)=(.+)$/.exec(a) ?? [])[1];
+      if (value === undefined) return;
+      const at = /^[^=]*=@(.+)$/.exec(value);
+      if (at) files.push(at[1]);
+      else if (a !== '-F' && a !== '--field') files.push(value);
+    });
+  }
+  return files.filter((f) => f && f !== '-');
+}
+function verdictPost(command, commands, ctx) {
+  if (!commands.some((c) => c.argv[0] === 'gh')) return false;
+  if (VERDICT_TEXT.test(command)) return true;
+  return bodyFiles(commands).some((f) => {
+    try {
+      return VERDICT_TEXT.test(fs.readFileSync(path.resolve(ctx.projectDir ?? process.cwd(), f), 'utf8'));
+    } catch {
+      return false;
+    }
+  });
+}
+
 function commandViolation({ argv }, ctx) {
   const [cmd, sub] = argv;
   if (cmd === 'printenv' && (argv.length === 1 || argv.slice(1).some((a) => SECRET_VAR.test(a)))) return 'Dumping the environment can leak secrets.';
@@ -258,6 +291,7 @@ function checkBash(command, ctx = {}) {
     const reason = commandViolation(c, ctx) || secretReadViolation(c);
     if (reason) return deny(reason);
   }
+  if (verdictPost(command, commands, ctx)) return deny('Layer verdicts (a line starting "verdict:") are written by the owner only, never by an agent, on GitHub: describe what changed in your own words, quote nothing in verdict form, and ask the owner to post the verdict.');
   if (ctx.active && hiddenViolation(command, ctx)) return deny(HIDDEN_MSG);
   if (ctx.active) {
     const matcher = guardedMatcher(ctx);
