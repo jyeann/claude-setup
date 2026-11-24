@@ -3,7 +3,7 @@
 // CI backstop: fail a PR that changes the gate (acceptance tests, verify config, .claude/, workflows).
 // The in-session hooks stop the agent from editing these; this catches it if a hook was bypassed.
 const { spawnSync } = require('node:child_process');
-const { DEFAULT_PROTECTED, parseProtectedList, changedProtected } = require('../lib/protected');
+const { DEFAULT_PROTECTED, adapterProtected, parseProtectedList, changedProtected } = require('../lib/protected');
 
 function parseArgs(argv) {
   const opts = { base: null, head: 'HEAD' };
@@ -23,13 +23,19 @@ function baseList(base) {
   return shown.status === 0 ? parseProtectedList(shown.stdout) : [];
 }
 
+// The adapter's tool configs (vitest.config.*, tsconfig*.json, ...) when the BASE's verify.config.json names one.
+function baseAdapterList(base) {
+  const shown = spawnSync('git', ['show', `${base}:verify.config.json`], { encoding: 'utf8' });
+  return shown.status === 0 ? adapterProtected(shown.stdout) : [];
+}
+
 function main() {
   const { base, head } = parseArgs(process.argv.slice(2));
   // -z: git otherwise C-quotes non-ASCII names ("caf\303\251"), which would dodge the prefix match.
   const diff = spawnSync('git', ['diff', '-z', '--name-only', '--no-renames', `${base}...${head}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (diff.status !== 0) throw new Error(`git diff against "${base}" failed: ${diff.stderr.trim()}`);
 
-  const list = [...new Set([...DEFAULT_PROTECTED, ...baseList(base)])];
+  const list = [...new Set([...DEFAULT_PROTECTED, ...baseList(base), ...baseAdapterList(base)])];
   const hits = changedProtected(diff.stdout.split('\0').filter(Boolean), list);
   if (hits.length === 0) { console.log(`ok: no protected files changed (${list.length} protected paths)`); return 0; }
 
