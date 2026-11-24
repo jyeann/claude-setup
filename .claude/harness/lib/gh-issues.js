@@ -93,4 +93,9 @@ function fetchIssue(number, { run = ghRunner, repo } = {}) {
   return issue;
 }
 
-module.exports = { fetchSpecIssues, fetchIssue };
+// The comments of one issue, oldest first (the owner's layer verdicts are comments on the spec issue).
+function fetchIssueComments(number, { run = ghRunner, repo } = {}) {
+  return list(run, `repos/${repo || '{owner}/{repo}'}/issues/${Number(number)}/comments`);
+}
+
+module.exports = { fetchSpecIssues, fetchIssue, fetchIssueComments };
