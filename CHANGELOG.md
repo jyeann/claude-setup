@@ -18,4 +18,5 @@
 
 ### Removed
 
+- **link-shortener, packing-list and wiki** (#29, spec #27): `examples/{link-shortener,packing-list,wiki}/`, their run records in `docs/product/`, `docs/product/agent-runs.json`, `docs/product/human-corrected.json`, and the `gate-link-shortener` CI job and required check. Git history keeps them (last at `bfad3bb`). `agents-kpi.js` reads the two JSON files only when passed `--finals` or `--human-corrected`, so nothing depends on them by default.
 - The ECC catalogue beyond what `orch-product-team` calls (21 agents, 48 skills, 43 commands, the `orch-*` single-feature workflows): a full product run used none of it. `hello-overkill` moved to jyeann/HW-PIRPLE-1. `examples/notes-api` and a stale `HARNESS-DIAGNOSIS.md`.

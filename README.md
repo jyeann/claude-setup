@@ -16,7 +16,7 @@ Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/READ
 | `.claude/commands/` | `/harness-build` and `/harness-improve`. |
 | `.claude/rules/ecc-common/` | Five short always-loaded rules. |
 | `.claude/harness/` | Guard hooks, the verify gate (tests, type check, coverage, test quality, hidden holdout, browser journeys, mutation), the whole-pipeline stop gate, tracing and KPI roll-up. Dependency-free, with its own test suite. |
-| `examples/`, `docs/product/` | Products the team built and the specs used to test the gate. `link-shortener` and `retro-board` are gated in CI; `retro-board/tune/` is the per-phase effort comparison; `packing-list` and `wiki` are the latest full runs. The small gate setup examples (`todo-api`, `slug-ts`, `sheet-engine`) are in `.claude/harness/fixtures/`. |
+| `examples/`, `docs/product/` | Products the team built and the specs used to test the gate. `retro-board` is gated in CI; `retro-board/tune/` is the per-phase effort comparison. The small gate setup examples (`todo-api`, `slug-ts`, `sheet-engine`) are in `.claude/harness/fixtures/`. |
 | `docs/process/definition-of-done.md` | What has been proven about the process, and when to re-check it. |
 
 ## Run the team
