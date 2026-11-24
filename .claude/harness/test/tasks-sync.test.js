@@ -286,22 +286,34 @@ test('derives doing from a local ticket branch without a closing commit, and nex
   assert.equal(r.next.stdout.trim(), 'IN_PROGRESS');
 });
 
-test('derives done from a closing commit on the ticket\'s own branch, even when it is not checked out', () => {
-  const t = ok(pull([issue(20), issue(21)], {
+test('a ticket branch that is not checked out stays doing even with a closing commit, so dependents wait', () => {
+  const t = ok(pull([issue(20), issue(21, { body: 'Blocked by: #20' })], {
     commits: ['chore: init'],
     setup: (dir) => {
       git(dir, 'branch', '-M', 'main');
       git(dir, 'checkout', '-q', '-b', 'issue-20');
       commit(dir, 'feat: points\n\nCloses #20');
-      commit(dir, 'feat: stray\n\nCloses #21');
       git(dir, 'checkout', '-q', 'main');
     },
   }));
-  assert.equal(t.get('T20').status, 'done');
-  assert.equal(t.get('T21').status, 'todo', 'a ticket branch only closes its own ticket');
+  assert.equal(t.get('T20').status, 'doing');
+  assert.equal(t.get('T21').status, 'todo');
 });
 
-test('derives doing from a harness WIP checkpoint and a remote ticket branch', () => {
+test('a closing commit on the checked-out ticket branch makes it done', () => {
+  const t = ok(pull([issue(20), issue(21, { body: 'Blocked by: #20' })], {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      git(dir, 'checkout', '-q', '-b', 'loop/issue-20-points');
+      commit(dir, 'feat: points\n\nCloses #20');
+    },
+  }));
+  assert.equal(t.get('T20').status, 'done');
+  assert.equal(t.get('T21').status, 'todo');
+});
+
+test('derives doing from a harness WIP checkpoint, but not from a remote-tracking branch', () => {
   const t = ok(pull([issue(20), issue(21), issue(22)], {
     commits: ['chore: init'],
     setup: (dir) => {
@@ -309,11 +321,24 @@ test('derives doing from a harness WIP checkpoint and a remote ticket branch', (
       const head = git(dir, 'rev-parse', 'HEAD');
       git(dir, 'update-ref', 'refs/harness/wip/claude/issue-20-x', head);
       git(dir, 'update-ref', 'refs/remotes/origin/issue-21', head);
+      git(dir, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/issue-21');
     },
   }));
   assert.equal(t.get('T20').status, 'doing');
-  assert.equal(t.get('T21').status, 'doing');
+  assert.equal(t.get('T21').status, 'todo');
   assert.equal(t.get('T22').status, 'todo');
+});
+
+test('derives doing from a ticket branch with a detached HEAD', () => {
+  const t = ok(pull([issue(20)], {
+    commits: ['chore: init'],
+    setup: (dir) => {
+      git(dir, 'branch', '-M', 'main');
+      git(dir, 'branch', 'issue-20');
+      git(dir, 'checkout', '-q', '--detach');
+    },
+  }));
+  assert.equal(t.get('T20').status, 'doing');
 });
 
 test('never treats branches outside the issue-<N> pattern as ticket branches', () => {

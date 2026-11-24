@@ -10,14 +10,13 @@
 //
 // Status is derived, first match wins (docs/adr/0001):
 //   blocked  the issue was closed as not planned
-//   done     the issue is closed; or a whole "Closes #N" line closes it in a commit on this branch, or in a
-//            commit on its own ticket branch; or an open, non-draft PR closes it (title/body line, or
-//            closingIssuesReferences)
+//   done     the issue is closed; or a whole "Closes #N" line closes it in a commit on this branch; or an
+//            open, non-draft PR closes it (a whole closing line in its title or body, or closingIssuesReferences)
 //   blocked  a blocker outside the spec is open or unknown
 //   doing    a ticket branch or a harness WIP checkpoint (refs/harness/wip/<branch>) exists for it
 //   todo     otherwise
-// A ticket branch is a local or remote-tracking branch with a path segment issue-<N> or issue-<N>-<slug>
-// (e.g. claude/issue-22-derived-status). Commits count since --base; without it, the first of origin/HEAD,
+// A ticket branch is a local branch with a path segment issue-<N> or issue-<N>-<slug> (e.g.
+// claude/issue-22-derived-status). Until #21's live pull, refresh the JSON before each pull for PR and issue state. Commits count since --base; without it, the first of origin/HEAD,
 // origin/main, origin/master, main, master that exists and is not the current branch; failing that, all history.
 // Exit 0: written. Exit 2: bad arguments, unreadable input or an invalid ticket (nothing written).
 const fs = require('node:fs');
@@ -45,41 +44,27 @@ function defaultBase() {
   return BASE_CANDIDATES.find((ref) => ref !== branch && ref !== `origin/${branch}` && git('rev-parse', '--verify', '-q', `${ref}^{commit}`).status === 0);
 }
 
-const commitsSince = (range, ref) => git('log', '--format=%H%x00%B%x01', ...(range ? [`${range}..${ref}`] : [ref]));
+const REF_PREFIXES = [/^refs\/heads\//, /^refs\/harness\/wip\//];
 
-const REF_PREFIXES = [/^refs\/heads\//, /^refs\/remotes\/[^/]+\//, /^refs\/harness\/wip\//];
-
-// Git facts: issue numbers closed by commits on this branch or on their own ticket branch, and ticket
-// branches or WIP checkpoints without a closing commit (Map<issue number, ref name>). Empty, with a
-// warning, when there is no git history.
+// Git facts: issue numbers closed by commits on this branch, and local ticket branches or WIP checkpoints
+// (Map<issue number, ref name>). Empty, with a warning, when there is no git history.
 function gitFacts(base) {
-  const closedByCommit = new Set();
   const inProgress = new Map();
   const range = base || defaultBase();
-  const log = commitsSince(range, 'HEAD');
+  const log = git('log', '--format=%H%x00%B%x01', ...(range ? [`${range}..HEAD`] : ['HEAD']));
   if (log.status !== 0) {
     if (base) fail(`cannot read commits since ${base}: ${log.stderr.trim()}`);
     console.error('tasks-sync: warning: no git history read; status comes from issue state only');
-    return { closedByCommit, inProgress };
+    return { closedByCommit: new Set(), inProgress };
   }
   if (!range) console.error('tasks-sync: warning: no base branch found; counting closing commits in all of HEAD (pass --base)');
-  for (const n of closingRefs(log.stdout)) closedByCommit.add(n);
-
-  const refs = git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/remotes', 'refs/harness/wip').stdout.split('\n').filter(Boolean);
+  const refs = git('for-each-ref', '--format=%(refname)', 'refs/heads', 'refs/harness/wip').stdout.split('\n').filter(Boolean);
   for (const ref of refs) {
-    const prefix = REF_PREFIXES.find((re) => re.test(ref));
-    const name = ref.replace(prefix, '');
+    const name = REF_PREFIXES.reduce((r, re) => r.replace(re, ''), ref);
     const n = ticketBranchIssue(name);
-    if (n === null || closedByCommit.has(n)) continue;
-    const own = commitsSince(range, ref);
-    if (own.status === 0 && closingRefs(own.stdout).has(n)) {
-      closedByCommit.add(n);
-      inProgress.delete(n);
-    } else if (!inProgress.has(n)) {
-      inProgress.set(n, ref.startsWith('refs/harness/wip/') ? `harness checkpoint ${name}` : name);
-    }
+    if (n !== null && !inProgress.has(n)) inProgress.set(n, ref.startsWith('refs/harness/wip/') ? `harness checkpoint ${name}` : name);
   }
-  return { closedByCommit, inProgress };
+  return { closedByCommit: closingRefs(log.stdout), inProgress };
 }
 
 const args = process.argv.slice(2);

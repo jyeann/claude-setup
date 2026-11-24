@@ -39,8 +39,8 @@ function closingRefs(log) {
 }
 
 // Ticket branch: a branch with a path segment `issue-<N>` or `issue-<N>-<slug>` (lowercase), e.g.
-// `issue-22`, `claude/issue-22-derived-status`, `loop/issue-22`. Pass a branch name without its refs/heads/,
-// refs/remotes/<remote>/ or refs/harness/wip/ prefix. Returns N, or null. Strict on purpose: `fix-22`,
+// `issue-22`, `claude/issue-22-derived-status`, `loop/issue-22`. Pass a branch name without its refs/heads/
+// or refs/harness/wip/ prefix. Returns N, or null. Strict on purpose: `fix-22`,
 // `issue22`, `my-issue-22` or a date never match.
 function ticketBranchIssue(branch) {
   for (const segment of String(branch).split('/')) {
@@ -110,8 +110,8 @@ function deriveStatus(t, { closedByCommit, closedByPr, inProgress, openOutside }
 
 // issues: the spec issue's tickets (shape above). external: [{ number, state }] for blockers outside the
 // spec; an outside blocker with no known state counts as open. closedByCommit: issue numbers closed by a
-// commit on this branch or on their own ticket branch. pullRequests: shape above. inProgress: Map<issue
-// number, ticket branch or checkpoint ref> without a closing commit. Returns { text, errors }; text is only
+// commit on this branch. pullRequests: shape above. inProgress: Map<issue number, ticket branch or
+// checkpoint ref>; it only counts when nothing above it in deriveStatus matched. Returns { text, errors }; text is only
 // meaningful when errors is empty.
 function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Set(), external = [], pullRequests = [], inProgress = new Map() } = {}) {
   const closedByPr = prClosingRefs(pullRequests);

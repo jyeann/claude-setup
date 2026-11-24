@@ -11,8 +11,8 @@
 > - type:       `AFK` = an agent can finish it alone. `HITL` = needs a human (design call, credentials, manual QA).
 > - blocked-by: comma-separated task ids, or `none`.
 > - status:     `todo` | `doing` | `done` | `blocked`, derived, never typed. First match wins: closed as not planned =
->               `blocked`; issue closed, a `Closes #N` commit on this branch or on its ticket branch, or an open PR
->               that closes it = `done`; an open blocker outside the spec = `blocked`; a ticket branch (`issue-<N>` or
+>               `blocked`; issue closed, a `Closes #N` commit on this branch, or an open, non-draft PR
+>               that closes it = `done`; an open blocker outside the spec = `blocked`; a local ticket branch (`issue-<N>` or
 >               `issue-<N>-<slug>` path segment) or its WIP checkpoint = `doing`; otherwise `todo`. See docs/adr/0001.
 >
 > Each task is a **vertical slice**: it cuts through every layer it needs (schema, service, API, UI) and ends in
