@@ -89,6 +89,12 @@ function logStop(projectDir, event, now = Date.now()) {
   append(projectDir, event.session_id, { type: 'stop', ts: now });
 }
 
+// One record per stop the Stop hook let through because the pipeline waits for an owner gate (#24).
+// The next human prompt in the session answers that gate, so the KPI does not count it as an intervention.
+function logGateWait(projectDir, event, { gate, spec }, now = Date.now()) {
+  append(projectDir, event.session_id, { type: 'gate-wait', ts: now, gate, spec });
+}
+
 function recordHookError(name, err, projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd()) {
   try {
     fs.mkdirSync(harnessDir(projectDir), { recursive: true });
@@ -115,5 +121,5 @@ function readSessions(projectDir) {
 }
 
 module.exports = {
-  logToolEvent, logBlocked, logHuman, promptKind, logStop, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
+  logToolEvent, logBlocked, logHuman, promptKind, logStop, logGateWait, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
 };

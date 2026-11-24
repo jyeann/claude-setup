@@ -8,7 +8,7 @@ const { runVerify } = require('../lib/verify');
 const { decideStop } = require('../lib/stop-loop');
 const { writeCheckpoint } = require('../lib/checkpoint');
 const { REPORT_FILE } = require('../lib/failure-cluster');
-const { logStop } = require('../lib/trace');
+const { logStop, logGateWait } = require('../lib/trace');
 
 // Best effort: a checkpoint problem must never change the loop's decision.
 function checkpoint(projectDir, state, nextState) {
@@ -41,14 +41,18 @@ async function main() {
   // The diagnosis turn is bounded and needs no verify run.
   const result = state.diagnosing ? null : await runVerify(state.verifyCommand, { cwd: projectDir, timeoutMs: state.verifyTimeoutMs });
   const diagnosisWritten = fs.existsSync(report) && fs.statSync(report).size > 0;
-  const { decision, reason, nextState } = decideStop(state, result, { diagnosisWritten, now: Date.now() });
+  const { decision, reason, nextState, waiting } = decideStop(state, result, { diagnosisWritten, now: Date.now() });
   // A report left over from an earlier run must not count as this run's diagnosis.
   if (nextState.diagnosing && !state.diagnosing) fs.rmSync(report, { force: true });
   writeState(projectDir, nextState);
   checkpoint(projectDir, state, nextState);
 
   if (decision === 'block') process.stdout.write(JSON.stringify({ decision: 'block', reason }));
-  else process.stderr.write(`[harness] run ended: ${nextState.status}. ${reason}\n`);
+  else if (waiting) {
+    // The owner's next prompt answers this gate; the KPI counts it as a gate response, not an intervention.
+    logGateWait(projectDir, event, waiting);
+    process.stderr.write(`[harness] ${reason}. The run stays active and continues once the label is on the spec issue.\n`);
+  } else process.stderr.write(`[harness] run ended: ${nextState.status}. ${reason}\n`);
 }
 
 main().catch((err) => failOpen('stop', err));

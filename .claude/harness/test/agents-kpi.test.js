@@ -102,7 +102,7 @@ test('human prompts are counted by length only and every prompt after the first 
   trace.logHuman(dir, { session_id: 's1', prompt: 'again' }, 3);
   trace.logHuman(dir, { session_id: 's2', prompt: 'other session' }, 4);
   const { human } = buildKpi(dir, path.join(dir, 'none'));
-  assert.deepEqual(human, { sessions: 2, prompts: 4, interventions: 2, recordedPrompts: 4, unclassified: 0 });
+  assert.deepEqual(human, { sessions: 2, prompts: 4, interventions: 2, gateResponses: 0, gateWaits: 0, recordedPrompts: 4, unclassified: 0 });
   const stored = JSON.stringify(trace.readSessions(dir));
   assert.ok(!stored.includes('build me a thing'));
   assert.ok(stored.includes('"chars":16'));
@@ -158,4 +158,30 @@ test('events recorded before prompts were classified are reported as unclassifie
   fs.writeFileSync(path.join(dir, '.harness', 'traces', 's1.jsonl'), '{"type":"human","ts":1,"chars":162}\n{"type":"human","ts":2,"chars":4000}\n');
   const { human } = buildKpi(dir, path.join(dir, 'none'));
   assert.deepEqual([human.prompts, human.interventions, human.unclassified, human.recordedPrompts], [0, 0, 2, 2]);
+});
+
+test('a human prompt after a waiting stop is a gate response, not an intervention', () => {
+  const dir = project();
+  trace.logHuman(dir, { session_id: 's1', prompt: 'build an expense splitter' }, 1);
+  trace.logGateWait(dir, { session_id: 's1' }, { gate: 'spec-approved', spec: 37 }, 2);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'approved, go on' }, 3);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'why is it slow?' }, 4);
+  trace.logGateWait(dir, { session_id: 's1' }, { gate: 'accepted', spec: 37 }, 5);
+  trace.logHuman(dir, { session_id: 's1', prompt: '[Subagent hand-back] done' }, 6);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'accepted' }, 7);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'and one more thing' }, 8);
+  const { human } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual(human, { sessions: 1, prompts: 5, interventions: 2, gateResponses: 2, gateWaits: 2, recordedPrompts: 6, unclassified: 0 });
+  const wait = trace.readSessions(dir)[0].events.find((e) => e.type === 'gate-wait');
+  assert.deepEqual([wait.gate, wait.spec], ['spec-approved', 37]);
+});
+
+test('two waits with no prompt between them are answered by one gate response', () => {
+  const dir = project();
+  trace.logHuman(dir, { session_id: 's1', prompt: 'start' }, 1);
+  trace.logGateWait(dir, { session_id: 's1' }, { gate: 'spec-approved', spec: 1 }, 2);
+  trace.logGateWait(dir, { session_id: 's1' }, { gate: 'spec-approved', spec: 1 }, 3);
+  trace.logHuman(dir, { session_id: 's1', prompt: 'ok' }, 4);
+  const { human } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual([human.gateResponses, human.interventions], [1, 0]);
 });

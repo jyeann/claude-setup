@@ -49,6 +49,9 @@ The owner gate on a spec issue, including the chosen look, passed before tickets
 **Accepted**:
 The owner gate where the owner accepts the finished result against its spec issue.
 
+**Gate response**:
+The owner's first prompt after a run stopped at an owner gate (the pipeline reported `waiting`); not an intervention.
+
 **Intervention**:
 A human prompt mid-run that is not an answer to an owner gate; counted as a defect in the KPI.
 _Avoid_: interruption
