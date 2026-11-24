@@ -1,8 +1,9 @@
 # claude-setup
 
 A product team for Claude Code. One idea goes in; a team of agents scopes it, designs it, builds it under an
-objective gate, reviews it, walks it in a browser and documents it, with no human input until final acceptance.
-The harness, not the agent, decides when it is done.
+objective gate, reviews it, walks it in a browser and documents it. The owner is asked at two owner gates only:
+`spec-approved` (the spec, including the chosen look) and `accepted` (the released result). The harness, not the
+agent, decides when it is done.
 
 Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/README.md`.
 
@@ -25,7 +26,11 @@ path you give), never in this one: the skill installs the harness there (see bel
 and keeps the run records in `<product-repo>/docs/product/<slug>/`. With no target named, it proposes a new
 repository named after the product and asks you once. It then starts the harness with the whole pipeline as the
 definition of done, so the Stop hook sends the agent back to the next unfinished phase instead of letting it stop
-to ask. This repo keeps only the process and its test bench (`testbench/retro-board/`).
+to ask. The run pauses only at the two owner gates, labels you add to the spec issue: `spec-approved` after the spec
+(phase 4a), before any ticket or test is written, and `accepted` after release, before the retro. While a label is
+missing, the pipeline reports `waiting for owner` and the turn ends; add the label and the run moves on. Your answer
+at a gate counts as a gate response, not an intervention. This repo keeps only the process and its test bench
+(`testbench/retro-board/`).
 
 ## Install in another project
 Claude Code 2.1.275 or later:
