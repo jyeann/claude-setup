@@ -56,6 +56,36 @@ The owner's first prompt after a run stopped at an owner gate (the pipeline repo
 A human prompt mid-run that is not an answer to an owner gate; counted as a defect in the KPI.
 _Avoid_: interruption
 
+## Judgement
+
+**Judgement layer**:
+One of five things a product is judged on: problem (the right thing for the right people), impression (it feels right in use), approach (a sound design that will last), correctness (it does what the spec says) and craft (clean, safe, fast code).
+_Avoid_: quality dimension, review axis
+
+**Layer verdict**:
+The owner's answer for one judgement layer at an owner gate, either pass or redirect, with a reason when it is a redirect.
+_Avoid_: score, rating, sign-off
+
+**Redirect**:
+A layer verdict of redirect that names the failed layer and a reason, and sends the run back only to that layer's phase (problem to discover, impression to ux, approach to design, correctness or craft to build).
+_Avoid_: rejection, rollback, restart
+
+**Progress summary**:
+A one-page note published once per build round when about 70% of tickets are done, showing what works, what drifted and what is left; it is not an owner gate and not a checkpoint, never blocks the build, and silence means carry on.
+_Avoid_: checkpoint, status gate, mid-run approval
+
+**Progress response**:
+An owner comment on a progress summary; it is not an intervention.
+_Avoid_: intervention
+
+**One-way decision**:
+A decision that is hard to undo, so it is shown on the spec-approved page for the owner to judge.
+_Avoid_: major decision
+
+**Two-way decision**:
+A decision that is cheap to undo, so it is only logged in `decisions.md`.
+_Avoid_: minor decision
+
 ## Layout
 
 **Test bench**:
