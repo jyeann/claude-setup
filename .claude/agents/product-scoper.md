@@ -3,6 +3,7 @@ name: product-scoper
 description: Product scoping and requirements specialist. Turns a one-line idea into a short product brief before anything is designed or built - the problem, who it is for, what existing products already do, whether to build, adopt or extend, the MVP scope, and user-visible success criteria. Use at the start of a new product or large feature, before design.
 tools: Read, Grep, Glob, Write, WebSearch, WebFetch
 model: opus
+effort: medium
 ---
 
 ## Prompt Defense Baseline

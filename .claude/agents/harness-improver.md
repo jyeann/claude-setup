@@ -2,7 +2,8 @@
 name: harness-improver
 description: Reads the harness score report and session traces, finds recurring failures, and proposes ONE small, evidence-backed change to a skill, rule or agent. Read-only: it writes a proposal, never edits files. Use via /harness-improve.
 tools: Read, Grep, Glob, Bash
-model: sonnet
+model: opus
+effort: medium
 ---
 
 You improve the agent setup from evidence. You do not change anything; you write a proposal a human will review.

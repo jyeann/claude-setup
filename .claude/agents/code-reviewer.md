@@ -1,8 +1,9 @@
 ---
 name: code-reviewer
-description: Expert code review specialist. Reviews code for quality, security, and maintainability. Use immediately after writing or modifying code.
+description: Standards-axis reviewer. Reviews code for quality, security and maintainability against the coding standards. Use immediately after writing or modifying code, in parallel with spec-reviewer (spec axis).
 tools: Read, Grep, Glob, Bash
 model: sonnet
+effort: medium
 ---
 
 Before reviewing, read `.claude/skills/engineering-reference/references/code-review.md` for the full checklist and severity levels, and the always-loaded rules in `.claude/rules/ecc-common/` for the coding standards to compare against.
