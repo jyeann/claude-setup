@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { checkPipeline, formatReport } = require('../lib/pipeline');
+const { checkPipeline, formatReport, defaultTasksCheck } = require('../lib/pipeline');
 const { buildState } = require('../lib/state');
 
 const PIPELINE = path.join(__dirname, '..', 'bin', 'pipeline.js');
@@ -259,7 +259,7 @@ test('plan names tasks-sync pull, not plan-to-tasks, when the task list is missi
 test('plan fails on a task list that was not generated from a spec issue', async () => {
   const r = await check(project({ 'app/TASKS.md': '# Tasks\n## T1: x\n- type: AFK\n- status: todo\n' }));
   assert.equal(r.blocked, 'plan');
-  assert.match(r.phases[3].problems[0], /app\/TASKS\.md was not generated from a spec issue: run tasks-sync pull --spec <n> --out app\/TASKS\.md/);
+  assert.equal(r.phases[3].problems[0], 'app/TASKS.md was not generated from a spec issue: run node .claude/harness/bin/tasks-sync.js pull --spec <n> --out app/TASKS.md');
 });
 
 test('plan runs tasks-sync check on the generated task list and fails on a difference', async () => {
@@ -305,4 +305,18 @@ test('the default task check runs tasks-sync and warns when gh is not available'
   } finally {
     process.env.PATH = saved;
   }
+});
+
+test('a task check that times out only warns, so a slow link does not block the plan phase', async () => {
+  const root = project();
+  const r = await defaultTasksCheck({ spec: 19, file: path.join(root, 'app/TASKS.md'), cwd: root, timeout: 1 });
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /warning: tasks-sync check timed out/);
+});
+
+test('warnings come after the instruction on a blocked run, where the Stop hook still sees them', async () => {
+  const warn = async () => ({ status: 0, stdout: '', stderr: 'tasks-sync: warning: offline' });
+  const r = await check(project({ 'docs/qa.md': 'stub' }), passGate, warn);
+  assert.equal(r.blocked, 'qa');
+  assert.match(formatReport(r), /PIPELINE INCOMPLETE[\s\S]*- qa\.md is a stub[\s\S]*warning: offline$/);
 });

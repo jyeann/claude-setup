@@ -8,7 +8,8 @@ const { bodyBlockers } = require('./tasks-sync');
 // gh failures that mean "GitHub cannot be asked right now", as opposed to an answer that is an error
 // (an unknown issue, a bad repository). `check` warns on these instead of failing.
 const UNAUTHENTICATED = /auth login|not logged in|authentication|bad credentials|HTTP 401|GH_TOKEN/i;
-const OFFLINE = /error connecting|could not resolve|connection refused|connection reset|timed? ?out|i\/o timeout|network|ECONN|EAI_AGAIN|proxy|HTTP 403/i;
+// A 403 is an answer (no access, SSO), except a rate limit, which only means "not now".
+const OFFLINE = /error connecting|could not resolve|no such host|connection refused|connection reset|i\/o timeout|timed out|ECONN|EAI_AGAIN|proxyconnect|rate limit/i;
 
 const ghRunner = (args) => spawnSync('gh', args, { encoding: 'utf8', timeout: 60000 });
 
@@ -63,9 +64,15 @@ function fetchSpecIssues(spec, { run = ghRunner, repo } = {}) {
     const native = new Set(issue.blockedBy.map((b) => Number(b.number)));
     for (const n of bodyBlockers(issue.body)) if (!inSpec.has(n) && !native.has(n)) outside.add(n);
   }
+  // A deleted or transferred blocker (404) stays unknown, which counts as open, instead of failing the pull.
   const external = [...outside].sort((a, b) => a - b).map((n) => {
-    const [found] = api(run, `${base}/${n}`);
-    return { number: n, state: found && found.state };
+    try {
+      const [found] = api(run, `${base}/${n}`);
+      return { number: n, state: found && found.state };
+    } catch (err) {
+      if (err.unreachable || !/HTTP 404|Not Found/i.test(err.message)) throw err;
+      return { number: n, state: undefined };
+    }
   });
   return { issues, external };
 }

@@ -140,7 +140,9 @@ function diffTaskLists(expected, actual) {
   const sections = (text) => {
     const map = new Map();
     let key = 'header';
-    for (const line of String(text).replace(/\r\n/g, '\n').replace(GENERATED_AT, ' at <time>.').split('\n')) {
+    const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+    lines[0] = lines[0].replace(GENERATED_AT, ' at <time>.');
+    for (const line of lines) {
       const heading = /^##\s+([^:\s]+)\s*:/.exec(line);
       if (heading || /^##\s/.test(line)) key = heading ? heading[1] : line.trim();
       map.set(key, `${map.get(key) || ''}${line}\n`);

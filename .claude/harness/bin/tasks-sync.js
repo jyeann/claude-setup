@@ -56,16 +56,14 @@ function closedOnBranch(base) {
   return closingRefs(log.stdout);
 }
 
-// The spec's tickets as { issues, external }: from the JSON file, or live through gh.
-function loadSource(command, spec, from, repo, file) {
+// The spec's tickets as { issues, external }: from the JSON file, or live through gh. For check only,
+// an unreachable GitHub gives { unreachable: reason } instead of failing.
+function loadSource(command, spec, from, repo) {
   if (!from) {
     try {
       return fetchSpecIssues(spec, { repo });
     } catch (err) {
-      if (command === 'check' && err.unreachable) {
-        console.error(`tasks-sync: warning: cannot check ${file} against GitHub (${err.message}); it may be stale`);
-        process.exit(0);
-      }
+      if (command === 'check' && err.unreachable) return { unreachable: err.message };
       fail(`cannot read spec issue #${spec} from GitHub: ${err.message}. Save the spec issue's sub-issues as JSON and pass --from-json <file> (docs/agents/issue-tracker.md)`);
     }
   }
@@ -86,7 +84,11 @@ const command = args[0];
 const spec = Number(opt(args, '--spec'));
 if (!['pull', 'check'].includes(command) || !Number.isInteger(spec) || spec <= 0) fail(USAGE);
 const file = opt(args, '--file') || 'TASKS.md';
-const { issues, external } = loadSource(command, spec, opt(args, '--from-json'), opt(args, '--repo'), file);
+const { issues, external, unreachable } = loadSource(command, spec, opt(args, '--from-json'), opt(args, '--repo'));
+if (unreachable) {
+  console.error(`tasks-sync: warning: cannot check ${file} against GitHub (${unreachable}); it may be stale`);
+  process.exit(0);
+}
 
 const closedByCommit = closedOnBranch(opt(args, '--base'));
 const { text, errors } = buildTaskList(issues, { spec, closedByCommit, external });

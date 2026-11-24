@@ -64,7 +64,9 @@ async function taskListProblems(ctx) {
   const where = rel(ctx.root, file);
   const m = GENERATED_FROM.exec(read(file));
   const pull = (spec) => `node .claude/harness/bin/tasks-sync.js pull --spec ${spec} --out ${where}`;
-  if (!m) return [`${where} was not generated from a spec issue: run tasks-sync pull --spec <n> --out ${where} (${pull('<n>')})`];
+  if (!m) return [`${where} was not generated from a spec issue: run ${pull('<n>')}`];
+  // The spec number comes from the header being checked; editing it to another spec shows up as a
+  // header difference, but nothing else ties the product to its spec issue yet.
   const spec = Number(m[1]);
   const r = await ctx.runTasksCheck({ spec, file, cwd: ctx.product });
   const said = [r.stdout, r.stderr].map((t) => String(t || '').trim()).filter(Boolean).join('\n');
@@ -76,8 +78,10 @@ async function taskListProblems(ctx) {
   return [`tasks-sync check failed: ${said || `exit ${r.status}`}`];
 }
 
-async function defaultTasksCheck({ spec, file, cwd }) {
-  const r = spawnSync(process.execPath, [TASKS_SYNC_BIN, 'check', '--spec', String(spec), '--file', file], { cwd, encoding: 'utf8', timeout: 120000 });
+// A check that runs out of time (many tickets on a slow link) only warns, like an unreachable GitHub.
+async function defaultTasksCheck({ spec, file, cwd, timeout = 180000 }) {
+  const r = spawnSync(process.execPath, [TASKS_SYNC_BIN, 'check', '--spec', String(spec), '--file', file], { cwd, encoding: 'utf8', timeout });
+  if (r.error && r.error.code === 'ETIMEDOUT') return { status: 0, stdout: '', stderr: `tasks-sync: warning: tasks-sync check timed out after ${timeout} ms; ${file} may be stale` };
   return { status: r.status, stdout: r.stdout, stderr: r.stderr || (r.error ? r.error.message : '') };
 }
 
@@ -168,15 +172,16 @@ async function checkPipeline({ root, product, docs, runGate = defaultGate, runTa
 // The Stop hook forwards only the tail of the output, so the instruction and the gate's own failure
 // details go last.
 function formatReport({ pass, blocked, phases, gateOutput, warnings = [] }) {
-  const lines = [...phases.map((p, i) => `[${i + 1}/${phases.length}] ${p.name}: ${p.status}`), ...warnings];
-  if (pass) return [...lines, 'PIPELINE COMPLETE'].join('\n');
+  const lines = phases.map((p, i) => `[${i + 1}/${phases.length}] ${p.name}: ${p.status}`);
+  if (pass) return [...lines, ...warnings, 'PIPELINE COMPLETE'].join('\n');
   const current = phases.find((p) => p.name === blocked);
   return [
     ...lines,
     `PIPELINE INCOMPLETE at phase "${blocked}". Do this phase now; do not stop to ask a human. Decide, log the decision in decisions.md, continue.`,
     ...current.problems.map((p) => `  - ${p}`),
+    ...warnings,
     ...(blocked === 'build' && gateOutput ? ['', gateOutput.trimEnd()] : []),
   ].join('\n');
 }
 
-module.exports = { checkPipeline, formatReport, frozenFiles, amendCounts };
+module.exports = { checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck };
