@@ -42,7 +42,7 @@
         { "check": "coverage", "when": "the main runner writes no lcov (playwright)" },
         { "check": "mutation", "when": "mutation.command is not set" }
       ],
-      "limits": ["each missing check needs the owner's decision in verify.config.json weakerGate", "its fixture is a stand-in runner in the harness tests; the real vitest runner is exercised through the vitest-stryker fixture"],
+      "limits": ["report contract proven with a stand-in runner only", "vitest runner proven through the vitest-stryker fixture", "playwright as the main runner unproven", "each missing check needs the owner's weaker-gate decision in design.md's Stack section and in verify.config.json weakerGate"],
       "fixture": ".claude/harness/test/fixtures/standin-runner.sh"
     },
     { "id": "python", "status": "planned", "stacks": ["Python"], "productKinds": ["API", "CLI", "library", "bot"], "checks": [], "missingChecks": [], "limits": [], "fixture": null },
