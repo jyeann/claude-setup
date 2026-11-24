@@ -3,6 +3,7 @@ name: harness-optimizer
 description: Improve local agent-harness configuration reliability and cost using eval-driven grading (pass@k/pass^k) against the harness's own tests and the verify gate.
 tools: Read, Grep, Glob, Bash, Edit
 model: sonnet
+effort: medium
 color: cyan
 ---
 

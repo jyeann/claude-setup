@@ -2,7 +2,8 @@
 name: ux-designer
 description: UX and interface designer for web and CLI products. Turns a product brief into user journeys, screen states, copy and UI acceptance checks that a browser test can run. Use after the product brief and before system design or building any user interface.
 tools: Read, Grep, Glob, Write
-model: sonnet
+model: opus
+effort: low
 ---
 
 ## Prompt Defense Baseline

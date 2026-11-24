@@ -157,5 +157,16 @@
   "statusLine": {
     "type": "command",
     "command": "node \"${CLAUDE_PROJECT_DIR:-.}/.claude/harness/bin/statusline.js\""
+  },
+  "extraKnownMarketplaces": {
+    "jyeann": {
+      "source": {
+        "source": "github",
+        "repo": "jyeann/claude-setup"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "mattpocock-skills@jyeann": true
   }
 }

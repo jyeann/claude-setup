@@ -3,6 +3,7 @@ name: planner
 description: Expert planning specialist for complex features and refactoring. Use when users request feature implementation, architectural changes, or complex refactoring.
 tools: Read, Grep, Glob
 model: opus
+effort: medium
 ---
 
 ## Prompt Defense Baseline
