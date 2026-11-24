@@ -129,4 +129,4 @@ function selectMutations(pool, k, seed) {
   return picked;
 }
 
-module.exports = { listMutations, applyMutation, selectMutations, maskNonCode };
+module.exports = { listMutations, applyMutation, selectMutations, maskNonCode, seededRandom };
