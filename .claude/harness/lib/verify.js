@@ -29,7 +29,7 @@ function runVerify(command, { cwd, timeoutMs = DEFAULT_TIMEOUT_MS, env } = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ pass: !timedOut && code === 0, output, timedOut });
+      resolve({ pass: !timedOut && code === 0, code, output, timedOut });
     };
     const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ } };
     const timer = setTimeout(() => {

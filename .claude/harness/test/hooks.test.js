@@ -280,3 +280,31 @@ test('init --require-sandbox refuses to start when settings enable a sandbox tha
   assert.match(r.stderr, /bwrap/);
   assert.equal(fs.existsSync(path.join(dir, '.harness', 'state.json')), false);
 });
+
+test('end to end: the stop hook lets a pipeline waiting for the owner end the turn, and the owner reply is a gate response', () => {
+  const dir = project();
+  // Stands in for pipeline.js: waits until the owner's label appears (a file here), then passes.
+  fs.writeFileSync(path.join(dir, 'pipeline.js'), `const fs = require('node:fs');
+if (fs.existsSync('labelled')) { console.log('PIPELINE COMPLETE'); process.exit(0); }
+console.log('[5/12] spec-approved: waiting\\nwaiting for owner: spec issue #37 needs label spec-approved');
+process.exit(3);
+`);
+  cli(dir, 'init', '--verify', 'node pipeline.js', '--no-checkpoint', '--max', '3');
+  const stopIn = () => run(path.join(HOOKS, 'stop.js'), dir, { hook_event_name: 'Stop', session_id: 's1' });
+  const prompt = (text) => run(path.join(HOOKS, 'user-prompt.js'), dir, { hook_event_name: 'UserPromptSubmit', session_id: 's1', prompt: text });
+  prompt('build an expense splitter');
+  const first = stopIn();
+  assert.match(JSON.parse(first.stdout).reason, /waiting for owner: spec issue #37 needs label spec-approved/);
+  const second = stopIn();
+  assert.equal(second.stdout, '', 'the turn may end');
+  assert.match(second.stderr, /waiting for owner: spec issue #37 needs label spec-approved/);
+  assert.equal(state(dir).active, true);
+  assert.equal(state(dir).iteration, 0);
+  prompt('approved');
+  fs.writeFileSync(path.join(dir, 'labelled'), '');
+  assert.equal(stopIn().stdout, '');
+  assert.equal(state(dir).status, 'passed');
+  const { buildKpi } = require('../lib/agents-kpi');
+  const { human } = buildKpi(dir, path.join(dir, 'none'));
+  assert.deepEqual([human.prompts, human.gateResponses, human.interventions], [2, 1, 0]);
+});

@@ -1,6 +1,6 @@
 ---
 name: orch-product-team
-description: Run a product the way a small company would - discover and scope, design the experience, design the system, plan, build under the verify gate, review in parallel, walk the product as a user, document, and hold a retro - with one human gate (final acceptance), every other decision made by an agent and logged, and per-phase cost, effort and human-touch measurement. Use when a new product or large feature starts from an idea rather than from a finished spec.
+description: Run a product the way a small company would - discover and scope, design the experience, design the system, plan, build under the verify gate, review in parallel, walk the product as a user, document, and hold a retro - with two owner gates (spec-approved, accepted), every other decision made by an agent and logged, and per-phase cost, effort and human-touch measurement. Use when a new product or large feature starts from an idea rather than from a finished spec.
 metadata:
   origin: local
 ---
@@ -8,17 +8,17 @@ metadata:
 # orch-product-team
 
 The `orch-*` skills assume a spec already exists. This one covers the work before the spec and after the
-build, and replaces the human approval gates with logged agent decisions so an unattended run is not
-interrupted. Build and verify still go through the harness (`/harness-build`, `verify.js`).
+build. The owner is asked at exactly two owner gates; every other approval is a logged agent decision, so an
+unattended run is not interrupted between them. Build and verify still go through the harness (`/harness-build`, `verify.js`).
 
 ## Principles
 
-- **One human gate: final acceptance.** Scope, design, plan and commit approvals are agent decisions. Each is written to `<product-repo>/docs/product/<slug>/decisions.md` as: decision, options, chosen, why, decided by. Ask a human only for spend, legal or real personal data.
-- **A stop to ask a human is a defect.** The `UserPromptSubmit` hook counts human prompts; every prompt after the first in a session is an intervention and shows in the KPI view. Do not end a turn to ask "shall I continue?".
+- **Two owner gates, labels on the spec issue.** `spec-approved` (the spec issue, including the look chosen from rendered variations) comes after phase 4a, before any ticket or test is written; `accepted` (the result against the spec issue) comes after phase 8, before the retro. Only the owner adds these labels; never add one yourself. Scope, design, plan and commit approvals are agent decisions. Each is written to `<product-repo>/docs/product/<slug>/decisions.md` as: decision, options, chosen, why, decided by. Ask the owner outside the gates only for spend, legal or real personal data.
+- **At a gate, end the turn; anywhere else, a stop to ask a human is a defect.** While a gate label is missing, `pipeline.js` reports `waiting for owner: spec issue #N needs label <gate>` and the Stop hook lets the turn end: tell the owner which issue to review, then stop. The owner's next prompt is a gate response. The `UserPromptSubmit` hook counts human prompts; every other prompt after the first in a session is an intervention and shows in the KPI view. Do not end a turn to ask "shall I continue?".
 - **Delegated agents run in the foreground** so tokens, time and outcome are recorded. Background runs show as "outcome not reported".
 - **Tag every delegated agent** with its phase: `description: "[phase:design] ..."`. The KPI roll-up groups cost by this tag. Pass `effort` explicitly (see Effort).
 - **Done means a person can use it.** Every journey and UI check in `ux.md` is a browser test inside the verify gate (`journeys` in `verify.config.json`), so the build cannot go green while a journey fails. Phase 7 is a second, independent walkthrough on top of that.
-- **The run cannot end early.** The whole pipeline is the harness's definition of done (`pipeline.js`), so the Stop hook returns the next unfinished phase instead of letting the turn end.
+- **The run cannot end early.** The whole pipeline is the harness's definition of done (`pipeline.js`), so the Stop hook returns the next unfinished phase instead of letting the turn end. The only exception is an owner gate whose label is really missing on the spec issue, read from GitHub on every check.
 
 ## Starting the run
 
@@ -33,7 +33,8 @@ A product run never writes into this repository (`claude-setup`). Each product l
 
 When the owner gave a folder inside an existing repository, install the harness at that repository's root and pass the folder as `--product`. The first `pipeline.js check` reports `discover` as the next phase.
 
-- `pipeline.js check` walks the nine phases in order and exits 0 only when each has its output and the product's own `verify.js` gate is green. On every stop attempt the Stop hook runs it and hands back the first unfinished phase and what is missing. That message is the next task: do it, do not ask.
+- `pipeline.js check` walks the phases and the two owner gates in order and exits 0 only when each phase has its output, both gate labels are on the spec issue and the product's own `verify.js` gate is green. On every stop attempt the Stop hook runs it and hands back the first unfinished phase and what is missing. That message is the next task: do it, do not ask.
+- **Owner gates.** The spec issue lives in `<product-repo>` and its number is recorded in phase 4a as a line `Spec issue: #N` in `decisions.md`; the gates and the task list both use that number. `pipeline.js` reads the issue's labels live with `gh api` from the product directory. A missing label, or a GitHub it cannot reach, is `waiting` (exit 3): the Stop hook holds the agent once so it can tell the owner, then lets the turn end and keeps the run active at no iteration cost. Once the owner adds the label, the next check moves on with no other input. Where `gh` cannot reach GitHub at all, add `--issue-json <file>` to the verify command with a copy of the spec issue saved by the GitHub MCP `issue_read` tool; it is read only while `gh` is unreachable.
 - `--open-gate-files` leaves `spec.md`, `acceptance/` and `verify.config.json` writable, because this run writes them in phase 4. From the moment phase 4 is complete, `pipeline.js` freezes them, the holdout and `ux.md` by hash. A later change fails the check unless `decisions.md` has a line `AMEND: <path> - <reason>`, one line per change. Only the test author amends a test; a builder never does.
 - `--no-commit-gate` is required: the commit gate would refuse every commit until phase 9.
 - Use single quotes around the verify command.
@@ -49,14 +50,17 @@ When the owner gave a folder inside an existing repository, install the harness 
 | 1 | `discover` | `product-scoper` | `brief.md` | build/adopt/extend decided; success criteria are user-visible and testable |
 | 2 | `ux` | `ux-designer` (+ `a11y-architect` for review) | `ux.md` | every success criterion has a journey and a UI acceptance check |
 | 3 | `design` | `architect`, `api-design` skill; record choices with `architecture-decision-records` | `design.md`, `adr/` | interfaces, data, failure modes, security notes written; ADR per real choice; `architect` is read-only, so save its text verbatim (a writer agent given the exact text, a diff-free check, or give it Write). Never retype or shorten it: a dropped caveat reached the holdout author and failed a gate |
-| 4 | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec, acceptance tests, hidden tests, browser journey tests (`journeys/`, from `harness/templates/journeys.test.js`), `verify.config.json` with `holdout` and `journeys` | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder; the author of the visible and the hidden tests has run every file (see Test author rules) |
+| 4a | `spec` | `to-spec`, `prototype` for the look | spec issue in `<product-repo>`; `decisions.md` lines `Spec issue: #N` and `Look: <choice>` | the spec issue holds the scope and the look chosen from rendered variations |
+| gate | `spec-approved` | the owner | label `spec-approved` on the spec issue | until the owner adds it, `pipeline.js` reports `waiting`: end the turn and tell the owner which issue to review |
+| 4b | `plan` | `planner`, then `plan-to-tasks` | `TASKS.md`, spec, acceptance tests, hidden tests, browser journey tests (`journeys/`, from `harness/templates/journeys.test.js`), `verify.config.json` with `holdout` and `journeys` | acceptance tests exist, fail for the right reason (RED), written by an agent other than the builder; the author of the visible and the hidden tests has run every file (see Test author rules) |
 | 5 | `build` | `tdd-guide` / `gan-generator` under `/harness-build` | code, unit tests | `verify.js` exits 0 (tests, type check, coverage, test quality, holdout, browser journeys, mutation) |
 | 6 | `review` | `code-reviewer`, `security-reviewer`, `a11y-architect`, `performance-optimizer` in parallel, foreground | `reviews.md`, containing the line `Open: CRITICAL 0, HIGH 0` with the true counts after the fix round | no CRITICAL or HIGH open; MEDIUM fixed or logged with a reason; every reviewer is given `ux.md` as a hard requirement list, and a finding that contradicts it is escalated, not applied |
 | 7 | `qa` | `e2e-runner` (Playwright) or `gan-evaluator` | `qa.md`, screenshots | an agent that did not write the journey tests walks the product as a first-time user and records what the scripted journeys miss; defects go back to phase 5 |
 | 8 | `release` | `doc-updater` | README with run steps, `CHANGELOG` entry | someone with only the README can run it |
+| gate | `accepted` | the owner | label `accepted` on the spec issue | the owner accepts the released result against the spec issue; until then `pipeline.js` reports `waiting` |
 | 9 | `retro` | `harness-improver` + the KPI roll-up | `retro.md` | one evidence-backed change proposed; KPI file refreshed |
 
-All nine phases run inside the one harness run. The product gate is re-run on every check from phase 5 on, so a review fix that breaks a test or a journey sends the pipeline back to phase 5 by itself. A failing phase 6 or 7 goes back to 5 with the finding as the task. Cap the loop at 3 round trips, then halt and report.
+All phases and both owner gates run inside the one harness run. The product gate is re-run on every check from phase 5 on, so a review fix that breaks a test or a journey sends the pipeline back to phase 5 by itself. A failing phase 6 or 7 goes back to 5 with the finding as the task. Cap the loop at 3 round trips, then halt and report.
 
 ## Test author rules (phase 4)
 
@@ -91,4 +95,4 @@ When a usage limit stops an agent, write the state to `<product-repo>/docs/produ
 
 ## KPI proof
 
-After phase 9, run `node .claude/harness/bin/agents-kpi.js --out kpi.json`. It reports per agent, per phase and per model/effort: runs, failures, outcome-not-reported, tokens, time; plus human prompts and interventions. A run is credible only if the KPI file shows foreground, tagged, effort-stamped runs and zero interventions after the first prompt.
+After phase 9, run `node .claude/harness/bin/agents-kpi.js --out kpi.json`. It reports per agent, per phase and per model/effort: runs, failures, outcome-not-reported, tokens, time; plus human prompts and interventions. A run is credible only if the KPI file shows foreground, tagged, effort-stamped runs and zero interventions after the first prompt (answers to the two owner gates are counted as gate responses, not interventions).

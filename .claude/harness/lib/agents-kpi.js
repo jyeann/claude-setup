@@ -31,6 +31,23 @@ function applyFinals(runs, finals) {
   return out;
 }
 
+// The first human prompt of a session starts the run. A later one answers an owner gate when the Stop hook
+// let a turn end because the pipeline was waiting (a gate-wait record) since the previous human prompt;
+// every other later prompt is an intervention.
+function humanTouches(session) {
+  let prompts = 0;
+  let gateResponses = 0;
+  let waited = false;
+  for (const e of session.events) {
+    if (e.type === 'gate-wait') waited = true;
+    if (e.type !== 'human' || e.kind !== 'human') continue;
+    if (prompts > 0 && waited) gateResponses += 1;
+    prompts += 1;
+    waited = false;
+  }
+  return { prompts, gateResponses, interventions: Math.max(0, prompts - 1 - gateResponses) };
+}
+
 function buildKpi(projectDir, agentsDir, { finals = [] } = {}) {
   const traced = readSessions(projectDir).flatMap((s) => s.events.filter((e) => e.type === 'agent').map((e) => ({ ...e, session: s.id })));
   const runs = applyFinals(traced, finals);
@@ -65,11 +82,12 @@ function buildKpi(projectDir, agentsDir, { finals = [] } = {}) {
   }
   const sessions = readSessions(projectDir);
   // Events written before prompts were classified have no kind: they are reported as unclassified, never as human.
-  const humanOf = (s) => s.events.filter((e) => e.type === 'human' && e.kind === 'human').length;
-  const humanCounts = sessions.map(humanOf);
+  const touches = sessions.map(humanTouches);
   const recorded = sum(sessions.map((s) => s.events.filter((e) => e.type === 'human').length));
   const human = {
-    sessions: humanCounts.filter((n) => n > 0).length, prompts: sum(humanCounts), interventions: sum(humanCounts.map((n) => Math.max(0, n - 1))),
+    sessions: touches.filter((t) => t.prompts > 0).length, prompts: sum(touches.map((t) => t.prompts)),
+    interventions: sum(touches.map((t) => t.interventions)), gateResponses: sum(touches.map((t) => t.gateResponses)),
+    gateWaits: sum(sessions.map((s) => s.events.filter((e) => e.type === 'gate-wait').length)),
     recordedPrompts: recorded, unclassified: sum(sessions.map((s) => s.events.filter((e) => e.type === 'human' && e.kind === undefined).length)),
   };
   const groups = new Map();

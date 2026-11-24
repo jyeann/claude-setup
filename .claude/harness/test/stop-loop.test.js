@@ -196,3 +196,56 @@ test('the retry message keeps enough of the verify output for several failing as
   assert.match(d.reason, /line 59/);
   assert.match(d.reason, /line 10 /);
 });
+
+// ---- owner gates (#24): the pipeline's waiting state is the one incomplete result that may end the turn ----
+const PIPELINE_RUN = { ...base, verifyCommand: "node .claude/harness/bin/pipeline.js check --product app --docs docs/app" };
+const WAIT_LINE = 'waiting for owner: spec issue #19 needs label spec-approved';
+const waiting = (line = WAIT_LINE, code = 3) => ({ pass: false, code, output: `[5/12] spec-approved: waiting\n${line}\n`, timedOut: false });
+
+test('a waiting pipeline blocks once so the agent tells the owner, then allows the stop', () => {
+  const first = decideStop(PIPELINE_RUN, waiting());
+  assert.equal(first.decision, 'block');
+  assert.match(first.reason, /waiting for owner: spec issue #19 needs label spec-approved/);
+  assert.match(first.reason, /end the turn/i);
+  assert.match(first.reason, /never add the label yourself/i);
+  assert.equal(first.nextState.status, 'waiting-for-owner');
+  assert.equal(first.nextState.iteration, 0, 'a gate wait costs no iteration');
+  assert.equal(first.nextState.active, true);
+  const second = decideStop(first.nextState, waiting());
+  assert.equal(second.decision, 'allow');
+  assert.equal(second.nextState.active, true, 'the run stays on, so the next stop checks the gate again');
+  assert.equal(second.nextState.status, 'waiting-for-owner');
+  assert.deepEqual(second.waiting, { gate: 'spec-approved', spec: 19 });
+  assert.equal(second.nextState.stallCount, 0);
+});
+
+test('after the owner adds the label, the next stop is judged as usual again', () => {
+  const waited = decideStop(decideStop(PIPELINE_RUN, waiting()).nextState, waiting()).nextState;
+  const next = decideStop(waited, fail('PIPELINE INCOMPLETE at phase "plan"'));
+  assert.equal(next.decision, 'block');
+  assert.equal(next.nextState.iteration, 1);
+  assert.equal(next.nextState.waitNotified, undefined);
+  assert.equal(next.nextState.status, 'running');
+  assert.equal(next.waiting, undefined);
+  // A new wait at the second gate is announced again.
+  const atAccepted = decideStop(next.nextState, waiting('waiting for owner: spec issue #19 needs label accepted'));
+  assert.equal(atAccepted.decision, 'block');
+  assert.match(atAccepted.reason, /needs label accepted/);
+});
+
+test('only the pipeline can report waiting: other commands, other exit codes or other lines still block', () => {
+  for (const [state, result] of [
+    [{ ...base, verifyCommand: 'node verify.js' }, waiting()],
+    [PIPELINE_RUN, waiting(WAIT_LINE, 1)],
+    [PIPELINE_RUN, waiting('waiting for owner: spec issue #19 needs label lgtm')],
+    [PIPELINE_RUN, { ...waiting(), output: `${WAIT_LINE}\nmore output after it\n` }],
+  ]) {
+    let s = state;
+    for (let i = 0; i < 2; i += 1) {
+      const d = decideStop(s, result);
+      assert.notEqual(d.nextState.status, 'waiting-for-owner');
+      s = d.nextState;
+    }
+    assert.equal(s.iteration, 2, JSON.stringify(result));
+  }
+});

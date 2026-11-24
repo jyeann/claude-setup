@@ -1,13 +1,15 @@
 'use strict';
 // Whole-pipeline definition of done for orch-product-team. Used as the harness verify command, it makes the
-// Stop hook hold the agent until every phase has produced its output and the product passes its own gate,
-// so there is no phase in which the agent can end the turn to ask a human.
+// Stop hook hold the agent until every phase has produced its output and the product passes its own gate.
 // Phases are checked in order and the first incomplete one is reported; that message is the agent's next task.
+// The one exception is an owner gate (spec-approved, accepted): while its label is missing on the spec issue,
+// read from GitHub, the result is `waiting` and the Stop hook lets the turn end (#24).
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { runVerify } = require('./verify');
+const { fetchIssue } = require('./gh-issues');
 
 const VERIFY_BIN = path.join(__dirname, '..', 'bin', 'verify.js');
 const TASKS_SYNC_BIN = path.join(__dirname, '..', 'bin', 'tasks-sync.js');
@@ -16,6 +18,10 @@ const MIN_DOC_CHARS = 300;
 const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]s$/;
 const OPEN_FINDINGS = /^\s*Open:\s*CRITICAL\s+(\d+)\s*,\s*HIGH\s+(\d+)\s*$/mi;
 const AMEND = /^\s*(?:[-*]\s*)?AMEND:?\s+`?([^\s`]+)`?/gm;
+// The spec issue is recorded once in decisions.md in phase 4a. Only "#N" (an issue of the product's own
+// repository, which gh resolves from the clone): a run cannot point its gates at another repository's issue.
+const SPEC_ISSUE = /^\s*(?:[-*]\s*)?Spec issue:\s*#(\d+)\s*$/mi;
+const LOOK = /^\s*(?:[-*]\s*)?Look:\s*\S/mi;
 
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
@@ -52,8 +58,56 @@ function planProblems({ product, docs }) {
   }
   if (!filesUnder(path.join(product, 'acceptance')).some((f) => TEST_FILE.test(f))) out.push('no acceptance tests in acceptance/ (the test author writes them before any builder starts)');
   if (read(path.join(product, 'TASKS.md')) === null && read(path.join(docs, 'TASKS.md')) === null) out.push('TASKS.md is missing: run tasks-sync pull --spec <n> to generate it from the spec issue (product or docs directory)');
-  if (read(path.join(docs, 'decisions.md')) === null) out.push('decisions.md is missing: every decision made without a human is logged there');
   return out;
+}
+
+// Phase 4a: the spec issue is written (to-spec) and the look chosen from rendered variations (prototype).
+// Both are recorded in decisions.md, which is where the gates find the spec issue number.
+function specProblems({ docs }) {
+  const text = read(path.join(docs, 'decisions.md'));
+  if (text === null) return ['decisions.md is missing: every decision made without a human is logged there, starting with the spec issue'];
+  const out = [];
+  if (!SPEC_ISSUE.test(text)) out.push('decisions.md has no "Spec issue: #N" line: write the spec issue in this product\'s repository (to-spec), then record its number on a line of its own');
+  if (!LOOK.test(text)) out.push('decisions.md has no "Look:" line: render variations (prototype), choose one, put it in the spec issue and record it as "Look: <choice and where it is rendered>" ("Look: none" for a product without a screen)');
+  return out;
+}
+
+const specIssueOf = (docs) => Number((SPEC_ISSUE.exec(read(path.join(docs, 'decisions.md')) ?? '') ?? [])[1]) || null;
+const labelNames = (issue) => (Array.isArray(issue?.labels) ? issue.labels : []).map((l) => (typeof l === 'string' ? l : l?.name)).filter(Boolean);
+
+// Reads the spec issue live through gh (run from the product directory, so {owner}/{repo} is the product's
+// repository). A saved copy (issue JSON written with the GitHub MCP tools) is read only when gh cannot reach
+// GitHub, so a hand-made file cannot pass a gate while GitHub can be asked.
+// Returns { issue } | { unreachable: why } | { error: why }.
+async function defaultReadIssue({ spec, cwd, issueJson, run = (args) => spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: 60000 }) }) {
+  try {
+    return { issue: fetchIssue(spec, { run }) };
+  } catch (err) {
+    if (!err.unreachable) return { error: err.message };
+    if (!issueJson) return { unreachable: err.message };
+    let saved;
+    try {
+      saved = JSON.parse(fs.readFileSync(path.resolve(cwd ?? '.', issueJson), 'utf8'));
+    } catch (readErr) {
+      return { unreachable: `${err.message}; cannot read ${issueJson}: ${readErr.message}` };
+    }
+    if (Number(saved?.number) !== Number(spec)) return { error: `${issueJson} is issue #${saved?.number}, not spec issue #${spec}` };
+    return { issue: saved };
+  }
+}
+
+// An owner gate passes only when its label is on the spec issue. Missing label or no answer from GitHub:
+// wait (never pass). Any other read error is the run's to fix, usually a wrong "Spec issue:" line.
+function ownerGate(gate) {
+  return async (ctx) => {
+    const spec = specIssueOf(ctx.docs);
+    if (!ctx.issueReads.has(spec)) ctx.issueReads.set(spec, ctx.readIssue({ spec, cwd: ctx.product }));
+    const r = await ctx.issueReads.get(spec);
+    if (r.error) return [`cannot read spec issue #${spec} (${r.error}): fix the "Spec issue: #N" line in decisions.md so it names this product's spec issue`];
+    if (r.issue && labelNames(r.issue).includes(gate)) return [];
+    const note = r.unreachable ? [`could not read the labels of spec issue #${spec} (${r.unreachable}), so the gate counts as not passed`] : [];
+    return { waiting: { gate, spec }, notes: note };
+  };
 }
 
 // The task list is generated from a spec issue (docs/adr/0001): its header names the spec, and
@@ -65,9 +119,10 @@ async function taskListProblems(ctx) {
   const m = GENERATED_FROM.exec(read(file));
   const pull = (spec) => `node .claude/harness/bin/tasks-sync.js pull --spec ${spec} --out ${where}`;
   if (!m) return [`${where} was not generated from a spec issue: run ${pull('<n>')}`];
-  // The spec number comes from the header being checked; editing it to another spec shows up as a
-  // header difference, but nothing else ties the product to its spec issue yet.
+  // The header's spec must be the one recorded in decisions.md (phase 4a), which the gates read.
   const spec = Number(m[1]);
+  const named = specIssueOf(ctx.docs);
+  if (named !== null && named !== spec) return [`${where} was generated from spec issue #${spec}, but decisions.md names spec issue #${named}: ${pull(named)}`];
   const r = await ctx.runTasksCheck({ spec, file, cwd: ctx.product });
   const said = [r.stdout, r.stderr].map((t) => String(t || '').trim()).filter(Boolean).join('\n');
   if (r.status === 0) {
@@ -131,6 +186,8 @@ const PHASES = [
     return missing.length ? [`ux.md has no journey for success criteria ${missing.join(', ')}`] : [];
   })],
   ['design', ({ docs }) => doc(docs, 'design.md', 'system design')],
+  ['spec', specProblems],
+  ['spec-approved', ownerGate('spec-approved')],
   ['plan', async (ctx) => {
     const p = planProblems(ctx);
     if (p.length) return p;
@@ -152,29 +209,50 @@ const PHASES = [
     ...(/```/.test(read(path.join(product, 'README.md')) ?? '') ? [] : ['README.md in the product directory needs run steps in a code block: someone with only the README must be able to run it']),
     ...(read(path.join(product, 'CHANGELOG.md')) === null ? ['CHANGELOG.md is missing in the product directory'] : []),
   ]],
+  ['accepted', ownerGate('accepted')],
   ['retro', ({ docs }) => doc(docs, 'retro.md', 'retro')],
 ];
 
-// Returns the phase list with the first incomplete phase's problems. Later phases are not evaluated.
-async function checkPipeline({ root, product, docs, runGate = defaultGate, runTasksCheck = defaultTasksCheck }) {
-  const ctx = { root: path.resolve(root), product: path.resolve(root, product), docs: path.resolve(root, docs), runGate, runTasksCheck, gateOutput: '', warnings: [] };
+// Returns the phase list with the first incomplete (or waiting) phase's problems. Later phases are not evaluated.
+async function checkPipeline({ root, product, docs, runGate = defaultGate, runTasksCheck = defaultTasksCheck, readIssue, issueJson }) {
+  const read = readIssue ?? ((q) => defaultReadIssue({ ...q, issueJson }));
+  const ctx = { root: path.resolve(root), product: path.resolve(root, product), docs: path.resolve(root, docs), runGate, runTasksCheck, readIssue: read, issueReads: new Map(), gateOutput: '', warnings: [] };
   const phases = [];
   let blocked = null;
+  let waiting;
   for (const [name, check] of PHASES) {
     if (blocked) { phases.push({ name, status: 'pending', problems: [] }); continue; }
-    const problems = await check(ctx);
-    phases.push({ name, status: problems.length ? 'incomplete' : 'done', problems });
-    if (problems.length) blocked = name;
+    const out = await check(ctx);
+    if (out.waiting) {
+      ({ waiting } = out);
+      phases.push({ name, status: 'waiting', problems: out.notes });
+      blocked = name;
+      continue;
+    }
+    phases.push({ name, status: out.length ? 'incomplete' : 'done', problems: out });
+    if (out.length) blocked = name;
   }
-  return { pass: blocked === null, blocked, phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
+  return { pass: blocked === null, blocked, ...(waiting ? { waiting } : {}), phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
 }
+
+const waitLine = ({ gate, spec }) => `waiting for owner: spec issue #${spec} needs label ${gate}`;
 
 // The Stop hook forwards only the tail of the output, so the instruction and the gate's own failure
 // details go last.
-function formatReport({ pass, blocked, phases, gateOutput, warnings = [] }) {
+// A waiting report ends with the waiting line, which the Stop hook recognises (lib/stop-loop.js).
+function formatReport({ pass, blocked, waiting, phases, gateOutput, warnings = [] }) {
   const lines = phases.map((p, i) => `[${i + 1}/${phases.length}] ${p.name}: ${p.status}`);
   if (pass) return [...lines, ...warnings, 'PIPELINE COMPLETE'].join('\n');
   const current = phases.find((p) => p.name === blocked);
+  if (waiting) {
+    return [
+      ...lines,
+      `PIPELINE WAITING at owner gate "${blocked}". End the turn and tell the owner which issue to review; never add the label yourself. The run continues once the label is on the spec issue.`,
+      ...current.problems.map((p) => `  - ${p}`),
+      ...warnings,
+      waitLine(waiting),
+    ].join('\n');
+  }
   return [
     ...lines,
     `PIPELINE INCOMPLETE at phase "${blocked}". Do this phase now; do not stop to ask a human. Decide, log the decision in decisions.md, continue.`,
@@ -184,4 +262,4 @@ function formatReport({ pass, blocked, phases, gateOutput, warnings = [] }) {
   ].join('\n');
 }
 
-module.exports = { checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck };
+module.exports = { checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };

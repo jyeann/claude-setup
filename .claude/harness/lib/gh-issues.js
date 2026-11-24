@@ -77,4 +77,11 @@ function fetchSpecIssues(spec, { run = ghRunner, repo } = {}) {
   return { issues, external };
 }
 
-module.exports = { fetchSpecIssues };
+// One issue (for its labels): the owner gates read the spec issue live. Throws like fetchSpecIssues.
+function fetchIssue(number, { run = ghRunner, repo } = {}) {
+  const [issue] = api(run, `repos/${repo || '{owner}/{repo}'}/issues/${Number(number)}`);
+  if (!issue || typeof issue !== 'object') throw ghError(`issue #${Number(number)}: unexpected answer`, false);
+  return issue;
+}
+
+module.exports = { fetchSpecIssues, fetchIssue };
