@@ -54,6 +54,10 @@
           {
             "context": "eval-kit-selftest",
             "integration_id": 15368
+          },
+          {
+            "context": "gate-slug-react",
+            "integration_id": 15368
           }
         ]
       }

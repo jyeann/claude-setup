@@ -166,6 +166,26 @@ test('ruleset.json is valid, requires PRs and the CI job names that really exist
   for (const c of checks) assert.ok(jobIds.includes(c), `required check "${c}" must be a job in ci.yml (found: ${jobIds})`);
 });
 
+test('gate-slug-react is required and runs the real gate in the fixture with a lockfile-keyed npm cache', () => {
+  const rs = JSON.parse(fs.readFileSync(RULESET, 'utf8'));
+  const checks = rs.rules.find((r) => r.type === 'required_status_checks').parameters.required_status_checks.map((c) => c.context);
+  assert.ok(checks.includes('gate-slug-react'));
+  const ci = fs.readFileSync(path.join(REPO_ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+  const start = ci.indexOf('\n  gate-slug-react:\n');
+  assert.ok(start >= 0, 'job gate-slug-react');
+  const next = ci.slice(start + 1).search(/\n {2}[\w-]+:\s*\n/);
+  const job = next < 0 ? ci.slice(start) : ci.slice(start, start + 1 + next);
+  const fixture = '.claude/harness/fixtures/slug-react';
+  assert.ok(fs.existsSync(path.join(REPO_ROOT, fixture, 'package-lock.json')), 'fixture lockfile');
+  assert.match(job, new RegExp(`working-directory: ${fixture.replace(/\./g, '\\.')}\\n`));
+  assert.match(job, new RegExp(`cache-dependency-path: ${fixture.replace(/\./g, '\\.')}/package-lock\\.json`));
+  assert.match(job, /cache: npm/);
+  assert.match(job, /persist-credentials: false/);
+  assert.match(job, /run: npm ci\n/);
+  assert.match(job, /run: npx playwright install --with-deps chromium\n/);
+  assert.match(job, /run: CLAUDE_PROJECT_DIR="\$PWD" node \.\.\/\.\.\/bin\/verify\.js\n/);
+});
+
 test('protect.sh defaults to a dry run that prints the payload and never calls gh', () => {
   const gh = fakeGh('[]');
   const r = run('bash', [PROTECT, '--repo', 'o/r'], { env: { ...cleanEnv, GH: gh.bin } });
