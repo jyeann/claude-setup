@@ -59,6 +59,21 @@ const CONFIG = {
   mutation: { samples: 2, minKillRate: 0.5, copy: ['acceptance'] },
 };
 
+const STAGING = `# Staging guide
+## Start staging
+\`\`\`bash
+npm start
+\`\`\`
+## Example data
+Ten fake players and 200 items. ${LONG}
+## Test account
+user@example.test / a-test-password
+## What to test
+Follow the script.
+## Report a finding
+Open an issue.
+`;
+
 function write(root, files) {
   for (const [rel, text] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
@@ -77,6 +92,9 @@ function project(overrides = {}) {
     'docs/spec-approved-page.md': PAGE,
     'docs/reviews.md': `# Reviews\n${LONG}\nOpen: CRITICAL 0, HIGH 0\n`,
     'docs/qa.md': `# QA\n${LONG}`,
+    'docs/uat.md': `# UAT\n- [ ] A signs up and sees the start page.\n${LONG}`,
+    'docs/uat-run.md': `# UAT run\n${LONG}\nUAT: PASS 1, PARTIAL 0, FAIL 0, NOT RUN 0\n`,
+    'docs/staging-guide.md': STAGING,
     'docs/retro.md': `# Retro\n${LONG}`,
     'app/spec.md': '# Spec\n',
     'app/TASKS.md': GENERATED_TASKS,
@@ -125,6 +143,14 @@ test('each phase reports what is missing', async () => {
     [{ 'docs/reviews.md': `# Reviews\n${LONG}` }, 'review', /Open: CRITICAL 0, HIGH 0/],
     [{ 'docs/reviews.md': `${LONG}\nOpen: CRITICAL 0, HIGH 2\n` }, 'review', /0 CRITICAL and 2 HIGH/],
     [{ 'docs/qa.md': '' }, 'qa', /stub/],
+    [{ 'docs/uat.md': `# UAT\n${LONG}` }, 'uat', /tick-box/],
+    [{ 'docs/uat-run.md': `# UAT run\n${LONG}` }, 'uat', /UAT: PASS/],
+    [{ 'docs/uat-run.md': `# UAT run\n${LONG}\nUAT: PASS 5, PARTIAL 0, FAIL 2, NOT RUN 0\n` }, 'uat', /2 FAIL/],
+    [{ 'docs/uat-run.md': `# UAT run\n${LONG}\nUAT: PASS 5, PARTIAL 0, FAIL 0, NOT RUN 1\n` }, 'uat', /1 NOT RUN/],
+    [{ 'docs/staging-guide.md': '' }, 'staging', /stub/],
+    [{ 'docs/staging-guide.md': STAGING.replace('## Test account', '## Login') }, 'staging', /"Test account" section/],
+    [{ 'docs/staging-guide.md': STAGING.replace('user@example.test', 'someone') }, 'staging', /no test account/],
+    [{ 'docs/staging-guide.md': `${STAGING}sk_live_abc123` }, 'staging', /live key/],
     [{ 'app/README.md': '# App' }, 'release', /run steps in a code block/],
     [{ 'docs/retro.md': '' }, 'retro', /stub/],
   ];
@@ -249,7 +275,7 @@ test('CLI: exit 1 with the next task when incomplete, exit 2 on bad usage', () =
   const run = (args) => spawnSync('node', [PIPELINE, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
   const incomplete = run(['check', '--product', '.', '--docs', 'docs']);
   assert.equal(incomplete.status, 1);
-  assert.match(incomplete.stdout, /\[1\/12\] discover: incomplete/);
+  assert.match(incomplete.stdout, /\[1\/14\] discover: incomplete/);
   assert.equal(run(['check']).status, 2);
   assert.equal(run(['check', '--nope', 'x']).status, 2);
 });
@@ -338,7 +364,7 @@ test('warnings come after the instruction on a blocked run, where the Stop hook 
 // ---- owner gates: spec-approved between 4a and 4b, accepted between release and retro (#24) ----
 test('the pipeline has the two owner gates in place: spec-approved after 4a, accepted after release', async () => {
   const r = await check(project());
-  assert.deepEqual(r.phases.map((p) => p.name), ['discover', 'ux', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted', 'retro']);
+  assert.deepEqual(r.phases.map((p) => p.name), ['discover', 'ux', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'uat', 'staging', 'release', 'accepted', 'retro']);
 });
 
 test('4a needs the spec issue and the chosen look recorded in decisions.md', async () => {
@@ -425,7 +451,7 @@ test('while spec-approved is missing on the spec issue the pipeline waits, befor
   assert.equal(statusOf(r).plan, 'pending');
   assert.deepEqual(asked, [{ spec: 19, cwd: path.join(root, 'app') }]);
   const report = formatReport(r);
-  assert.match(report, /\[5\/12\] spec-approved: waiting/);
+  assert.match(report, /\[5\/14\] spec-approved: waiting/);
   assert.match(report, /never add the label yourself/);
   assert.doesNotMatch(report, /do not stop to ask a human/);
   assert.equal(report.split('\n').at(-1), 'waiting for owner: spec issue #19 needs label spec-approved');
@@ -542,7 +568,7 @@ process.stdout.write(JSON.stringify([{ number: 19, labels: labels.map((name) => 
   fs.writeFileSync(labels, '["afk","spec-approved"]');
   const next = run();
   assert.equal(next.status, 1, next.stdout + next.stderr);
-  assert.match(next.stdout, /\[5\/12\] spec-approved: done/);
+  assert.match(next.stdout, /\[5\/14\] spec-approved: done/);
   assert.match(next.stdout, /INCOMPLETE at phase "plan"[\s\S]*no acceptance tests/);
 });
 

@@ -503,6 +503,39 @@ async function defaultGate(product) {
   return { pass: result.pass, output: result.output };
 }
 
+// UAT: a script a person can follow (uat.md, tick-box lines) and a record of an agent standing in for that person
+// (uat-run.md). The record must end on a summary line with nothing failed and nothing left unrun.
+const UAT_SUMMARY = /^UAT:\s*PASS\s+(\d+),\s*PARTIAL\s+(\d+),\s*FAIL\s+(\d+),\s*NOT RUN\s+(\d+)\s*$/im;
+function uatProblems({ docs }) {
+  const script = doc(docs, 'uat.md', 'UAT script', (t) => (/^\s*- \[[ x]\]/m.test(t) ? [] : ['uat.md has no tick-box lines ("- [ ] ..."): write the script as steps a person ticks off']));
+  if (script.length) return script;
+  return doc(docs, 'uat-run.md', 'UAT run record', (t) => {
+    const m = UAT_SUMMARY.exec(t);
+    if (!m) return ['uat-run.md needs a line of exactly this form, with the true counts: "UAT: PASS 20, PARTIAL 3, FAIL 0, NOT RUN 0"'];
+    return Number(m[3]) + Number(m[4]) === 0 ? [] : [`uat-run.md records ${m[3]} FAIL and ${m[4]} NOT RUN: fix the defects (back to build), re-run those steps, then update the line`];
+  });
+}
+
+// Staging guide: what the owner reads before accepting. Fake data and a provided test account only.
+const STAGING_SECTIONS = [
+  ['Start staging', /start staging/i],
+  ['Example data', /example data/i],
+  ['Test account', /test account/i],
+  ['What to test', /what to test/i],
+  ['Report a finding', /report a finding/i],
+];
+const LIVE_KEY = /\b(?:sk|pk|rk)_live_[A-Za-z0-9]/;
+function stagingProblems({ docs }) {
+  return doc(docs, 'staging-guide.md', 'staging guide', (t) => {
+    const heads = t.split('\n').filter((l) => /^#{1,4}\s/.test(l));
+    const out = STAGING_SECTIONS.filter(([, re]) => !heads.some((h) => re.test(h))).map(([name]) => `staging-guide.md has no "${name}" section (a heading)`);
+    if (!/```/.test(t)) out.push('staging-guide.md needs the start steps in a code block: the owner must be able to copy and run them');
+    if (!/\b[\w.+-]+@[\w-]+\.(?:test|example|invalid)\b/i.test(t)) out.push('staging-guide.md names no test account: give an email on a .test, .example or .invalid domain and its password');
+    if (LIVE_KEY.test(t)) out.push('staging-guide.md contains a live key: staging is test mode only, remove it');
+    return out;
+  });
+}
+
 const PHASES = [
   ['discover', ({ docs }) => doc(docs, 'brief.md', 'product brief', (t) => (/success criteria/i.test(t) ? [] : ['brief.md has no "Success criteria" section: list user-visible, testable criteria']))],
   ['ux', ({ docs }) => doc(docs, 'ux.md', 'UX design', (t) => {
@@ -530,6 +563,8 @@ const PHASES = [
     return Number(m[1]) + Number(m[2]) === 0 ? [] : [`reviews.md records ${m[1]} CRITICAL and ${m[2]} HIGH findings still open: fix them, re-run the reviewers on the fix, then update the line`];
   })],
   ['qa', ({ docs }) => doc(docs, 'qa.md', 'independent browser walkthrough record')],
+  ['uat', uatProblems],
+  ['staging', stagingProblems],
   ['release', ({ product }) => [
     ...(/```/.test(read(path.join(product, 'README.md')) ?? '') ? [] : ['README.md in the product directory needs run steps in a code block: someone with only the README must be able to run it']),
     ...(read(path.join(product, 'CHANGELOG.md')) === null ? ['CHANGELOG.md is missing in the product directory'] : []),

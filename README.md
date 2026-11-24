@@ -11,7 +11,7 @@ Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/READ
 
 | Path | What it is |
 |---|---|
-| `.claude/skills/orch-product-team/` | The nine-phase workflow: discover, UX, design, plan, build, review, QA, release, retro. |
+| `.claude/skills/orch-product-team/` | The eleven-phase workflow: discover, UX, design, plan, build, review, QA, UAT, staging guide, release, retro. |
 | `.claude/agents/` | The 15 agents the workflow calls (14 team roles plus `harness-optimizer`). |
 | `.claude/skills/` | 9 skills: the workflow, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference). |
 | `.claude/commands/` | `/harness-build` and `/harness-improve`. |
