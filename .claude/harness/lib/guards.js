@@ -151,6 +151,14 @@ function irreversibleGit(argv) {
   return null;
 }
 
+// Owner gates (#24): only the owner adds spec-approved or accepted to a spec issue. The session's gh token is
+// the owner's, so GitHub cannot tell who added a label; this guard keeps gh from doing it for the agent.
+const GATE_LABEL = /(?:^|[^\w-])(?:spec-approved|accepted)(?![\w-])/;
+function gateLabelEdit(args) {
+  if (!args.some((a) => GATE_LABEL.test(a))) return false;
+  return args[0] === 'label' || args.some((a) => /^--(?:add|remove)-label\b/.test(a) || /(?:^|\/)labels\b|^labels?(?:\[\])?=/.test(a));
+}
+
 function commandViolation({ argv }, ctx) {
   const [cmd, sub] = argv;
   if (cmd === 'printenv' && (argv.length === 1 || argv.slice(1).some((a) => SECRET_VAR.test(a)))) return 'Dumping the environment can leak secrets.';
@@ -158,6 +166,7 @@ function commandViolation({ argv }, ctx) {
   if (cmd === 'export' && (argv.length === 1 || argv.includes('-p'))) return 'Dumping the environment can leak secrets.';
   if (cmd === 'rm') return rmViolation(argv);
   if (KILLERS.has(cmd) && argv.slice(1).some((a) => /verify|harness|node|claude/i.test(a))) return 'Killing node, the verifier or the harness is blocked.';
+  if (cmd === 'gh' && gateLabelEdit(argv.slice(1))) return 'Owner gate labels (spec-approved, accepted) are added by the owner only: tell the owner which issue to review and end the turn.';
   if (cmd !== 'git') return null;
   if (sub === 'push') return pushViolation(argv, ctx.currentBranch);
   if (sub === 'commit' && commitSkipsHooks(argv.slice(2))) return '--no-verify / -n skips the safety gates and is blocked.';

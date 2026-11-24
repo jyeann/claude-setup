@@ -289,7 +289,7 @@ if (fs.existsSync('labelled')) { console.log('PIPELINE COMPLETE'); process.exit(
 console.log('[5/12] spec-approved: waiting\\nwaiting for owner: spec issue #37 needs label spec-approved');
 process.exit(3);
 `);
-  cli(dir, 'init', '--verify', 'node pipeline.js', '--no-checkpoint', '--max', '3');
+  cli(dir, 'init', '--verify', 'node pipeline.js check', '--no-checkpoint', '--max', '3');
   const stopIn = () => run(path.join(HOOKS, 'stop.js'), dir, { hook_event_name: 'Stop', session_id: 's1' });
   const prompt = (text) => run(path.join(HOOKS, 'user-prompt.js'), dir, { hook_event_name: 'UserPromptSubmit', session_id: 's1', prompt: text });
   prompt('build an expense splitter');

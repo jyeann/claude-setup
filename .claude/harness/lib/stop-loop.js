@@ -37,7 +37,7 @@ function trackProgress(state, failing) {
 // the spec issue. Only the pipeline can report it, so a test that prints the line cannot end a build early.
 const WAIT_EXIT = 3;
 const WAIT_LINE = /^waiting for owner: spec issue #(\d+) needs label (spec-approved|accepted)$/;
-const PIPELINE_COMMAND = /(?:^|[\s/'"])pipeline\.js(?=[\s'"]|$)/;
+const PIPELINE_COMMAND = /(?:^|[\s/'"])pipeline\.js['"]?\s+check\b/;
 
 function ownerWait(state, result) {
   if (!result || result.code !== WAIT_EXIT || !PIPELINE_COMMAND.test(String(state.verifyCommand ?? ''))) return null;
@@ -49,12 +49,15 @@ function ownerWait(state, result) {
 // The first stop at a gate is held once so the agent tells the owner what to review; the next stop at the
 // same gate ends the turn. The run stays active and costs no iteration, so the owner's label is all it takes
 // for the next stop to move on.
-function waitAtGate(state, wait) {
-  const nextState = { ...state, status: 'waiting-for-owner', waitNotified: wait.line };
+// Time spent waiting for the owner does not count against --max-minutes: waitingSince marks the start of
+// the wait, and the first stop after it moves startedAt forward by that much.
+function waitAtGate(state, wait, result, now) {
+  const waitingSince = state.waitingSince ?? now ?? null;
+  const nextState = { ...state, status: 'waiting-for-owner', waitNotified: wait.line, ...(waitingSince === null ? {} : { waitingSince }) };
   const waiting = { gate: wait.gate, spec: wait.spec };
   if (state.waitNotified === wait.line) return { decision: 'allow', reason: wait.line, nextState, waiting };
   const reason = [
-    wait.line,
+    tailOutput(result.output, 4),
     `The pipeline is at the owner gate "${wait.gate}". End the turn now: in your final message tell the owner to review spec issue #${wait.spec} and add the label ${wait.gate} when it is right.`,
     'Never add the label yourself and do not start the next phase; the run continues by itself once the label is there.',
   ].join('\n');
@@ -64,9 +67,10 @@ function waitAtGate(state, wait) {
 function decideStop(givenState, result, options = {}) {
   if (!givenState.active) return { decision: 'allow', reason: '', nextState: givenState };
   const wait = givenState.diagnosing ? null : ownerWait(givenState, result);
-  if (wait) return waitAtGate(givenState, wait);
-  const { waitNotified, ...rest } = givenState;
-  const state = rest.status === 'waiting-for-owner' ? { ...rest, status: 'running' } : rest;
+  if (wait) return waitAtGate(givenState, wait, result, options.now);
+  const { waitNotified, waitingSince, ...rest } = givenState;
+  let state = rest.status === 'waiting-for-owner' ? { ...rest, status: 'running' } : rest;
+  if (waitingSince !== undefined && state.startedAt && options.now !== undefined) state = { ...state, startedAt: state.startedAt + (options.now - waitingSince) };
 
   // Second stop after a diagnosis turn: end the run with the status that triggered it. Bounded: one turn only.
   if (state.diagnosing) {

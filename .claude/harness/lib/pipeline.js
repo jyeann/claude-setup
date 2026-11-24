@@ -81,7 +81,8 @@ const labelNames = (issue) => (Array.isArray(issue?.labels) ? issue.labels : [])
 // Returns { issue } | { unreachable: why } | { error: why }.
 async function defaultReadIssue({ spec, cwd, issueJson, run = (args) => spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: 60000 }) }) {
   try {
-    return { issue: fetchIssue(spec, { run }) };
+    const issue = fetchIssue(spec, { run });
+    return issue.pull_request ? { error: `#${spec} is a pull request, not a spec issue` } : { issue };
   } catch (err) {
     if (!err.unreachable) return { error: err.message };
     if (!issueJson) return { unreachable: err.message };
@@ -92,19 +93,37 @@ async function defaultReadIssue({ spec, cwd, issueJson, run = (args) => spawnSyn
       return { unreachable: `${err.message}; cannot read ${issueJson}: ${readErr.message}` };
     }
     if (Number(saved?.number) !== Number(spec)) return { error: `${issueJson} is issue #${saved?.number}, not spec issue #${spec}` };
-    return { issue: saved };
+    if (saved.pull_request) return { error: `${issueJson} is a pull request, not a spec issue` };
+    return { issue: saved, savedCopy: `labels read from the saved copy ${issueJson} because gh cannot reach GitHub (${err.message})` };
   }
 }
 
 // An owner gate passes only when its label is on the spec issue. Missing label or no answer from GitHub:
 // wait (never pass). Any other read error is the run's to fix, usually a wrong "Spec issue:" line.
+// Once spec-approved has passed, the spec issue number is pinned in .harness/pipeline/, so a later
+// "Spec issue:" line cannot point the gates at an unlabelled issue to stop early.
+const pinFile = (ctx) => freezeFile(ctx).replace(/\.json$/, '.spec.json');
+function pinnedSpec(ctx) {
+  const saved = read(pinFile(ctx));
+  return saved === null ? null : JSON.parse(saved).spec;
+}
+
 function ownerGate(gate) {
   return async (ctx) => {
     const spec = specIssueOf(ctx.docs);
+    const pinned = pinnedSpec(ctx);
+    if (pinned !== null && pinned !== spec) return [`decisions.md names spec issue #${spec}, but the owner approved spec issue #${pinned}: restore the line "Spec issue: #${pinned}"`];
     if (!ctx.issueReads.has(spec)) ctx.issueReads.set(spec, ctx.readIssue({ spec, cwd: ctx.product }));
     const r = await ctx.issueReads.get(spec);
     if (r.error) return [`cannot read spec issue #${spec} (${r.error}): fix the "Spec issue: #N" line in decisions.md so it names this product's spec issue`];
-    if (r.issue && labelNames(r.issue).includes(gate)) return [];
+    if (r.savedCopy && !ctx.warnings.includes(`warning: ${r.savedCopy}`)) ctx.warnings.push(`warning: ${r.savedCopy}`);
+    if (r.issue && labelNames(r.issue).includes(gate)) {
+      if (pinned === null) {
+        fs.mkdirSync(path.dirname(pinFile(ctx)), { recursive: true });
+        fs.writeFileSync(pinFile(ctx), `${JSON.stringify({ spec })}\n`);
+      }
+      return [];
+    }
     const note = r.unreachable ? [`could not read the labels of spec issue #${spec} (${r.unreachable}), so the gate counts as not passed`] : [];
     return { waiting: { gate, spec }, notes: note };
   };

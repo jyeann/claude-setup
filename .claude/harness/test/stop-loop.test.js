@@ -249,3 +249,28 @@ test('only the pipeline can report waiting: other commands, other exit codes or 
     assert.equal(s.iteration, 2, JSON.stringify(result));
   }
 });
+
+test('the gate stop tells the agent why the label could not be confirmed', () => {
+  const d = decideStop(PIPELINE_RUN, waiting(`  - could not read the labels of spec issue #19 (gh is not installed)\n${WAIT_LINE}`));
+  assert.match(d.reason, /could not read the labels of spec issue #19 \(gh is not installed\)/);
+});
+
+test('time spent waiting for the owner does not count against the time budget', () => {
+  const start = 1_000_000;
+  const timed = { ...PIPELINE_RUN, maxMinutes: 10, startedAt: start, diagnose: false };
+  const blocked = decideStop(timed, waiting(), { now: start + 60_000 }).nextState;
+  const waited = decideStop(blocked, waiting(), { now: start + 120_000 }).nextState;
+  assert.equal(waited.waitingSince, start + 60_000);
+  // A day later the owner adds the label; the next phase is incomplete, but the run is not out of time.
+  const day = 24 * 60 * 60_000;
+  const next = decideStop(waited, fail('PIPELINE INCOMPLETE at phase "plan"'), { now: start + 60_000 + day + 60_000 });
+  assert.equal(next.decision, 'block');
+  assert.equal(next.nextState.startedAt, start + day + 60_000, 'shifted by the whole wait');
+  assert.equal(next.nextState.waitingSince, undefined);
+});
+
+test('the pipeline must be the check command itself, not just named in the verify command', () => {
+  const d = decideStop({ ...base, verifyCommand: 'cat x/pipeline.js; ./run-tests' }, waiting());
+  assert.notEqual(d.nextState.status, 'waiting-for-owner');
+  assert.equal(decideStop({ ...base, verifyCommand: 'node "/abs path/.claude/harness/bin/pipeline.js" check --product a --docs b' }, waiting()).nextState.status, 'waiting-for-owner');
+});

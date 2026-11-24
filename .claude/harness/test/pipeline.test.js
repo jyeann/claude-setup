@@ -442,7 +442,9 @@ test('a saved issue JSON is used only when gh cannot reach GitHub, and must be t
   const saved = path.join(dir, 'issue.json');
   fs.writeFileSync(saved, JSON.stringify({ number: 19, labels: ['spec-approved', 'accepted'] }));
   const offline = fakeRun({ status: 1, stdout: '', stderr: 'error connecting to api.github.com' });
-  assert.deepEqual(await defaultReadIssue({ spec: 19, run: offline, issueJson: saved }), { issue: { number: 19, labels: ['spec-approved', 'accepted'] } });
+  const fromFile = await defaultReadIssue({ spec: 19, run: offline, issueJson: saved });
+  assert.deepEqual(fromFile.issue, { number: 19, labels: ['spec-approved', 'accepted'] });
+  assert.match(fromFile.savedCopy, /saved copy .*issue\.json because gh cannot reach GitHub/);
   // Reachable GitHub wins over the saved copy, so a hand-made file cannot pass a gate the owner has not passed.
   const live = fakeRun({ status: 0, stdout: JSON.stringify([{ number: 19, labels: [] }]), stderr: '' });
   assert.deepEqual((await defaultReadIssue({ spec: 19, run: live, issueJson: saved })).issue.labels, []);
@@ -481,6 +483,38 @@ process.stdout.write(JSON.stringify([{ number: 19, labels: labels.map((name) => 
 
 test('CLI: --issue-json is accepted', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-'));
-  const r = spawnSync('node', [PIPELINE, 'check', '--product', '.', '--docs', 'docs', '--issue-json', 'x.json'], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
+  // No gh on PATH, so nothing can reach the network.
+  const r = spawnSync(process.execPath, [PIPELINE, 'check', '--product', '.', '--docs', 'docs', '--issue-json', 'x.json'], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root, PATH: path.join(root, 'no-bin') } });
   assert.equal(r.status, 1, r.stderr);
+});
+
+test('once spec-approved has passed, the spec issue is pinned: another number fails instead of waiting', async () => {
+  const root = project();
+  assert.equal((await check(root)).pass, true);
+  write(root, { 'docs/decisions.md': DECISIONS.replace('#19', '#20') });
+  const r = await check(root, passGate, tasksMatch, labelled('afk'));
+  assert.equal(r.blocked, 'spec-approved');
+  assert.equal(r.waiting, undefined);
+  assert.match(problemsOf(r, 'spec-approved')[0], /names spec issue #20, but the owner approved spec issue #19/);
+  // A spec issue still waiting for approval is not pinned yet and can be corrected.
+  const early = project({ 'docs/decisions.md': DECISIONS.replace('#19', '#20') });
+  assert.deepEqual((await check(early, passGate, tasksMatch, labelled())).waiting, { gate: 'spec-approved', spec: 20 });
+  write(early, { 'docs/decisions.md': DECISIONS });
+  assert.deepEqual((await check(early, passGate, tasksMatch, labelled())).waiting, { gate: 'spec-approved', spec: 19 });
+});
+
+test('a pull request is never a spec issue, live or saved', async () => {
+  const live = fakeRun({ status: 0, stdout: JSON.stringify([{ number: 19, pull_request: {}, labels: ['spec-approved'] }]), stderr: '' });
+  assert.match((await defaultReadIssue({ spec: 19, run: live })).error, /#19 is a pull request/);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-json-'));
+  fs.writeFileSync(path.join(dir, 'pr.json'), JSON.stringify({ number: 19, pull_request: {}, labels: ['spec-approved'] }));
+  const offline = fakeRun({ error: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }) });
+  assert.match((await defaultReadIssue({ spec: 19, run: offline, issueJson: path.join(dir, 'pr.json') })).error, /is a pull request/);
+});
+
+test('the report warns once when the labels came from a saved copy', async () => {
+  const saved = async ({ spec }) => ({ issue: { number: spec, labels: ['spec-approved', 'accepted'] }, savedCopy: 'labels read from the saved copy x.json because gh cannot reach GitHub (gh is not installed)' });
+  const r = await check(project(), passGate, tasksMatch, saved);
+  assert.equal(r.pass, true);
+  assert.deepEqual(r.warnings, ['warning: labels read from the saved copy x.json because gh cannot reach GitHub (gh is not installed)']);
 });

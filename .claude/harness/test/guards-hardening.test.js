@@ -123,3 +123,21 @@ test('checkWrite normalises ./ protected entries and scans notebook edits and pl
   const escaped = { tool_name: 'Write', tool_input: { file_path: 'f.js', content: `k="${fake}" // harness:allow-secret` } };
   assert.equal(checkWrite(escaped, idle, '/p').block, false);
 });
+
+test('gh cannot add or remove an owner gate label; other label and issue commands still work', () => {
+  for (const cmd of [
+    'gh issue edit 19 --add-label spec-approved',
+    'gh issue edit 19 --add-label "afk,accepted"',
+    'gh pr edit 3 --remove-label=accepted',
+    'gh api repos/o/r/issues/19/labels -f labels[]=spec-approved',
+    "gh api --method POST repos/o/r/issues/19/labels --input - <<< '{\"labels\":[\"accepted\"]}'",
+    'gh label create accepted',
+  ]) blocked(cmd);
+  for (const cmd of [
+    'gh issue edit 19 --add-label afk',
+    'gh issue view 19 --json labels',
+    'gh api repos/o/r/issues/19 --jq .labels',
+    'gh issue comment 19 --body "waiting for owner: spec issue #19 needs label spec-approved"',
+    'gh api repos/o/r/issues/19/labels',
+  ]) allowed(cmd);
+});
