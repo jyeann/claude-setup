@@ -9,5 +9,6 @@ Specs and tickets live as GitHub issues (`working.md`), but the build loop (`nex
 
 ## Consequences
 
-- The loop no longer types `doing` / `done`. It commits with `Closes #N` and re-pulls.
-- A hand edit to `TASKS.md` is overwritten on the next pull and is reported by `tasks-sync.js check` when GitHub is reachable.
+- Only a whole `Closes #N` line in a commit on this branch (since the base branch) counts, and reverted commits do not, so prose or old history cannot mark a ticket done. A closing commit on this branch wins over an open issue on purpose: that is a finished ticket waiting for the owner's merge. An issue closed as not planned is `blocked`, never `done`, so its dependents do not start.
+- A hand edit to `TASKS.md` is overwritten on the next pull.
+- Planned, not built yet: the loop committing with `Closes #N` and re-pulling instead of typing status, `doing` from ticket branches and `done` from open PRs (#22); a live `gh` pull and a `tasks-sync.js check` that reports a stale or hand-edited list (#21).

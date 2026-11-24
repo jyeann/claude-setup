@@ -1,28 +1,55 @@
 'use strict';
 // Generates the build loop's task list (TASKS.md, format in templates/tasks.md) from a spec issue's
 // tickets. GitHub issues are the source; the task list is never edited by hand. Status is derived from
-// facts, not typed: a closed issue or a commit that closes it is done. See docs/adr/0001.
+// facts, not typed: a closed issue or a commit on this branch that closes it is done. See docs/adr/0001.
+//
+// Input issue shape (raw GitHub REST issues work as they are):
+//   { number, title, state: "open"|"closed", state_reason?, labels: [name | {name}], body,
+//     blockedBy?: [{ number, state }] | { nodes: [{ number, state }] }, pull_request? }
+// Blockers outside the spec issue get their state from blockedBy, or from `external` (see buildTaskList).
 
 const { parseTasks, validateTasks } = require('./tasks');
 
-const CLOSING = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/gi;
-const REF = /#(\d+)\b/g;
+// A closing keyword must be the whole line ("Closes #20"), as in a commit trailer, so prose such as
+// "this does not fix #20" never closes anything.
+const CLOSING_LINE = /^\s*(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\s*$/gim;
+// "#N" not preceded by a word character, "/" or "&": skips "acme/other#5" and HTML entities like "&#39;".
+const REF = /(?<![\w/&])#(\d+)\b/g;
 
-// Issue numbers that commit messages close ("Closes #20", "fixes #21").
+// log: commits as `<sha>\0<message>\x01` (git log --format=%H%x00%B%x01). Returns the issue numbers
+// closed by commits that were not reverted. Revert commits never close anything themselves.
 function closingRefs(log) {
+  const commits = String(log).split('\u0001').map((c) => c.replace(/^\s+/, '')).filter(Boolean).map((c) => {
+    const [sha, message = ''] = c.split('\u0000');
+    return { sha: sha.trim(), message };
+  });
+  const reverted = [];
+  for (const c of commits) for (const m of c.message.matchAll(/This reverts commit ([0-9a-f]+)/gi)) reverted.push(m[1]);
+  const isReverted = (sha) => reverted.some((r) => sha.startsWith(r) || r.startsWith(sha));
   const refs = new Set();
-  for (const m of String(log).matchAll(CLOSING)) refs.add(Number(m[1]));
+  for (const c of commits) {
+    if (/^revert\b/i.test(c.message.trim()) || isReverted(c.sha)) continue;
+    for (const m of c.message.matchAll(CLOSING_LINE)) refs.add(Number(m[1]));
+  }
   return refs;
 }
 
 const isClosed = (state) => String(state || '').toLowerCase() === 'closed';
 const labelNames = (labels) => (labels || []).map((l) => String(typeof l === 'string' ? l : l && l.name).toLowerCase());
+const dependencyList = (b) => (Array.isArray(b) ? b : (b && Array.isArray(b.nodes) ? b.nodes : []));
 
 // "#N" references in a "Blocked by" section (a heading up to the next heading) or a "Blocked by:" line.
+// Lines inside fenced code blocks are ignored, headings included.
 function bodyBlockers(body) {
   const nums = [];
   let inSection = false;
+  let inFence = false;
   for (const line of String(body || '').split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
     if (/^#{1,6}\s/.test(line)) {
       inSection = /^#{1,6}\s*blocked by\b/i.test(line);
       continue;
@@ -42,55 +69,65 @@ function ticketType(issue) {
   return afk ? 'AFK' : 'HITL';
 }
 
-// issues: the spec issue's tickets ({ number, title, state, labels, body, blockedBy? }).
-// Returns { text, errors }; text is only meaningful when errors is empty.
-function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Set() } = {}) {
-  const tickets = issues.filter((i) => Number(i.number) !== Number(spec)).sort((a, b) => a.number - b.number);
+// Status, first match wins. Closed as not planned is never done: its dependents must not start.
+function deriveStatus(t, { closedByCommit, openOutside }) {
+  if (isClosed(t.state) && t.state_reason === 'not_planned') return { status: 'blocked', note: 'Closed as not planned: re-plan the tickets that depend on it' };
+  if (isClosed(t.state) || closedByCommit.has(t.number)) return { status: 'done', note: '' };
+  if (openOutside.length) return { status: 'blocked', note: `Waiting on open or unknown issue(s) outside the spec: ${openOutside.map((n) => `#${n}`).join(', ')}` };
+  return { status: 'todo', note: '' };
+}
+
+// issues: the spec issue's tickets (shape above). external: [{ number, state }] for blockers outside the
+// spec; an outside blocker with no known state counts as open. Returns { text, errors }; text is only
+// meaningful when errors is empty.
+function buildTaskList(issues, { spec, now = new Date(), closedByCommit = new Set(), external = [] } = {}) {
+  const tickets = issues
+    .filter((i) => !i.pull_request)
+    .map((i) => ({ ...i, number: Number(i.number) }))
+    .filter((i) => i.number !== Number(spec))
+    .sort((a, b) => a.number - b.number);
   const inSpec = new Set(tickets.map((t) => t.number));
+  const known = new Map(external.map((e) => [Number(e.number), isClosed(e.state)]));
   const errors = [];
   const lines = [
-    `<!-- Generated by tasks-sync.js from spec issue #${spec} at ${now.toISOString()}. Do not edit: edit the issues and run tasks-sync pull again. -->`,
+    `<!-- Generated by tasks-sync.js from spec issue #${Number(spec)} at ${now.toISOString()}. Do not edit: edit the issues and run tasks-sync pull again. -->`,
     '# Tasks',
     '',
   ];
 
   for (const t of tickets) {
+    const title = String(t.title || '').replace(/\s+/g, ' ').trim() || `Issue #${t.number}`;
     const type = ticketType(t);
-    if (!type) errors.push(`#${t.number} "${t.title}" needs exactly one of the labels afk or hitl`);
+    if (!type) errors.push(`#${t.number} "${title}" needs exactly one of the labels afk or hitl`);
 
-    // Blocker state: native dependencies carry it; a body reference outside the spec does not, so it counts as open.
     const outside = new Map();
     const blockers = new Set();
-    for (const b of t.blockedBy || []) {
-      if (inSpec.has(b.number)) blockers.add(b.number);
-      else outside.set(b.number, isClosed(b.state));
+    for (const b of dependencyList(t.blockedBy)) {
+      const n = Number(b.number);
+      if (inSpec.has(n)) blockers.add(n);
+      else outside.set(n, isClosed(b.state));
     }
     for (const n of bodyBlockers(t.body)) {
       if (inSpec.has(n)) blockers.add(n);
-      else if (!outside.has(n)) outside.set(n, false);
+      else if (!outside.has(n)) outside.set(n, known.get(n) === true);
     }
     const openOutside = [...outside].filter(([, closed]) => !closed).map(([n]) => n);
-
-    let status = 'todo';
-    if (isClosed(t.state) || closedByCommit.has(t.number)) status = 'done';
-    else if (openOutside.length) status = 'blocked';
+    const { status, note } = deriveStatus(t, { closedByCommit, openOutside });
 
     const deps = [...blockers].sort((a, b) => a - b).map((n) => `T${n}`);
     lines.push(
-      `## T${t.number}: ${String(t.title).replace(/\s+/g, ' ').trim()}`,
+      `## T${t.number}: ${title}`,
       `- type: ${type || 'unknown'}`,
       `- blocked-by: ${deps.length ? deps.join(', ') : 'none'}`,
       `- status: ${status}`,
       '',
-      `Issue: #${t.number}${openOutside.length ? `. Waiting on open issue(s) outside the spec: ${openOutside.map((n) => `#${n}`).join(', ')}` : ''}`,
+      `Issue: #${t.number}${note ? `. ${note}` : ''}`,
       '',
     );
   }
 
   const text = lines.join('\n');
-  if (!errors.length) {
-    errors.push(...validateTasks(parseTasks(text)));
-  }
+  if (!errors.length) errors.push(...validateTasks(parseTasks(text)));
   return { text, errors };
 }
 

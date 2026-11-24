@@ -27,7 +27,7 @@ A ticket that needs a human: a product decision, credentials, manual QA or visua
 _Avoid_: backlog file, todo file
 
 **Derived status**:
-A ticket's `todo` / `doing` / `done` in the task list, computed from GitHub and git facts (closed issue, a `Closes #N` commit or PR, a ticket branch) rather than typed by anyone.
+A ticket's `todo` / `doing` / `done` / `blocked` in the task list, computed from GitHub and git facts (closed issue, a `Closes #N` commit or PR, a ticket branch, an open blocker outside the spec) rather than typed by anyone.
 
 ## Approvals
 
