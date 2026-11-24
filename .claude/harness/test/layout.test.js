@@ -13,7 +13,6 @@ const POLICY = {
   forbiddenDirs: ['examples', 'docs/product'],
   forbiddenRefs: ['examples/', 'docs/product/'],
   skip: ['CHANGELOG.md', 'plugins/'],
-  placeholderFiles: ['skill.md'],
 };
 
 // A git repo with the given files tracked, plus the policy at .claude/layout.json.
@@ -51,21 +50,21 @@ test('fails when a tracked doc cites examples/ or docs/product/, naming file and
   assert.match(r.stderr, /docs\/a\.md:1 cites docs\/product\//);
 });
 
-test('history, skipped paths, placeholders in listed files and look-alike paths are allowed', () => {
+test('history, skipped paths, paths in another repository and look-alike paths are allowed', () => {
   const dir = repo({
     'CHANGELOG.md': 'moved examples/retro-board\n',
     'plugins/vendor/x.md': 'see examples/foo\n',
     'docs/dod.md': 'kept in history: `git show bfad3bb:docs/product/wiki/retro.md`\n',
-    'skill.md': 'build into `examples/<p>` with docs in `docs/product/<slug>/`\n',
+    'skill.md': 'records in `<product-repo>/docs/product/<slug>/`, code in <product-repo>/examples/x\n',
     'other.md': 'code-examples/ and tune/golden/docs/product-like and my-examples/\n',
     'notes.txt': 'examples/ in a non-doc file\n',
   });
   assert.deepEqual(checkLayout(dir, POLICY), []);
 });
 
-test('a placeholder outside the listed files still fails', () => {
-  const dir = repo({ 'agent.md': 'write `docs/product/<slug>/brief.md`\n' });
-  assert.deepEqual(checkLayout(dir, POLICY), ['agent.md:1 cites docs/product/']);
+test('a placeholder path with no repository in front still fails, so it cannot be read as this repo', () => {
+  const dir = repo({ 'agent.md': 'write `docs/product/<slug>/brief.md`\nor `examples/<p>`\n' });
+  assert.deepEqual(checkLayout(dir, POLICY), ['agent.md:1 cites docs/product/', 'agent.md:2 cites examples/']);
 });
 
 test('untracked files are not read, and a policy without refs only checks folders', () => {

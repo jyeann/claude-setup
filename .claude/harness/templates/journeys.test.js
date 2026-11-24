@@ -5,8 +5,9 @@
 // Rules it cannot enforce, so follow them: drive the real page the way a person would (click, type, read
 // what is on screen); never call the API directly or import from src/ to get a result.
 //
-// verify.config.json:
-//   "journeys": { "command": "node --test \"journeys/*.test.js\"", "uxFile": "../../docs/product/<slug>/ux.md", "minTests": <count> }
+// verify.config.json (uxFile is relative to the product folder; orch-product-team keeps ux.md in the product's
+// own repository at <product-repo>/docs/product/<slug>/ux.md, so with the product at that repository's root):
+//   "journeys": { "command": "node --test \"journeys/*.test.js\"", "uxFile": "docs/product/<slug>/ux.md", "minTests": <count> }
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');

@@ -20,9 +20,12 @@ Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/READ
 | `docs/process/definition-of-done.md` | What has been proven about the process, and when to re-check it. |
 
 ## Run the team
-In a session on this repo (or a project with the plugin and harness installed), give it an idea and tell it to use
-`orch-product-team`. The skill starts the harness with the whole pipeline as the definition of done, so the Stop
-hook sends the agent back to the next unfinished phase instead of letting it stop to ask.
+Give a session an idea and tell it to use `orch-product-team`. The product is built in its own repository (or a
+path you give), never in this one: the skill installs the harness there (see below), works inside that repository,
+and keeps the run records in `<product-repo>/docs/product/<slug>/`. With no target named, it proposes a new
+repository named after the product and asks you once. It then starts the harness with the whole pipeline as the
+definition of done, so the Stop hook sends the agent back to the next unfinished phase instead of letting it stop
+to ask. This repo keeps only the process and its test bench (`testbench/retro-board/`).
 
 ## Install in another project
 Claude Code 2.1.275 or later:
