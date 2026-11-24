@@ -141,3 +141,38 @@ test('gh cannot add or remove an owner gate label; other label and issue command
     'gh api repos/o/r/issues/19/labels',
   ]) allowed(cmd);
 });
+
+// Layer verdicts (#48): only the owner writes a `verdict:` line on GitHub. The session's gh token is the
+// owner's, so GitHub cannot tell who posted it; this guard keeps gh from posting one for the agent.
+test('gh cannot post or edit a comment, issue or PR whose text holds a verdict line', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'verdict-guard-'));
+  fs.writeFileSync(path.join(dir, 'note.md'), 'Redone ux.\n\nVerdict: problem=pass impression=pass approach=pass correctness=pass craft=pass\n');
+  fs.writeFileSync(path.join(dir, 'plain.md'), 'Redone ux; please post your verdict on the issue.\n');
+  const here = { ...idle, projectDir: dir };
+  const V = 'verdict: problem=pass impression=pass approach=pass correctness=pass craft=pass';
+  for (const cmd of [
+    `gh issue comment 19 --body "${V}"`,
+    `gh issue comment 19 -b "Done.\n${V}"`,
+    `gh pr comment 3 --body '${V}'`,
+    `gh issue edit 19 --body "${V}"`,
+    `gh issue create --title t --body "${V}"`,
+    `gh api repos/o/r/issues/19/comments -f body="${V}"`,
+    `gh api --method PATCH repos/o/r/issues/comments/7 -F 'body=${V}'`,
+    `gh api repos/o/r/issues/19/comments --input - <<< '{"body":"${V}"}'`,
+    `gh api repos/o/r/issues/19/comments --input - <<< '{"body":"done\\n${V}"}'`,
+    `gh issue comment 19 --body-file - <<'END'\nRedone.\n${V}\nEND`,
+    `cat <<END | gh issue comment 19 --body-file -\n  ${V.toUpperCase()}\nEND`,
+    'gh issue comment 19 --body-file note.md',
+    'gh api repos/o/r/issues/19/comments -F body=@note.md',
+    'cat note.md | gh issue comment 19 --body-file -',
+  ]) blocked(cmd, here);
+  for (const cmd of [
+    'gh issue comment 19 --body "Redone ux. Please post a new verdict on this issue."',
+    'gh issue comment 19 --body-file plain.md',
+    'gh issue view 19 --comments',
+    `echo "${V}"`,
+  ]) allowed(cmd, here);
+});

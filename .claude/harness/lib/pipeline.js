@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { runVerify } = require('./verify');
-const { fetchIssue } = require('./gh-issues');
+const { fetchIssue, fetchIssueComments } = require('./gh-issues');
 
 const VERIFY_BIN = path.join(__dirname, '..', 'bin', 'verify.js');
 const TASKS_SYNC_BIN = path.join(__dirname, '..', 'bin', 'tasks-sync.js');
@@ -111,7 +111,10 @@ const labelNames = (issue) => (Array.isArray(issue?.labels) ? issue.labels : [])
 async function defaultReadIssue({ spec, cwd, issueJson, run = (args) => spawnSync('gh', args, { cwd, encoding: 'utf8', timeout: 60000 }) }) {
   try {
     const issue = fetchIssue(spec, { run });
-    return issue.pull_request ? { error: `#${spec} is a pull request, not a spec issue` } : { issue };
+    if (issue.pull_request) return { error: `#${spec} is a pull request, not a spec issue` };
+    // The REST issue carries only a comment count; the verdicts are in the comments themselves.
+    if (!Array.isArray(issue.comments) && Number(issue.comments) > 0) issue.comments = fetchIssueComments(spec, { run });
+    return { issue };
   } catch (err) {
     if (!err.unreachable) return { error: err.message };
     if (!issueJson) return { unreachable: err.message };
@@ -137,6 +140,171 @@ function pinnedSpec(ctx) {
   return saved === null ? null : JSON.parse(saved).spec;
 }
 
+// ---- Layer verdicts (#48, ADR-0002). The owner leaves a comment on the spec issue with a line
+// `verdict: problem=pass impression=redirect "too cluttered" approach=pass correctness=pass craft=pass`;
+// the latest such comment is the verdict. A redirect sends the run back to the layer's phase only.
+const LAYERS = Object.freeze({ problem: 'discover', impression: 'ux', approach: 'design', correctness: 'build', craft: 'build' });
+const MAX_ROUNDS = 3;
+// A verdict line starts the line (up to 3 spaces). Lines inside fenced or indented code and blockquotes
+// are quotes, never verdicts, so an agent quoting the expected form does not post one.
+const VERDICT_LINE = /^ {0,3}verdict:(.*)$/i;
+const FENCE = /^ {0,3}(```|~~~)/;
+function verdictLines(text) {
+  const found = [];
+  let fence = null;
+  for (const line of String(text ?? '').split(/\r?\n/)) {
+    const f = FENCE.exec(line);
+    if (f) { if (fence === null) fence = f[1]; else if (f[1] === fence) fence = null; continue; }
+    if (fence !== null || /^\s*>/.test(line) || /^(?: {4}|\t)/.test(line)) continue;
+    const m = VERDICT_LINE.exec(line);
+    if (m) found.push(m[1]);
+  }
+  return found;
+}
+const ENTRY = /\s*([^\s=]+)=([^\s"“]*)(?:\s*(?:"([^"]*)"|“([^”]*)”))?/y;
+const EXPECTED = `verdict: ${Object.keys(LAYERS).map((l) => `${l}=pass|redirect "<reason>"`).join(' ')}`;
+
+// null when the text has no verdict line; otherwise { ok, redirects: [{ layer, phase, reason }], errors }.
+function parseVerdict(text) {
+  const lines = verdictLines(text);
+  if (lines.length === 0) return null;
+  if (lines.length > 1) return { ok: false, redirects: [], errors: [`the comment has more than one verdict line (${lines.length}); post one`] };
+  const [rest] = lines;
+  const given = new Map();
+  const named = new Set();
+  const errors = [];
+  ENTRY.lastIndex = 0;
+  while (rest.slice(ENTRY.lastIndex).trim()) {
+    const at = ENTRY.lastIndex;
+    const m = ENTRY.exec(rest);
+    if (!m) { errors.push(`cannot read "${rest.slice(at).trim()}"`); break; }
+    const layer = m[1].toLowerCase();
+    const value = m[2].toLowerCase();
+    const reason = (m[3] ?? m[4] ?? '').trim();
+    if (!Object.hasOwn(LAYERS, layer)) errors.push(`"${m[1]}" is not a judgement layer`);
+    else if (named.has(layer)) errors.push(`${layer} is given twice`);
+    else if (value === 'pass') given.set(layer, null);
+    else if (value === 'redirect' && reason) given.set(layer, reason);
+    else if (value === 'redirect') errors.push(`the redirect on ${layer} has no reason in quotes`);
+    else errors.push(`${layer}=${m[2]} is neither pass nor redirect`);
+    named.add(layer);
+  }
+  for (const layer of Object.keys(LAYERS)) if (!named.has(layer)) errors.push(`no verdict for ${layer}`);
+  const redirects = [...given].filter(([, reason]) => reason).map(([layer, reason]) => ({ layer, phase: LAYERS[layer], reason }));
+  return { ok: errors.length === 0, redirects, errors };
+}
+
+// The latest verdict comment on the issue, by time (ties keep the issue's order), with a stable id.
+function latestVerdict(issue) {
+  const { comments } = issue ?? {};
+  if (comments !== undefined && comments !== null && !Array.isArray(comments)) {
+    return Number(comments) > 0 ? { unreadable: `the copy of the spec issue has ${Number(comments)} comments but not their text, so the layer verdicts cannot be read` } : null;
+  }
+  const verdicts = (comments ?? []).map((c, i) => ({ c, i, v: parseVerdict(c?.body) })).filter((x) => x.v);
+  verdicts.sort((a, b) => String(a.c.created_at ?? '').localeCompare(String(b.c.created_at ?? '')) || a.i - b.i);
+  const last = verdicts.at(-1);
+  return last ? { id: String(last.c.id ?? `${last.c.created_at}#${last.i}`), ...last.v } : null;
+}
+
+// Gate state per product: rounds per gate, the redirects being redone, which phases a redirect reopened,
+// and each approval with the hashes of the files it approved.
+const gatesFile = (ctx) => freezeFile(ctx).replace(/\.json$/, '.gates.json');
+function readGates(ctx) {
+  const saved = read(gatesFile(ctx));
+  let state = {};
+  try {
+    state = saved === null ? {} : JSON.parse(saved);
+  } catch (err) {
+    // Fail closed: rounds and approvals cannot be guessed.
+    throw new Error(`${rel(ctx.root, gatesFile(ctx))} is corrupt (${err.message}): restore it from the owner's last known state or ask the owner; never delete it to pass a gate`);
+  }
+  return { rounds: {}, history: [], seen: {}, redirects: [], reopened: [], approvals: {}, voided: {}, ...state };
+}
+function saveGates(ctx) {
+  fs.mkdirSync(path.dirname(gatesFile(ctx)), { recursive: true });
+  fs.writeFileSync(gatesFile(ctx), `${JSON.stringify(ctx.gates, null, 2)}\n`);
+}
+
+// Which phase a file (relative to the root) belongs to: brief.md, ux.md and design.md (with adr/) in the docs
+// directory; the frozen gate files (`plan`) and everything else in the product directory (`build`). Dot
+// directories, node_modules, coverage and the generated TASKS.md belong to none.
+const FROZEN_IN_PRODUCT = /^(?:spec\.md|verify\.config\.json|(?:acceptance|holdout)\/.*)$/;
+const inside = (dir, abs) => { const r = path.relative(dir, abs); return !r.startsWith('..') && !path.isAbsolute(r); };
+function phaseOf(ctx, file) {
+  const abs = path.join(ctx.root, file);
+  if (inside(ctx.docs, abs)) {
+    const d = rel(ctx.docs, abs);
+    return { 'brief.md': 'discover', 'ux.md': 'ux', 'design.md': 'design' }[d] ?? (d.startsWith('adr/') ? 'design' : null);
+  }
+  if (!inside(ctx.product, abs)) return null;
+  const p = rel(ctx.product, abs);
+  if (p === 'TASKS.md' || p.split('/').some((s) => s.startsWith('.') || s === 'node_modules' || s === 'coverage')) return null;
+  return FROZEN_IN_PRODUCT.test(p) ? 'plan' : 'build';
+}
+
+function walk(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    if (e.isDirectory() && (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'coverage')) return [];
+    const p = path.join(dir, e.name);
+    return e.isDirectory() ? walk(p) : [p];
+  });
+}
+function hashed(ctx, keep) {
+  const all = [...new Set([...walk(ctx.product), ...walk(ctx.docs)].map((f) => rel(ctx.root, f)))].sort();
+  return Object.fromEntries(all.filter(keep).map((f) => [f, sha(fs.readFileSync(path.join(ctx.root, f)))]));
+}
+const phaseOutputs = (ctx, phase) => hashed(ctx, (f) => phaseOf(ctx, f) === phase);
+// spec-approved approves the brief, ux, design and the page; accepted approves the product.
+function approvedFiles(ctx, gate) {
+  const page = rel(ctx.root, path.join(ctx.docs, PAGE));
+  const phases = gate === 'accepted' ? ['plan', 'build'] : ['discover', 'ux', 'design'];
+  return hashed(ctx, (f) => f === page || phases.includes(phaseOf(ctx, f)));
+}
+const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((f) => a[f] !== b[f]);
+// The phases reopened by redirects (at one gate, or at any gate for the freeze).
+const reopenedBy = (ctx, gate) => new Set(ctx.gates.reopened.filter((r) => gate === undefined || r.gate === gate).map((r) => r.phase));
+
+// An approval holds while its files are unchanged, changed with an AMEND line, or reopened by a redirect.
+function voidedFiles(ctx, gate) {
+  const approval = ctx.gates.approvals[gate];
+  const now = approvedFiles(ctx, gate);
+  const counts = amendCounts(ctx.docs);
+  const reopened = reopenedBy(ctx, gate);
+  const changed = changedKeys(now, approval.files);
+  const unexplained = changed.filter((f) => (counts[f] ?? 0) <= (approval.amends[f] ?? 0) && !reopened.has(phaseOf(ctx, f)));
+  if (unexplained.length === 0 && changed.length) {
+    ctx.gates.approvals[gate] = { files: now, amends: counts };
+    saveGates(ctx);
+  }
+  return unexplained;
+}
+
+// A new redirect: count the round; within the limit, mark each named phase to be redone (with a snapshot of
+// its outputs, so "redone" means changed) and reopen that phase's files in the freeze and the approvals.
+function takeRedirect(ctx, gate, verdict) {
+  const g = ctx.gates;
+  const round = (g.rounds[gate] ?? 0) + 1;
+  g.rounds[gate] = round;
+  g.seen[verdict.id] = { gate, round };
+  g.history.push({ gate, round, redirects: verdict.redirects.map(({ layer, reason }) => ({ layer, reason })) });
+  if (round <= MAX_ROUNDS) {
+    for (const { layer, phase, reason } of verdict.redirects) {
+      g.redirects.push({ gate, round, layer, phase, reason, outputs: phaseOutputs(ctx, phase) });
+      if (!g.reopened.some((r) => r.phase === phase && r.gate === gate)) g.reopened.push({ phase, gate });
+    }
+  }
+  saveGates(ctx);
+}
+
+function stoppedAt(ctx, gate, spec, verdict, round) {
+  const reasons = ctx.gates.history.filter((h) => h.gate === gate).flatMap((h) => h.redirects.map((r) => ({ round: h.round, ...r })));
+  return { gate, spec, rounds: round, layers: verdict.redirects.map((r) => r.layer), reasons };
+}
+
+// An owner gate passes when its label is on the spec issue and the latest layer verdict, if any, is all pass.
+// Missing label, no answer from GitHub, a malformed verdict, a redirect waiting to be judged again or a void
+// approval: wait (never pass). Any other read error is the run's to fix, usually a wrong "Spec issue:" line.
 function ownerGate(gate) {
   return async (ctx) => {
     const spec = specIssueOf(ctx.docs);
@@ -146,16 +314,62 @@ function ownerGate(gate) {
     const r = await ctx.issueReads.get(spec);
     if (r.error) return [`cannot read spec issue #${spec} (${r.error}): fix the "Spec issue: #N" line in decisions.md so it names this product's spec issue`];
     if (r.savedCopy && !ctx.warnings.includes(`warning: ${r.savedCopy}`)) ctx.warnings.push(`warning: ${r.savedCopy}`);
-    if (r.issue && labelNames(r.issue).includes(gate)) {
-      if (pinned === null) {
-        fs.mkdirSync(path.dirname(pinFile(ctx)), { recursive: true });
-        fs.writeFileSync(pinFile(ctx), `${JSON.stringify({ spec })}\n`);
-      }
-      return [];
+    const wait = (...notes) => ({ waiting: { gate, spec }, notes });
+    if (r.unreachable) return wait(`could not read the labels of spec issue #${spec} (${r.unreachable}), so the gate counts as not passed`);
+    const g = ctx.gates;
+    const labelled = labelNames(r.issue).includes(gate);
+    const latest = latestVerdict(r.issue);
+
+    if (labelled && g.approvals[gate]) {
+      const changed = voidedFiles(ctx, gate);
+      if (changed.length === 0) return [];
+      delete g.approvals[gate];
+      g.voided[gate] = { verdict: latest?.id ?? null, files: changed };
+      saveGates(ctx);
+      return wait(`${changed.join(', ')} changed after the owner approved it at ${gate} without an AMEND line, so the approval is void: tell the owner what changed and ask for a new verdict on spec issue #${spec}`);
     }
-    const note = r.unreachable ? [`could not read the labels of spec issue #${spec} (${r.unreachable}), so the gate counts as not passed`] : [];
-    return { waiting: { gate, spec }, notes: note };
+    if (latest?.unreadable) return wait(`${latest.unreadable}: save the issue with its comments, or let gh reach GitHub`);
+    if (latest && !latest.ok) return wait(`the latest verdict on spec issue #${spec} cannot be read (${latest.errors.join('; ')}), so it is not a pass. Ask the owner to post it again in this form: ${EXPECTED}`);
+    // Correctness and craft are judged on the built product, at accepted.
+    const early = gate === 'spec-approved' ? latest?.redirects.filter((x) => x.phase === 'build') ?? [] : [];
+    if (early.length) return wait(`${early.map((x) => `${x.layer} is judged at accepted`).join('; ')}, so a redirect on it at spec-approved is not read and the gate is not passed. Ask the owner to post the verdict again with ${early.map((x) => `${x.layer}=pass`).join(' ')}, in this form: ${EXPECTED}`);
+    if (latest?.redirects.length) {
+      if (!g.seen[latest.id]) {
+        takeRedirect(ctx, gate, latest);
+        if (g.seen[latest.id].round <= MAX_ROUNDS) return { redirected: true };
+      }
+      const { round } = g.seen[latest.id];
+      if (round > MAX_ROUNDS) return { ...wait(), stopped: stoppedAt(ctx, gate, spec, latest, round) };
+      const named = latest.redirects.map((x) => `${x.layer}: "${x.reason}"`).join(', ');
+      return wait(`the owner's latest verdict is redirect round ${round} of ${MAX_ROUNDS} (${named}); once the redirected phase is redone, tell the owner what changed and ask them to post a new verdict on spec issue #${spec}`);
+    }
+    const voided = g.voided[gate];
+    if (voided && (!latest || latest.id === voided.verdict)) return wait(`the approval at ${gate} is void because ${voided.files.join(', ')} changed: waiting for a new verdict on spec issue #${spec}`);
+    if (!labelled) return wait();
+    // Approved: tie the approval to the files' hashes and close this gate's redirect rounds.
+    g.approvals[gate] = { files: approvedFiles(ctx, gate), amends: amendCounts(ctx.docs) };
+    delete g.voided[gate];
+    g.reopened = g.reopened.filter((x) => x.gate !== gate);
+    saveGates(ctx);
+    if (pinned === null) {
+      fs.mkdirSync(path.dirname(pinFile(ctx)), { recursive: true });
+      fs.writeFileSync(pinFile(ctx), `${JSON.stringify({ spec })}\n`);
+    }
+    return [];
   };
+}
+
+// A phase sent back by a redirect stays incomplete until its outputs differ from when the redirect came.
+function redirectProblems(ctx, name) {
+  const open = ctx.gates.redirects.filter((r) => r.phase === name);
+  if (open.length === 0) return [];
+  const now = phaseOutputs(ctx, name);
+  const pending = open.filter((r) => changedKeys(now, r.outputs).length === 0);
+  if (pending.length !== open.length) {
+    ctx.gates.redirects = ctx.gates.redirects.filter((r) => r.phase !== name || pending.includes(r));
+    saveGates(ctx);
+  }
+  return pending.map((r) => `the owner redirected ${r.layer} at ${r.gate} (round ${r.round} of ${MAX_ROUNDS}): "${r.reason}". Redo the ${name} phase so its output answers this; the owner is then asked again`);
 }
 
 // The task list is generated from a spec issue (docs/adr/0001): its header names the spec, and
@@ -214,7 +428,9 @@ function freezeProblems(ctx) {
   const saved = read(file);
   let state = saved ? JSON.parse(saved) : { files: now, amends: counts };
   const changed = [...new Set([...Object.keys(now), ...Object.keys(state.files)])].filter((f) => now[f] !== state.files[f]);
-  const unexplained = changed.filter((f) => (counts[f] ?? 0) <= (state.amends[f] ?? 0));
+  // A redirect reopens its phase's outputs (ux.md for impression), so the redo needs no AMEND line.
+  const reopened = reopenedBy(ctx);
+  const unexplained = changed.filter((f) => (counts[f] ?? 0) <= (state.amends[f] ?? 0) && !reopened.has(phaseOf(ctx, f)));
   if (unexplained.length === 0) state = { files: now, amends: counts };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
@@ -262,17 +478,31 @@ const PHASES = [
 ];
 
 // Returns the phase list with the first incomplete (or waiting) phase's problems. Later phases are not evaluated.
+// A gate that takes a new redirect returns { redirected }, and the walk starts again so the redirected phase
+// is the one reported.
 async function checkPipeline({ root, product, docs, runGate = defaultGate, runTasksCheck = defaultTasksCheck, readIssue, issueJson }) {
   const read = readIssue ?? ((q) => defaultReadIssue({ ...q, issueJson }));
   const ctx = { root: path.resolve(root), product: path.resolve(root, product), docs: path.resolve(root, docs), runGate, runTasksCheck, readIssue: read, issueReads: new Map(), gateOutput: '', warnings: [] };
+  ctx.gates = readGates(ctx);
+  for (;;) {
+    const result = await walkPhases(ctx);
+    if (!result.redirected) return result;
+  }
+}
+
+async function walkPhases(ctx) {
   const phases = [];
   let blocked = null;
   let waiting;
+  let stopped;
+  ctx.gateOutput = '';
   for (const [name, check] of PHASES) {
     if (blocked) { phases.push({ name, status: 'pending', problems: [] }); continue; }
-    const out = await check(ctx);
+    const redo = redirectProblems(ctx, name);
+    const out = redo.length ? redo : await check(ctx);
+    if (out.redirected) return out;
     if (out.waiting) {
-      ({ waiting } = out);
+      ({ waiting, stopped } = out);
       phases.push({ name, status: 'waiting', problems: out.notes });
       blocked = name;
       continue;
@@ -280,7 +510,7 @@ async function checkPipeline({ root, product, docs, runGate = defaultGate, runTa
     phases.push({ name, status: out.length ? 'incomplete' : 'done', problems: out });
     if (out.length) blocked = name;
   }
-  return { pass: blocked === null, blocked, ...(waiting ? { waiting } : {}), phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
+  return { pass: blocked === null, blocked, ...(waiting ? { waiting } : {}), ...(stopped ? { stopped } : {}), phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
 }
 
 const waitLine = ({ gate, spec }) => `waiting for owner: spec issue #${spec} needs label ${gate}`;
@@ -288,10 +518,19 @@ const waitLine = ({ gate, spec }) => `waiting for owner: spec issue #${spec} nee
 // The Stop hook forwards only the tail of the output, so the instruction and the gate's own failure
 // details go last.
 // A waiting report ends with the waiting line, which the Stop hook recognises (lib/stop-loop.js).
-function formatReport({ pass, blocked, waiting, phases, gateOutput, warnings = [] }) {
+function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, warnings = [] }) {
   const lines = phases.map((p, i) => `[${i + 1}/${phases.length}] ${p.name}: ${p.status}`);
   if (pass) return [...lines, ...warnings, 'PIPELINE COMPLETE'].join('\n');
   const current = phases.find((p) => p.name === blocked);
+  if (stopped) {
+    return [
+      ...lines,
+      `PIPELINE STOPPED at owner gate "${blocked}" after ${MAX_ROUNDS} redirect rounds: the ${stopped.rounds}th redirect names ${stopped.layers.join(', ')}. Redo nothing. End the turn and report to the owner: the layers and reasons below, and what each round changed. The owner decides how to go on; a new all-pass verdict lets the run continue.`,
+      ...stopped.reasons.map((r) => `  - round ${r.round}, ${r.layer}: "${r.reason}"`),
+      ...warnings,
+      waitLine(waiting),
+    ].join('\n');
+  }
   if (waiting) {
     return [
       ...lines,
@@ -310,4 +549,4 @@ function formatReport({ pass, blocked, waiting, phases, gateOutput, warnings = [
   ].join('\n');
 }
 
-module.exports = { PAGE_SECTIONS, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
+module.exports = { PAGE_SECTIONS, LAYERS, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
