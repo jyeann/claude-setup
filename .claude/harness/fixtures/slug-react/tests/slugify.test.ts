@@ -8,6 +8,7 @@ describe('slugify', () => {
   });
 
   it('removes accents', () => {
+    expect(slugify('Crème Brûlée')).toBe('creme-brulee');
   });
 
   it('drops hyphens at both ends', () => {
