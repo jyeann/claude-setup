@@ -390,6 +390,18 @@ test('4a refuses code on the spec-approved page', async () => {
   assert.match(problemsOf(r, 'spec').join('\n'), /contains a code block: write the page in plain language/);
 });
 
+test('4a refuses a tilde-fenced code block on the spec-approved page', async () => {
+  const r = await check(project({ 'docs/spec-approved-page.md': `${PAGE}\n~~~\nadd(1, 2)\n~~~\n` }));
+  assert.match(problemsOf(r, 'spec').join('\n'), /contains a code block/);
+});
+
+test('4a accepts links, email addresses and comparisons in a filled section', async () => {
+  const filled = PAGE.replace('## Screens\n\nFilled in for the adder product.\n',
+    '## Screens\n\nHome screen: <https://example.com/home>. Questions: <owner@example.com>. Totals under 5 < 10 and 3 > 2 are shown.\n');
+  const r = await check(project({ 'docs/spec-approved-page.md': filled }), passGate, tasksMatch, labelled('afk'));
+  assert.equal(statusOf(r).spec, 'done');
+});
+
 test('4a is complete once every section of the spec-approved page is filled', async () => {
   const r = await check(project(), passGate, tasksMatch, labelled('afk'));
   assert.equal(statusOf(r).spec, 'done');

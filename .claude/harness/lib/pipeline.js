@@ -25,7 +25,9 @@ const LOOK = /^\s*(?:[-*]\s*)?Look:\s*\S/mi;
 // The one page the owner reads before spec-approved (templates/spec-approved-page.md, #47).
 const PAGE = 'spec-approved-page.md';
 const PAGE_SECTIONS = ['Problem and who it is for', 'Not building', 'The real choices', 'Screens', 'Done means', "What we're unsure about", 'Who judges each layer'];
-const PLACEHOLDER = /<[^<>]+>/;
+// A template placeholder starts with a letter (so `5 < 10` is prose) and is not a link or an email autolink.
+const PLACEHOLDER = /<(?![A-Za-z][\w+.-]*:)(?![^<>]*@)[A-Za-z][^<>]*>/;
+const CODE_FENCE = /^\s*(?:```|~~~)/m;
 
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
@@ -83,7 +85,7 @@ function pageProblems(docs) {
     if (!body.trim() || PLACEHOLDER.test(body)) return [`${PAGE} section "${name}" is not filled: replace the template placeholders with this product's content`];
     return [];
   });
-  if (/```/.test(text)) out.push(`${PAGE} contains a code block: write the page in plain language, with no code`);
+  if (CODE_FENCE.test(text)) out.push(`${PAGE} contains a code block: write the page in plain language, with no code`);
   return out;
 }
 
