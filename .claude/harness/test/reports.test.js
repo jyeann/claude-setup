@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { parseJUnit, JUnitError } = require('../lib/reports/junit');
 const { RUNNERS, vitestSummary, playwrightSummary, pytestSummary, shellQuote } = require('../lib/reports/runners');
@@ -118,7 +119,7 @@ test('handover: every report path is in the gate\'s directory; Playwright gets i
   assert.equal(pw.env.PLAYWRIGHT_JUNIT_OUTPUT_FILE, pw.file);
   assert.ok(pw.args.includes('--reporter=junit,line'));
   assert.ok(pw.args.includes(`--output=${path.join(dir, 'artifacts')}`));
-  assert.deepEqual(RUNNERS.pytest.handover(dir).args, [`--junitxml=${dir}/junit.xml`]);
+  assert.deepEqual(RUNNERS['standin-pytest'].handover(dir).args, [`--junitxml=${dir}/junit.xml`]);
   assert.ok(RUNNERS.vitest.handover(dir).args.includes(`--outputFile.junit=${dir}/junit.xml`));
 });
 
@@ -160,4 +161,46 @@ test('counts prefer the trusted report, then the summary, then zero', () => {
   assert.deepEqual(counts({ report, summary: null }), { tests: 3, fail: 1, skipped: 1, pass: 1 });
   assert.deepEqual(counts({ report: null, summary: { tests: 2, failures: 0, skipped: 0 } }), { tests: 2, fail: 0, skipped: 0, pass: 2 });
   assert.deepEqual(counts({ report: null, summary: null }), { tests: 0, fail: 0, skipped: 0, pass: 0 });
+});
+
+test('malformed-report errors never echo report text: entity, tag and root names or a declared total', () => {
+  const bad = {
+    'entity name': '<testsuites><testcase name="&LEAKYNAME;"/></testsuites>',
+    'closing tag name': '<testsuites><testcase name="a"></LEAKYNAME></testsuites>',
+    'unclosed tag name': '<testsuites><LEAKYNAME>',
+    'root name': '<LEAKYNAME><testcase name="a"/></LEAKYNAME>',
+    'declared total': '<testsuites tests="9LEAKYNAME"><testcase name="a"/></testsuites>',
+    'attribute junk': '<testsuites><LEAKYNAME =/></testsuites>',
+  };
+  for (const [why, xml] of Object.entries(bad)) {
+    assert.throws(() => parseJUnit(xml), (err) => {
+      assert.ok(err instanceof JUnitError, why);
+      assert.doesNotMatch(err.message, /LEAKYNAME/, `${why}: ${err.message}`);
+      assert.match(err.message, /offset \d+|root element|declared total/, `${why}: ${err.message}`);
+      return true;
+    }, why);
+  }
+});
+
+test('a raw ">" inside a quoted attribute value does not end the tag', () => {
+  const r = parseJUnit('<testsuites><testcase name="a > b"><failure message="1 > 0 failed"/></testcase></testsuites>');
+  assert.equal(r.cases[0].name, 'a > b');
+  assert.equal(r.cases[0].message, '1 > 0 failed');
+});
+
+test('inside() resolves symlinks, so a report directory reached through a link to the project is inside it', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'inside-'));
+  const project = path.join(base, 'project');
+  fs.mkdirSync(path.join(project, 'reports'), { recursive: true });
+  fs.symlinkSync(project, path.join(base, 'link'), 'dir');
+  assert.equal(inside(path.join(base, 'link', 'reports'), project), true);
+  assert.equal(inside(path.join(project, 'reports'), path.join(base, 'link')), true);
+  assert.equal(inside(base, project), false);
+  fs.rmSync(base, { recursive: true, force: true });
+});
+
+test('the pytest-shaped runner is marked test-only: it is the stand-in, not a supported stack', () => {
+  assert.equal(RUNNERS.pytest, undefined);
+  assert.equal(RUNNERS['standin-pytest'].testOnly, true);
+  assert.ok(!RUNNERS.vitest.testOnly && !RUNNERS.playwright.testOnly);
 });

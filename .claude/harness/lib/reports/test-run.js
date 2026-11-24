@@ -14,8 +14,10 @@ const MAX_FAILURE_LINES = 40;
 const MAX_MESSAGES = 6;
 const MAX_MESSAGE_CHARS = 200;
 
+// Symlinks are resolved, so a temp dir reached through a link into the project still counts as inside it.
+const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
 const inside = (dir, root) => {
-  const rel = path.relative(path.resolve(root), path.resolve(dir));
+  const rel = path.relative(real(root), real(dir));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 };
 
@@ -25,9 +27,11 @@ const totals = (t) => `tests ${t.tests}, failures ${t.failures}, skipped ${t.ski
 // content, so they are safe to print for the hidden holdout.
 async function runReported(command, runnerName, { cwd, timeoutMs, env = {} }) {
   const runner = RUNNERS[runnerName];
-  const startedAt = Date.now();
   const dir = makeTemp('verify-report-');
   try {
+    // The fresh directory's own time is the run's start on the same filesystem clock and granularity as the
+    // report's, read before anything is written into it (writing a file changes it).
+    const startedAt = fs.statSync(dir).mtimeMs;
     if (inside(dir, cwd)) throw new Error(`the report directory ${dir} is inside the project; set TMPDIR to a directory outside it`);
     const hand = runner.handover(dir);
     const full = `${command} ${hand.args.map(shellQuote).join(' ')}`;
@@ -36,8 +40,7 @@ async function runReported(command, runnerName, { cwd, timeoutMs, env = {} }) {
     let report = null;
     if (!fs.existsSync(hand.file)) {
       problems.push(`no JUnit report was written. The gate appends ${runner.flags} to the command, so it must end with the ${runnerName} invocation for the flags to reach it`);
-    } else if (fs.statSync(hand.file).mtimeMs < Math.floor(startedAt / 1000) * 1000) {
-      // Whole seconds: some filesystems store coarse modification times.
+    } else if (fs.statSync(hand.file).mtimeMs < startedAt) {
       problems.push('the JUnit report is older than this run (stale or copied in); only a report written during the run is trusted');
     } else {
       try { report = parseJUnit(fs.readFileSync(hand.file, 'utf8')); } catch (err) { problems.push(err.message); }

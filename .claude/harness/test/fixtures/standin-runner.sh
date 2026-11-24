@@ -12,6 +12,7 @@
 #   @lie-summary      print one more passing test than the report holds
 #   @no-summary       print no summary line
 #   @garbage-report   write a truncated XML file
+#   @report-from <f>  copy file <f> as the report, keeping its modification time (cp -p)
 #   @flaky            every second run turns the first `pass` into a failure (state in <cases>.runs)
 set -u
 cases=""
@@ -61,8 +62,11 @@ rm -f "$cases.err"
 set -- $counts
 passed=$1 failed=$2 skipped=$3
 
+from=$(sed -n 's/^@report-from \(.*\)$/\1/p' "$cases" | head -n 1)
 if [ -n "$junit" ] && ! has no-report; then
-  if has garbage-report; then
+  if [ -n "$from" ]; then
+    cp -p "$from" "$junit"
+  elif has garbage-report; then
     printf '%s' "$out" | head -n 3 > "$junit"
   else
     printf '%s\n' "$out" > "$junit"

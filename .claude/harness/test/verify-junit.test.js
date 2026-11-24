@@ -18,6 +18,8 @@ const sh = (script, ...args) => ['sh', JSON.stringify(script), ...args].join(' '
 const UNIT = 'pass adds two numbers\npass rejects text\npass J9 is not a journey\n';
 const HIDDEN = 'pass HIDDEN-CASE-ALPHA\npass HIDDEN-CASE-BETA\n';
 const JOURNEYS = 'pass J1 sign up\npass J2 log in\n';
+// The owner's recorded acceptance of the checks the junit adapter cannot run yet.
+const WEAKER = { missing: ['coverage', 'test-quality', 'mutation'], decision: 'decisions.md row 7' };
 
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -26,7 +28,7 @@ function project({ unit = UNIT, hidden = null, journeys = null, ux = null, confi
   const dir = tmp('verify-junit-');
   const write = (rel, text) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), text); };
   write('tests/cases.txt', unit);
-  const cfg = { adapter: 'junit', runner: 'pytest', testCommand: sh(STANDIN, 'tests/cases.txt'), minTests: 2, replicates: 2, ...config };
+  const cfg = { adapter: 'junit', runner: 'standin-pytest', testCommand: sh(STANDIN, 'tests/cases.txt'), minTests: 2, replicates: 2, weakerGate: WEAKER, ...config };
   if (hidden !== null) {
     const hiddenDir = tmp('verify-junit-hidden-');
     fs.writeFileSync(path.join(hiddenDir, 'cases.txt'), hidden);
@@ -61,8 +63,59 @@ test('a non-JavaScript runner passes the gate from its JUnit report: tests, repl
   assert.match(r.stdout, /VERIFY PASSED/);
   assert.match(r.stdout, /coverage: not available for the junit adapter/);
   assert.match(r.stdout, /test quality: not available for the junit adapter/);
-  assert.match(r.stdout, /not checked \(weaker gate, junit adapter\): source coverage, test quality, mutation/);
+  assert.match(r.stdout, /not checked \(weaker gate, junit adapter\): coverage, test-quality, mutation \(owner decision: decisions.md row 7\)/);
   assert.deepEqual(r.leftovers, [], 'every report directory is deleted after reading');
+});
+
+test('a weaker gate fails unless the owner\'s decision lists exactly the checks that are not run', () => {
+  let r = verify(project({ config: { weakerGate: undefined } }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /weaker gate: the junit adapter does not run coverage, test-quality, mutation; this needs an owner decision recorded as "weakerGate": \{"missing": \["coverage","test-quality","mutation"\], "decision": "<where it is recorded>"\}/);
+  assert.doesNotMatch(r.stdout, /VERIFY PASSED/);
+
+  r = verify(project({ config: { weakerGate: { missing: ['coverage', 'mutation'], decision: 'x' } } }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /weaker gate: weakerGate\.missing must list exactly coverage, test-quality, mutation \(not listed: test-quality\)/);
+
+  r = verify(project({ config: { weakerGate: { missing: ['coverage', 'test-quality', 'mutation', 'journeys'], decision: 'x' } } }));
+  assert.equal(r.status, 1, text(r));
+  assert.match(r.stdout, /\(listed but checked: journeys\)/);
+
+  for (const bad of [{ missing: 'coverage', decision: 'x' }, { missing: ['coverage'] }, { missing: ['coverage'], decision: ' ' }]) {
+    r = verify(project({ config: { weakerGate: bad } }));
+    assert.equal(r.status, 2, JSON.stringify(bad));
+    assert.match(r.stderr, /weakerGate needs "missing" \(array of check names\) and "decision"/);
+  }
+});
+
+test('a malformed holdout report is refused with a fixed message: names in it never reach the output', () => {
+  const hiddenDir = fs.mkdtempSync(path.join(os.tmpdir(), 'verify-junit-hidden-'));
+  const leaky = path.join(hiddenDir, 'leaky.xml');
+  for (const xml of [
+    '<testsuites><testcase name="HIDDEN-CASE-ALPHA">&HIDDENENTITY;</testcase></testsuites>',
+    '<HIDDENROOT><testcase name="HIDDEN-CASE-ALPHA"/></HIDDENROOT>',
+    '<testsuites tests="7HIDDENTOTAL"><testcase name="HIDDEN-CASE-ALPHA"/></testsuites>',
+    '<testsuites><testcase name="HIDDEN-CASE-ALPHA"></HIDDENTAG></testsuites>',
+  ]) {
+    fs.writeFileSync(leaky, xml);
+    const r = verify(project({ hidden: `pass HIDDEN-CASE-ALPHA\n@report-from ${leaky}\n` }));
+    assert.equal(r.status, 1, text(r));
+    assert.match(r.stdout, /holdout: the JUnit report could not be trusted \(parse or totals problem\); details hidden/);
+    assert.doesNotMatch(text(r), /HIDDEN/, text(r));
+  }
+});
+
+test('a report written a fraction of a second before the run is rejected (compared with the report directory\'s own time)', async () => {
+  const { runReported } = require('../lib/reports/test-run');
+  const dir = project();
+  const early = path.join(dir, 'early.xml');
+  fs.writeFileSync(early, '<testsuites><testcase name="adds two numbers"/></testsuites>');
+  fs.writeFileSync(path.join(dir, 'tests', 'cases.txt'), `pass adds two numbers\n@report-from ${early}\n`);
+  const now = Date.now() / 1000;
+  fs.utimesSync(early, now, now);
+  const run = await runReported(sh(STANDIN, 'tests/cases.txt'), 'standin-pytest', { cwd: dir, timeoutMs: 30_000 });
+  assert.deepEqual(run.problems, ['the JUnit report is older than this run (stale or copied in); only a report written during the run is trusted']);
+  assert.equal(run.report, null);
 });
 
 test('the report directory is never inside the project', () => {
@@ -87,7 +140,7 @@ test('a report older than the run (stale or copied in) is rejected', () => {
 test('a report that disagrees with the runner\'s stdout summary fails, showing both', () => {
   const r = verify(project({ unit: `${UNIT}@lie-summary\n` }));
   assert.equal(r.status, 1, text(r));
-  assert.match(r.stdout, /the JUnit report \(tests 3, failures 0, skipped 0\) disagrees with pytest's own summary \(tests 4, failures 0, skipped 0\)/);
+  assert.match(r.stdout, /the JUnit report \(tests 3, failures 0, skipped 0\) disagrees with standin-pytest's own summary \(tests 4, failures 0, skipped 0\)/);
 });
 
 test('a missing report names the flags the gate appends; a missing summary and a malformed report are named too', () => {
@@ -96,7 +149,7 @@ test('a missing report names the flags the gate appends; a missing summary and a
   assert.match(r.stdout, /no JUnit report was written\. The gate appends --junitxml=<file> to the command/);
   r = verify(project({ unit: `${UNIT}@no-summary\n` }));
   assert.equal(r.status, 1);
-  assert.match(r.stdout, /no pytest summary line \("=== N passed in Xs ==="\) in the output/);
+  assert.match(r.stdout, /no standin-pytest summary line \("=== N passed in Xs ==="\) in the output/);
   r = verify(project({ unit: `${UNIT}@garbage-report\n` }));
   assert.equal(r.status, 1);
   assert.match(r.stdout, /tests: malformed JUnit report: /);
@@ -209,11 +262,11 @@ test('Playwright journeys replayed from the spike: the report path arrives only 
 test('config: unknown adapters and runners are refused; runner is only for the junit adapter', () => {
   const cases = [
     [{ adapter: 'jest' }, /adapter must be one of node, junit/],
-    [{ runner: 'mocha' }, /runner must be one of vitest, playwright, pytest/],
+    [{ runner: 'mocha' }, /runner must be one of vitest, playwright, standin-pytest/],
     [{ runner: undefined }, /runner must be one of/],
     [{ holdout: { command: 'x', runner: 'nope' } }, /holdout\.runner must be one of/],
     [{ journeys: { command: 'x', runner: 'nope' } }, /journeys\.runner must be one of/],
-    [{ adapter: 'node', runner: 'pytest' }, /runner applies only with "adapter": "junit"/],
+    [{ adapter: 'node', runner: 'standin-pytest' }, /runner applies only with "adapter": "junit"/],
     [{ adapter: undefined, journeys: { command: 'x', runner: 'playwright' } }, /runner applies only with "adapter": "junit"/],
   ];
   for (const [config, message] of cases) {

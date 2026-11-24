@@ -72,7 +72,10 @@ const RUNNERS = {
     summary: playwrightSummary,
     summaryShape: '"  N passed (Xs)"',
   },
-  pytest: {
+  // Test-only: the shape of the shell stand-in runner (test/fixtures/standin-runner.sh), which speaks pytest's
+  // flag and summary to prove the gate is not tied to JavaScript. Python is not a supported stack (#55 scope).
+  'standin-pytest': {
+    testOnly: true,
     handover: (dir) => {
       const file = path.join(dir, 'junit.xml');
       return { file, args: [`--junitxml=${file}`], env: {} };

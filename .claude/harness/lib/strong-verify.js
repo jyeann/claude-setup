@@ -36,6 +36,7 @@ function loadConfig(file) {
   const config = {
     adapter: raw.adapter ?? 'node',
     runner: raw.runner ?? null,
+    weakerGate: raw.weakerGate ?? null,
     testCommand: raw.testCommand,
     timeoutMs: raw.timeoutMs ?? 300_000,
     minTests: raw.minTests ?? 1,
@@ -73,6 +74,11 @@ function validateAdapter({ adapter, runner, holdout, journeys }) {
 
 function validate(config) {
   validateAdapter(config);
+  const { weakerGate } = config;
+  if (weakerGate !== null && (!Array.isArray(weakerGate.missing) || !weakerGate.missing.every((c) => typeof c === 'string')
+    || typeof weakerGate.decision !== 'string' || !weakerGate.decision.trim())) {
+    throw new Error('weakerGate needs "missing" (array of check names) and "decision" (where the owner\'s decision is recorded)');
+  }
   const { coverage, mutation, replicates, holdout, journeys, typecheck } = config;
   const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
   if (!Number.isInteger(replicates) || replicates < 1 || replicates > 5) throw new Error('replicates must be an integer between 1 and 5');
@@ -309,7 +315,8 @@ async function checkReportHoldout(root, config, out) {
   out(`  holdout: ${s.pass}/${s.tests} passing`);
   const detail = 'Details are withheld on purpose: re-read the spec\'s acceptance criteria and handle cases beyond the visible tests.';
   if (run.result.timedOut) return [`holdout: the hidden tests timed out. ${detail}`];
-  if (run.problems.length > 0) return trustFailures('holdout', run);
+  // Trust problems are summarised in one fixed sentence: even their wording is not allowed to carry report text.
+  if (run.problems.length > 0) return ['holdout: the JUnit report could not be trusted (parse or totals problem); details hidden'];
   if (s.tests < minTests) return [`holdout: only ${s.tests} hidden test(s) ran; at least ${minTests} expected (is the holdout set missing?)`];
   if (s.skipped > 0) return ['holdout: skipped or todo hidden tests are not passing'];
   if (!run.result.pass || s.fail > 0) return [`holdout: ${s.fail || 'some'} of ${s.tests} hidden acceptance test(s) fail. ${detail}`];
@@ -390,6 +397,21 @@ async function checkMutation(root, config, baselineMs, out) {
     : [];
 }
 
+// A gate that cannot run some checks passes only on a recorded owner decision naming exactly those checks
+// (#55: a weaker gate is an owner choice with the missing checks listed, never a silent pass).
+function checkWeakerGate(config, notChecked) {
+  const accepted = config.weakerGate;
+  if (!accepted) {
+    if (notChecked.length === 0) return [];
+    return [`weaker gate: the ${config.adapter} adapter does not run ${notChecked.join(', ')}; this needs an owner decision recorded as "weakerGate": {"missing": ${JSON.stringify(notChecked)}, "decision": "<where it is recorded>"} in verify.config.json`];
+  }
+  const unlisted = notChecked.filter((c) => !accepted.missing.includes(c));
+  const extra = accepted.missing.filter((c) => !notChecked.includes(c));
+  if (unlisted.length === 0 && extra.length === 0) return [];
+  const detail = [unlisted.length > 0 ? ` (not listed: ${unlisted.join(', ')})` : '', extra.length > 0 ? ` (listed but checked: ${extra.join(', ')})` : ''].join('');
+  return [`weaker gate: weakerGate.missing must list exactly ${notChecked.join(', ') || 'nothing'}${detail}`];
+}
+
 async function strongVerify(root, config, { fast = false, out = console.log } = {}) {
   const reports = config.adapter !== 'node';
   const notChecked = [];
@@ -426,10 +448,10 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
     else failures.push(...await checkTypes(root, config, out));
 
     out('[3/7] source coverage');
-    if (reports) notAvailable('coverage', 'source coverage');
+    if (reports) notAvailable('coverage', 'coverage');
     else failures.push(...checkCoverage(root, config, covDir, out));
     out('[4/7] test quality');
-    if (reports) notAvailable('test quality', 'test quality');
+    if (reports) notAvailable('test quality', 'test-quality');
     else {
       const quality = checkTestQuality(root, config);
       failures.push(...quality);
@@ -456,8 +478,12 @@ async function strongVerify(root, config, { fast = false, out = console.log } = 
   } finally {
     removeTemp(covDir);
   }
+  failures.push(...checkWeakerGate(config, notChecked));
   out(failures.length === 0 ? 'VERIFY PASSED' : `VERIFY FAILED:\n${failures.map((f) => `  - ${f}`).join('\n')}`);
-  if (notChecked.length > 0) out(`  not checked (weaker gate, ${config.adapter} adapter): ${notChecked.join(', ')}`);
+  if (notChecked.length > 0) {
+    const decision = config.weakerGate ? ` (owner decision: ${config.weakerGate.decision})` : '';
+    out(`  not checked (weaker gate, ${config.adapter} adapter): ${notChecked.join(', ')}${decision}`);
+  }
   if (failingTests !== '') out(`\nFailing tests (fix these at the root cause):\n${failingTests}`);
   return { pass: failures.length === 0, failures, notChecked };
 }
