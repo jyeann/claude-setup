@@ -40,7 +40,7 @@ When the owner gave a folder inside an existing repository, install the harness 
 - Each stop attempt costs one of the 40 iterations and re-runs the product gate once phase 4 is done, so stay in the turn while an agent works and stop only when a phase is finished.
 - The holdout is not hidden by the harness in this mode, because its author must be able to correct it mid-run. Never give a builder the holdout path or contents. For harness-enforced hiding, use the build-only run below.
 
-**Build-only run (spec and tests already exist, written outside the run):** in `<product-repo>`, with the harness installed as above: `node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/verify.js' --task-file spec.md --protect acceptance/,verify.config.json,<product-repo>/docs/product/<slug>/ --hide holdout --max 14 --stall 3`. Here the harness write-protects the tests and hides the holdout, but nothing stops the agent ending the turn in the other phases.
+**Build-only run (spec and tests already exist, written outside the run):** in `<product-repo>`, with the harness installed as above: `node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/verify.js' --task-file spec.md --protect acceptance/,verify.config.json,<product-repo>/docs/product/<slug>/ --hide holdout --max 14 --stall 3`. These paths assume the product is at the repository root; for a folder inside it, put the folder in front of `spec.md`, `acceptance/`, `verify.config.json` and `holdout`, and run `verify.js` from that folder. Here the harness write-protects the tests and hides the holdout, but nothing stops the agent ending the turn in the other phases.
 
 ## Phases, roles, artifacts
 
