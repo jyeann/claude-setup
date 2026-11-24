@@ -1,12 +1,14 @@
 {
   "_about": "Repository layout policy read by .claude/harness/bin/check-layout.js and enforced by .claude/harness/test/layout.test.js (spec #27). This repo holds the process and one test bench; products are built in their own repositories.",
-  "forbiddenDirs": ["examples", "docs/product"],
+  "forbiddenDirs": ["examples", "docs/product", ".claude/skills/plan-to-tasks"],
   "forbiddenRefs": ["examples/", "docs/product/"],
+  "retiredNames": ["plan-to-tasks"],
   "docExtensions": [".md"],
   "skip": [
     "CHANGELOG.md",
     "plugins/",
     "docs/testbench/retro-board/brief.md"
   ],
-  "_skip": "CHANGELOG.md is history; plugins/ is vendored; brief.md is a run record whose repository check quotes the layout of its time."
+  "retiredNamesSkip": ["docs/adr/0001-generated-task-list-from-github-issues.md"],
+  "_skip": "CHANGELOG.md is history; plugins/ is vendored; brief.md is a run record whose repository check quotes the layout of its time; retiredNamesSkip: ADR-0001 records why the retired plan-to-tasks was replaced (#23), and is still checked for forbiddenRefs."
 }

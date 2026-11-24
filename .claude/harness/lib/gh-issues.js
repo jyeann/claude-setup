@@ -1,7 +1,8 @@
 'use strict';
-// Reads a spec issue's tickets live from GitHub through `gh api`, in the same input shape that
-// `tasks-sync pull --from-json` takes ({ issues, external }), so the live and saved-JSON paths build the
-// same task list. `run(args)` is injectable for tests and returns spawnSync's { status, stdout, stderr, error }.
+// Reads a spec issue's tickets and the repository's open PRs live from GitHub through `gh api`, in the
+// same input shape that `tasks-sync pull --from-json` takes ({ issues, external, pullRequests }), so the
+// live and saved-JSON paths build the same task list. `run(args)` is injectable for tests and returns
+// spawnSync's { status, stdout, stderr, error }.
 const { spawnSync } = require('node:child_process');
 const { bodyBlockers } = require('./tasks-sync');
 
@@ -41,7 +42,15 @@ function api(run, endpoint) {
   return pages;
 }
 
-const list = (run, endpoint) => api(run, `${endpoint}?per_page=100`).flat();
+const list = (run, endpoint, query = '') => api(run, `${endpoint}?${query}per_page=100`).flat();
+
+// Open PRs in the `pullRequests` shape lib/tasks-sync.js reads. The REST pulls API has no closing references,
+// so a PR closes a ticket through a whole "Closes #N" line in its title or body, the same rule as for commits.
+function fetchOpenPullRequests(run, repo) {
+  return list(run, `repos/${repo || '{owner}/{repo}'}/pulls`, 'state=open&').map((p) => ({
+    number: p.number, state: p.state, draft: Boolean(p.draft), title: p.title, body: p.body,
+  }));
+}
 
 // spec: the spec issue number. repo: "owner/name"; default lets gh resolve {owner}/{repo} from the clone.
 // Throws an Error with `unreachable` true when gh is missing, unauthenticated or offline.
@@ -74,7 +83,7 @@ function fetchSpecIssues(spec, { run = ghRunner, repo } = {}) {
       return { number: n, state: undefined };
     }
   });
-  return { issues, external };
+  return { issues, external, pullRequests: fetchOpenPullRequests(run, repo) };
 }
 
 // One issue (for its labels): the owner gates read the spec issue live. Throws like fetchSpecIssues.
