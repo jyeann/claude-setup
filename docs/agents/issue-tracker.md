@@ -2,6 +2,8 @@
 
 Issues and specs for this repo live as GitHub issues in `jyeann/claude-setup`. Use the `gh` CLI for all operations.
 
+**Task list:** `node .claude/harness/bin/tasks-sync.js pull --spec <n>` writes `TASKS.md` from the spec issue's sub-issues through `gh`; `tasks-sync.js check --spec <n>` reports a stale or hand-edited list.
+
 **Cloud sessions without a working `gh`:** use the GitHub MCP tools (`issue_write`, `issue_read`, `sub_issue_write`, `list_issues`) for the same operations. To feed `tasks-sync.js` there, save the spec issue's sub-issues as JSON with those tools and pass the file with `--from-json`. The raw sub-issues array works as it is. Native blockers go in each issue's `blockedBy` as `[{number, state}]` or `{nodes: [...]}`; the state of a blocker outside the spec goes in a wrapper `{ "issues": [...], "external": [{number, state}] }`, otherwise it counts as open.
 
 **Labels this repo uses** (see `.claude/rules/ecc-common/working.md`): `afk` / `hitl` on tickets, `spec-approved` and `accepted` on spec issues (owner only), `needs-fable` for owner approval of a fable run.

@@ -213,9 +213,9 @@ test('pull exits 2 with usage on missing arguments or unreadable JSON', () => {
     const noSpec = run('pull', '--from-json', 'x.json');
     assert.equal(noSpec.status, 2);
     assert.match(noSpec.stderr, /usage/i);
-    const noJson = run('pull', '--spec', '19');
-    assert.equal(noJson.status, 2);
-    assert.match(noJson.stderr, /--from-json/);
+    const noGh = spawnSync(process.execPath, [TASKS_SYNC, 'pull', '--spec', '19'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PATH: dir } });
+    assert.equal(noGh.status, 2);
+    assert.match(noGh.stderr, /--from-json/);
     const missing = run('pull', '--spec', '19', '--from-json', 'nope.json');
     assert.equal(missing.status, 2);
     assert.match(missing.stderr, /cannot read nope\.json/);
@@ -226,4 +226,244 @@ test('pull exits 2 with usage on missing arguments or unreadable JSON', () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---- live pull through gh (#21) and check ----
+// A fake gh on PATH: answers `gh api <path>` from a routes file, logs every call, never touches the network.
+const GH_STUB = `#!/usr/bin/env node
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+fs.appendFileSync(process.env.GH_STUB_LOG, JSON.stringify(args) + '\\n');
+if (process.env.GH_STUB_FAIL) { process.stderr.write(process.env.GH_STUB_FAIL); process.exit(1); }
+const routes = JSON.parse(fs.readFileSync(process.env.GH_STUB_ROUTES, 'utf8'));
+const key = (args.find((a) => a.startsWith('repos/')) || '').replace(/\\?.*$/, '');
+if (!(key in routes)) { process.stderr.write('gh: Not Found (HTTP 404)'); process.exit(1); }
+const body = routes[key];
+process.stdout.write(body && body.raw !== undefined ? body.raw : JSON.stringify(args.includes('--slurp') ? [body] : body));
+`;
+
+const R = 'repos/{owner}/{repo}/issues';
+// Raw REST shapes: sub-issues carry issue_dependencies_summary; blocked_by lists full issues.
+const SUB_ISSUES = [
+  { number: 20, title: 'Ticket 20', state: 'closed', state_reason: 'completed', labels: [{ name: 'afk' }], body: '', issue_dependencies_summary: { total_blocked_by: 0 } },
+  { number: 21, title: 'Ticket 21', state: 'open', state_reason: null, labels: [{ name: 'afk' }], body: '', issue_dependencies_summary: { total_blocked_by: 1 } },
+  { number: 22, title: 'Ticket 22', state: 'open', state_reason: null, labels: [{ name: 'hitl' }], body: 'Blocked by: #5' },
+  { number: 23, title: 'Ticket 23', state: 'open', state_reason: null, labels: [{ name: 'afk' }], body: '## Blocked by\n\n- #6\n- #21' },
+];
+const ROUTES = {
+  [`${R}/19/sub_issues`]: SUB_ISSUES,
+  [`${R}/21/dependencies/blocked_by`]: [{ number: 20, state: 'closed', title: 'Ticket 20' }],
+  [`${R}/22/dependencies/blocked_by`]: [],
+  [`${R}/23/dependencies/blocked_by`]: [],
+  [`${R}/5`]: { number: 5, state: 'open' },
+  [`${R}/6`]: { number: 6, state: 'closed' },
+};
+// The same tickets as saved JSON for --from-json.
+const SAVED = {
+  issues: SUB_ISSUES.map((i) => ({ ...i, blockedBy: i.number === 21 ? [{ number: 20, state: 'CLOSED' }] : [] })),
+  external: [{ number: 5, state: 'OPEN' }, { number: 6, state: 'CLOSED' }],
+};
+
+// A scratch directory with the gh stub. run(...args) spawns tasks-sync there; gh: { routes, fail } or 'missing'.
+function sandbox() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasks-sync-live-'));
+  const bin = path.join(dir, 'bin');
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, 'gh'), GH_STUB, { mode: 0o755 });
+  const log = path.join(dir, 'gh.log');
+  const routesFile = path.join(dir, 'routes.json');
+  const run = (args, { routes = ROUTES, fail, gh = 'stub' } = {}) => {
+    fs.writeFileSync(routesFile, JSON.stringify(routes));
+    fs.writeFileSync(log, '');
+    const env = { ...process.env, GH_STUB_LOG: log, GH_STUB_ROUTES: routesFile, PATH: gh === 'missing' ? path.join(dir, 'nothing') : `${bin}${path.delimiter}${process.env.PATH}` };
+    if (fail) env.GH_STUB_FAIL = fail;
+    else delete env.GH_STUB_FAIL;
+    const r = spawnSync(process.execPath, [TASKS_SYNC, ...args], { cwd: dir, encoding: 'utf8', env });
+    return { ...r, calls: fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) };
+  };
+  const file = (name) => path.join(dir, name);
+  const read = (name) => fs.readFileSync(file(name), 'utf8');
+  const write = (name, text) => fs.writeFileSync(file(name), typeof text === 'string' ? text : JSON.stringify(text));
+  return { dir, run, read, write, file, done: () => fs.rmSync(dir, { recursive: true, force: true }) };
+}
+
+const UNAUTHENTICATED = 'To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.';
+const NO_NETWORK = 'error connecting to api.github.com\ncheck your internet connection or https://githubstatus.com';
+const stripTime = (text) => text.replace(/ at \d{4}-\d\d-\d\dT[\d:.]+Z\./, ' at <time>.');
+
+test('pull without --from-json fetches sub-issues, labels, state, bodies and native blockers through gh', () => {
+  const s = sandbox();
+  try {
+    const r = s.run(['pull', '--spec', '19']);
+    assert.equal(r.status, 0, r.stderr);
+    const t = new Map(parseTasks(s.read('TASKS.md')).map((x) => [x.id, x]));
+    assert.equal(t.get('T20').status, 'done');
+    assert.deepEqual(t.get('T21').blockedBy, ['T20']);
+    assert.equal(t.get('T22').type, 'HITL');
+    assert.equal(t.get('T22').status, 'blocked', 'open outside blocker #5');
+    assert.equal(t.get('T23').status, 'todo', 'closed outside blocker #6');
+    assert.deepEqual(t.get('T23').blockedBy, ['T21']);
+    const paths = r.calls.map((c) => c.find((a) => a.startsWith('repos/')));
+    assert.ok(paths.includes(`${R}/19/sub_issues?per_page=100`));
+    assert.ok(r.calls.every((c) => c[0] === 'api'));
+    assert.ok(!paths.some((p) => p.startsWith(`${R}/20/dependencies`)), 'a ticket without blockers in its summary is not asked again');
+    assert.ok(!paths.includes(`${R}/21`), 'an in-spec blocker is not fetched as external');
+  } finally {
+    s.done();
+  }
+});
+
+test('live and saved-JSON pulls produce the same task list', () => {
+  const s = sandbox();
+  try {
+    assert.equal(s.run(['pull', '--spec', '19', '--out', 'live.md']).status, 0);
+    s.write('saved.json', SAVED);
+    assert.equal(s.run(['pull', '--spec', '19', '--from-json', 'saved.json', '--out', 'saved.md']).status, 0);
+    assert.equal(stripTime(s.read('live.md')), stripTime(s.read('saved.md')));
+  } finally {
+    s.done();
+  }
+});
+
+test('pull --repo reads another repository', () => {
+  const s = sandbox();
+  try {
+    const routes = Object.fromEntries(Object.entries(ROUTES).map(([k, v]) => [k.replace('{owner}/{repo}', 'acme/app'), v]));
+    const r = s.run(['pull', '--spec', '19', '--repo', 'acme/app'], { routes });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.calls.every((c) => c.some((a) => a.startsWith('repos/acme/app/'))));
+  } finally {
+    s.done();
+  }
+});
+
+test('pull exits 2 suggesting --from-json when gh is missing, unauthenticated or offline', () => {
+  const s = sandbox();
+  try {
+    for (const [opts, re] of [[{ gh: 'missing' }, /gh is not installed/], [{ fail: UNAUTHENTICATED }, /gh is not authenticated/], [{ fail: NO_NETWORK }, /cannot reach GitHub/]]) {
+      const r = s.run(['pull', '--spec', '19'], opts);
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, re);
+      assert.match(r.stderr, /--from-json/);
+      assert.equal(fs.existsSync(s.file('TASKS.md')), false);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('pull exits 2 when GitHub answers with an error such as an unknown spec issue', () => {
+  const s = sandbox();
+  try {
+    const r = s.run(['pull', '--spec', '404']);
+    assert.equal(r.status, 2);
+    assert.match(r.stderr, /Not Found/);
+    const bad = s.run(['pull', '--spec', '19'], { routes: { [`${R}/19/sub_issues`]: { raw: 'not json' } } });
+    assert.equal(bad.status, 2);
+    assert.match(bad.stderr, /unexpected answer/);
+  } finally {
+    s.done();
+  }
+});
+
+test('check exits 0 when the file matches, ignoring the generated-at time', () => {
+  const s = sandbox();
+  try {
+    assert.equal(s.run(['pull', '--spec', '19']).status, 0);
+    s.write('TASKS.md', s.read('TASKS.md').replace(/ at \S+Z\./, ' at 2001-01-01T00:00:00.000Z.'));
+    const r = s.run(['check', '--spec', '19']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /TASKS\.md matches spec issue #19/);
+    s.write('saved.json', SAVED);
+    assert.equal(s.run(['check', '--spec', '19', '--from-json', 'saved.json']).status, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('check exits 1 naming the tasks that were hand-edited, changed, added or removed', () => {
+  const s = sandbox();
+  try {
+    s.write('saved.json', SAVED);
+    assert.equal(s.run(['pull', '--spec', '19', '--from-json', 'saved.json', '--out', 'plan/TASKS.md']).status, 0);
+    const original = s.read('plan/TASKS.md');
+    s.write('plan/TASKS.md', original.replace(/(## T21:[\s\S]*?- status: )todo/, '$1done'));
+    const edited = s.run(['check', '--spec', '19', '--from-json', 'saved.json', '--file', 'plan/TASKS.md']);
+    assert.equal(edited.status, 1);
+    assert.match(edited.stdout, /plan\/TASKS\.md differs from spec issue #19 in: T21$/m);
+    assert.match(edited.stdout, /tasks-sync pull --spec 19/);
+
+    s.write('plan/TASKS.md', original);
+    const changed = { ...SAVED, issues: [...SAVED.issues.filter((i) => i.number !== 20), { ...SAVED.issues[1], number: 24 }].map((i) => (i.number === 22 ? { ...i, title: 'Renamed' } : i)) };
+    s.write('changed.json', changed);
+    const stale = s.run(['check', '--spec', '19', '--from-json', 'changed.json', '--file', 'plan/TASKS.md']);
+    assert.equal(stale.status, 1);
+    assert.match(stale.stdout, /in: T20, T21, T22, T24$/m);
+
+    s.write('plan/TASKS.md', `${original}\nHand-written note\n`.replace('# Tasks', '# Tasks\nextra'));
+    assert.match(s.run(['check', '--spec', '19', '--from-json', 'saved.json', '--file', 'plan/TASKS.md']).stdout, /in: header, T23$/m);
+  } finally {
+    s.done();
+  }
+});
+
+test('check exits 1 when the task list is missing', () => {
+  const s = sandbox();
+  try {
+    const r = s.run(['check', '--spec', '19']);
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /TASKS\.md is missing: run tasks-sync pull --spec 19/);
+  } finally {
+    s.done();
+  }
+});
+
+test('check exits 0 with a warning when GitHub is unreachable, and 2 on other errors', () => {
+  const s = sandbox();
+  try {
+    s.write('TASKS.md', '# Tasks\n');
+    for (const opts of [{ gh: 'missing' }, { fail: UNAUTHENTICATED }, { fail: NO_NETWORK }]) {
+      const r = s.run(['check', '--spec', '19'], opts);
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stderr, /warning: cannot check TASKS\.md against GitHub/);
+    }
+    assert.equal(s.run(['check', '--spec', '404']).status, 2);
+    s.write('bad.json', SAVED.issues.map((i) => ({ ...i, labels: [] })));
+    const invalid = s.run(['check', '--spec', '19', '--from-json', 'bad.json']);
+    assert.equal(invalid.status, 2);
+    assert.match(invalid.stderr, /needs exactly one of the labels/);
+    assert.equal(s.run(['check', '--spec', '19', '--from-json', 'nope.json']).status, 2, 'an unreadable JSON file is an error, not an unreachable source');
+  } finally {
+    s.done();
+  }
+});
+
+test('an unknown command or a missing spec exits 2 with usage', () => {
+  const s = sandbox();
+  try {
+    for (const args of [['push', '--spec', '19'], ['check'], ['check', '--spec', 'x']]) {
+      const r = s.run(args);
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, /usage: tasks-sync\.js \(pull\|check\)/);
+    }
+  } finally {
+    s.done();
+  }
+});
+
+test('fetchSpecIssues classifies gh failures through an injected runner', () => {
+  const { fetchSpecIssues } = require('../lib/gh-issues');
+  const runner = (result) => () => result;
+  const err = (result) => { try { fetchSpecIssues(19, { run: runner(result) }); } catch (e) { return e; } assert.fail('no error'); };
+  assert.equal(err({ error: Object.assign(new Error('spawn gh ENOENT'), { code: 'ENOENT' }) }).unreachable, true);
+  assert.equal(err({ status: 1, stderr: 'HTTP 401: Bad credentials' }).unreachable, true);
+  assert.match(err({ status: 1, stderr: 'unable to expand placeholder in path: no git remotes found' }).message, /pass --repo/);
+  assert.equal(err({ status: 1, stderr: 'unable to expand placeholder in path: no git remotes found' }).unreachable, true);
+  assert.equal(err({ error: Object.assign(new Error('spawnSync gh ETIMEDOUT'), { code: 'ETIMEDOUT' }) }).unreachable, true);
+  assert.equal(err({ status: 1, stderr: 'dial tcp: lookup api.github.com: i/o timeout' }).unreachable, true);
+  const other = err({ status: 1, stderr: 'HTTP 404: Not Found' });
+  assert.equal(other.unreachable, false);
+  assert.match(other.message, /HTTP 404/);
+  assert.equal(err({ error: new Error('EPERM') }).unreachable, false);
+  assert.deepEqual(fetchSpecIssues(19, { run: runner({ status: 0, stdout: '[[]]' }) }), { issues: [], external: [] });
 });
