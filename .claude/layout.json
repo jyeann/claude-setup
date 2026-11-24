@@ -1,0 +1,18 @@
+{
+  "_about": "Repository layout policy read by .claude/harness/bin/check-layout.js and enforced by .claude/harness/test/layout.test.js (spec #27). This repo holds the process and one test bench; products are built in their own repositories.",
+  "forbiddenDirs": ["examples", "docs/product"],
+  "forbiddenRefs": ["examples/", "docs/product/"],
+  "docExtensions": [".md"],
+  "skip": [
+    "CHANGELOG.md",
+    "plugins/",
+    "docs/testbench/retro-board/brief.md"
+  ],
+  "_skip": "CHANGELOG.md is history; plugins/ is vendored; brief.md is a run record whose repository check quotes the layout of its time.",
+  "placeholderFiles": [
+    ".claude/skills/orch-product-team/SKILL.md",
+    ".claude/agents/product-scoper.md",
+    ".claude/agents/ux-designer.md"
+  ],
+  "_placeholderFiles": "Temporary: these still use `examples/<p>` and `docs/product/<slug>/` placeholders for where a new product goes in this repo. #32 moves new products to their own repository; when it rewrites these lines (e.g. to `<product-repo>/...`) it removes the files from this list."
+}

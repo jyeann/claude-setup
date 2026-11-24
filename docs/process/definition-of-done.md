@@ -7,11 +7,11 @@ The testing and the product-team process are **complete for this scope**: small,
 
 | # | Condition | Status | Evidence |
 |---|-----------|--------|----------|
-| 1 | Every product's full verify gate (tests, coverage, test quality, **hidden holdout**, mutation) runs on every pull request | Done in `.github/workflows/ci.yml` (`gate-retro-board`; `gate-link-shortener` also ran until its product was removed on 2026-11-24, last at `bfad3bb`) | The holdouts are in the repo (`examples/*/holdout/`), the command is `node --test "${HARNESS_HIDDEN_DIR:-holdout}/*.test.js"`, no machine-specific path remains |
-| 2 | The evaluation graders still accept the golden artifacts and reject degraded ones | Done (`eval-kit-selftest`) | `examples/retro-board/tune/selftest.js` |
+| 1 | Every product's full verify gate (tests, coverage, test quality, **hidden holdout**, mutation) runs on every pull request | Done in `.github/workflows/ci.yml` (`gate-retro-board`; `gate-link-shortener` also ran until its product was removed on 2026-11-24, last at `bfad3bb`) | The holdout is in the repo (`testbench/retro-board/holdout/`), the command is `node --test "${HARNESS_HIDDEN_DIR:-holdout}/*.test.js"`, no machine-specific path remains |
+| 2 | The evaluation graders still accept the golden artifacts and reject degraded ones | Done (`eval-kit-selftest`) | `testbench/retro-board/tune/selftest.js` |
 | 3 | The harness's own tests keep a 90% line floor | Done (`harness-tests`) | 275 tests, 99.5% |
 | 4 | These checks are **required**, not advisory | Done: the repository owner applied the `protect-main` ruleset with admin rights on 2026-11-18 | `.claude/harness/ci/ruleset.json` lists the required checks (five on 2026-11-18; four since `gate-link-shortener` was removed on 2026-11-24), pinned to the GitHub Actions app. With the default ruleset an admin can bypass through a pull request, and the GitHub connection used by the agent is signed in as the owner, so it is applied with `--no-bypass`: `bash .claude/harness/ci/protect.sh --repo jyeann/claude-setup --apply --no-bypass`. The human override is then to switch the ruleset off in Settings. The first PR through the ruleset is the one that made this edit |
-| 5 | The process ran end to end from a one-line idea with no human prompt after the first | Done once (retro-board) | `docs/product/retro-board/retro.md`; the first product (link-shortener) had 5 interventions, which are listed and fixed in its retro, removed on 2026-11-24 and kept in history: `git show bfad3bb:docs/product/link-shortener/retro.md` |
+| 5 | The process ran end to end from a one-line idea with no human prompt after the first | Done once (retro-board) | `docs/testbench/retro-board/retro.md`; the first product (link-shortener) had 5 interventions, which are listed and fixed in its retro, removed on 2026-11-24 and kept in history: `git show bfad3bb:docs/product/link-shortener/retro.md` |
 | 6 | Agent work is observable | Done | `agents-kpi.js` roll-up: per agent, phase, model and effort, with outcome-not-reported and completion-notice figures; human prompts classified |
 
 **Required since 2026-11-18:** nothing reaches `main` except through a pull request whose required checks pass and whose branch is up to date. Read the diff of `.github/` and `.claude/` before merging, because a PR can change the workflow that judges it. If `eval-kit-selftest` fails for no clear reason, re-run it: it installs a browser from the network.
@@ -36,10 +36,10 @@ Until those are fixed and one run passes without them, treat the process as: **b
 
 ## Reopen the decision when any of these happens
 1. A required check fails on `main`.
-2. The model, an agent definition, or `orch-product-team` changes: re-run the per-phase comparison (`node examples/retro-board/tune/run.js --phases discover,ux,design,tests,build,review,qa,release --levels low,medium,high`, about $20 and 2.5 hours; the self-test in CI is the cheap check in between).
+2. The model, an agent definition, or `orch-product-team` changes: re-run the per-phase comparison (`node testbench/retro-board/tune/run.js --phases discover,ux,design,tests,build,review,qa,release --levels low,medium,high`, about $20 and 2.5 hours; the self-test in CI is the cheap check in between).
 3. A run needs a human prompt after the first (the KPI view counts them).
 4. The process is used on a product that handles money, logins or personal data.
 5. A second full run of the process on a different product fails any condition above.
 
 ## How holdouts work now
-Holdouts live in `examples/<product>/holdout/` so a fresh checkout, CI and any new session can run them. While a harness run is active they are hidden from the agent: start the run with `--hide examples/<product>/holdout`. Outside a run they are readable, which is weaker secrecy than the out-of-tree layout the harness README recommends; CI runs them regardless of that. To keep them out of the tree, set `HARNESS_HIDDEN_DIR` to a directory elsewhere and the same command uses it.
+Holdouts live in the product's tree (`<product>/holdout/`; here `testbench/retro-board/holdout/`) so a fresh checkout, CI and any new session can run them. While a harness run is active they are hidden from the agent: start the run with `--hide <product>/holdout`. Outside a run they are readable, which is weaker secrecy than the out-of-tree layout the harness README recommends; CI runs them regardless of that. To keep them out of the tree, set `HARNESS_HIDDEN_DIR` to a directory elsewhere and the same command uses it.
