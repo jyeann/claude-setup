@@ -1,12 +1,19 @@
 # Tasks
 
+> **Generated, do not edit.** `node .claude/harness/bin/tasks-sync.js pull --spec <n>` writes this
+> file from a spec issue's tickets (task `T<N>` = issue `#N`, `afk`/`hitl` labels = type, `Blocked by` = blocked-by) and
+> overwrites hand edits. Change the issues, or commit with `Closes #N`, then pull again. The tasks below are an example.
+>
 > One heading per task: `## <id>: <title>`, then `- key: value` lines. Anything else is ignored.
 > `node .claude/harness/bin/next-task.js TASKS.md` lists the AFK tasks that are ready (exit 0),
 > or prints ALL_DONE / NEEDS_HUMAN / STUCK (exit 3), or lists format errors (exit 2).
 >
 > - type:       `AFK` = an agent can finish it alone. `HITL` = needs a human (design call, credentials, manual QA).
 > - blocked-by: comma-separated task ids, or `none`.
-> - status:     `todo` | `doing` | `done` | `blocked`. The agent sets `done` in the same commit that finishes the task.
+> - status:     `todo` | `doing` | `done` | `blocked`, derived, never typed. First match wins: closed as not planned =
+>               `blocked`; issue closed, a `Closes #N` commit on this branch, or an open, non-draft PR
+>               that closes it = `done`; an open blocker outside the spec = `blocked`; a local ticket branch (`issue-<N>` or
+>               `issue-<N>-<slug>` path segment) or its WIP checkpoint = `doing`; otherwise `todo`. See docs/adr/0001.
 >
 > Each task is a **vertical slice**: it cuts through every layer it needs (schema, service, API, UI) and ends in
 > something you can run and check. Never write "all the schema" or "all the UI" as a task.
