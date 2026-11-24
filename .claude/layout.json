@@ -7,8 +7,8 @@
   "skip": [
     "CHANGELOG.md",
     "plugins/",
-    "docs/testbench/retro-board/brief.md",
-    "docs/adr/0001-generated-task-list-from-github-issues.md"
+    "docs/testbench/retro-board/brief.md"
   ],
-  "_skip": "CHANGELOG.md is history; plugins/ is vendored; brief.md is a run record whose repository check quotes the layout of its time; ADR-0001 records why the retired plan-to-tasks was replaced (#23)."
+  "retiredNamesSkip": ["docs/adr/0001-generated-task-list-from-github-issues.md"],
+  "_skip": "CHANGELOG.md is history; plugins/ is vendored; brief.md is a run record whose repository check quotes the layout of its time; retiredNamesSkip: ADR-0001 records why the retired plan-to-tasks was replaced (#23), and is still checked for forbiddenRefs."
 }

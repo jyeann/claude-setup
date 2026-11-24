@@ -91,11 +91,18 @@ test('fails when a current doc names a retired skill, in prose or as a path, and
   ]);
 });
 
-test('this repository names plan-to-tasks only in history (#23)', () => {
+test('current docs in this repository do not name plan-to-tasks, and its skill folder stays deleted (#23)', () => {
   const policy = JSON.parse(fs.readFileSync(path.join(REPO, '.claude', 'layout.json'), 'utf8'));
   assert.ok(policy.retiredNames.includes('plan-to-tasks'));
   assert.ok(policy.forbiddenDirs.includes('.claude/skills/plan-to-tasks'));
   assert.deepEqual(checkLayout(REPO, { ...policy, forbiddenRefs: [] }), []);
+});
+
+test('a policy with only retiredNames checks names, and retiredNamesSkip exempts a file from that check alone', () => {
+  const dir = repo({ 'a.md': 'use old-skill\n', 'adr.md': 'rejected old-skill; see examples/x\n' });
+  assert.deepEqual(checkLayout(dir, { retiredNames: ['old-skill'] }), ['a.md:1 names retired old-skill', 'adr.md:1 names retired old-skill']);
+  const policy = { forbiddenRefs: ['examples/'], retiredNames: ['old-skill'], retiredNamesSkip: ['adr.md'] };
+  assert.deepEqual(checkLayout(dir, policy), ['a.md:1 names retired old-skill', 'adr.md:1 cites examples/']);
 });
 
 test('CLI takes --policy and exits 0 when the repository has no policy', () => {
