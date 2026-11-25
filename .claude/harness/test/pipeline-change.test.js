@@ -417,6 +417,38 @@ test('a change number reused after that change was accepted refuses new work ins
   assert.equal((await change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] }))).pass, true);
 });
 
+test('after accepted, an AMEND line does not let new work past the owner: it is refused until undone', async () => {
+  const root = await accepted(CHANGE_RECORDS);
+  // Before accepted, AMEND lines work as in a first run.
+  write(root, { 'app/spec.md': '# Spec\nSubtraction.\n', [`${R}/decisions.md`]: 'AMEND: app/spec.md - subtraction (#30)\n' });
+  await acceptChange(root, CHANGE);
+  const both = issues({ [CHANGE]: ['spec-approved', 'accepted'] });
+  const probes = [
+    [{ 'app/src/new.js': 'module.exports = 1;\n' }, 'AMEND: app/src/new.js - more work\n', () => fs.rmSync(path.join(root, 'app/src/new.js'))],
+    [{ 'app/acceptance/add.test.js': '// gutted\n' }, 'AMEND: app/acceptance/add.test.js - gutted\n', () => write(root, { 'app/acceptance/add.test.js': 'test("adds", () => {});\n' })],
+    [{ 'docs/ux.md': '# UX\nshorter\n' }, 'AMEND: docs/ux.md - shorter\n', () => write(root, { 'docs/ux.md': `# UX\n### J1. Add (SC1)\nUC1 the sum is shown. ${LONG}` })],
+  ];
+  for (const [files, amend, undo] of probes) {
+    write(root, files);
+    fs.appendFileSync(path.join(root, R, 'decisions.md'), amend);
+    await assert.rejects(change(root, both), /change #30 is already accepted; open a new issue for new work/, amend);
+    undo();
+    assert.equal((await change(root, both)).pass, true, `undoing ${amend.trim()} passes again`);
+  }
+});
+
+test('re-checking a finished change reports the real cause when it is not a change to approved files', async () => {
+  const root = await accepted(CHANGE_RECORDS);
+  await acceptChange(root, CHANGE);
+  const offline = await change(root, async () => ({ unreachable: 'gh is not installed' }));
+  assert.deepEqual(offline.waiting, { gate: 'spec-approved', spec: CHANGE });
+  const drift = async () => ({ status: 1, stdout: 'tasks-sync: docs/changes/30/TASKS.md differs from spec issue #30 in: T2', stderr: '' });
+  const stale = await change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] }), { runTasksCheck: drift });
+  assert.equal(stale.blocked, 'plan');
+  assert.match(problemsOf(stale, 'plan').join('\n'), /differs from spec issue #30/);
+  assert.equal((await change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] }))).pass, true);
+});
+
 test('a change run refuses to start when the first run\'s frozen files are not on record', async () => {
   const root = await accepted();
   fs.rmSync(path.join(root, '.harness/pipeline/app.json'));

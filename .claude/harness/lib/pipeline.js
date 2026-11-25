@@ -426,7 +426,7 @@ function ownerGate(gate) {
     g.reopened = g.reopened.filter((x) => x.gate !== gate);
     // An accepted change is finished, and its frozen files become the product's accepted baseline.
     if (ctx.change && gate === 'accepted') {
-      g.finished = true;
+      g.finished = { files: finishedFiles(ctx) };
       fs.writeFileSync(baselineFile(ctx), `${JSON.stringify({ change: ctx.change, files: frozenFiles(ctx) }, null, 2)}\n`);
     }
     saveGates(ctx);
@@ -603,6 +603,10 @@ const CHANGE_PHASES = [
 
 // A change is for a product the owner has accepted: the first run's accepted approval must be on record.
 // Read only, without re-hashing: the change itself changes the product that approval covered.
+// Everything the owner judged in a change: what both gates approved and the product's frozen files. Once the
+// change is accepted, any difference is new work, AMEND line or not: nothing gets past accepted without the owner.
+const finishedFiles = (ctx) => ({ ...approvedFiles(ctx, 'spec-approved'), ...approvedFiles(ctx, 'accepted'), ...frozenFiles(ctx) });
+
 // The product's last owner-accepted frozen files: those of the latest accepted change, else the first run's
 // freeze. Written only at a change's accepted gate, so no unaccepted edit becomes a baseline.
 const baselineFile = (ctx) => freezeFile({ root: ctx.root, product: ctx.product }).replace(/\.json$/, '.accepted.json');
@@ -651,8 +655,11 @@ async function checkPipeline({ root, product, docs, change, runGate = defaultGat
     if (refused) throw new Error(refused);
   }
   ctx.gates = readGates(ctx);
-  const finished = Boolean(ctx.change && ctx.gates.finished);
-  if (ctx.change && !finished) {
+  const finished = ctx.change ? ctx.gates.finished : null;
+  if (finished) {
+    const changed = changedKeys(finishedFiles(ctx), finished.files ?? {});
+    if (changed.length) throw new Error(`change #${ctx.change} is already accepted; open a new issue for new work (${changed.join(', ')} changed since the owner accepted it; undo that to re-check this change)`);
+  } else if (ctx.change) {
     const refused = await firstSightProblem(ctx);
     if (refused) throw new Error(refused);
     // Frozen from the product's last accepted state, so edits before the first check need AMEND lines too.
@@ -661,17 +668,11 @@ async function checkPipeline({ root, product, docs, change, runGate = defaultGat
       fs.writeFileSync(freezeFile(ctx), `${JSON.stringify({ files: acceptedBaseline(ctx), amends: {} }, null, 2)}\n`);
     }
   }
-  const accepted = finished ? read(gatesFile(ctx)) : null;
+  // A finished change with its files as accepted is re-checked like any run, so an unreachable GitHub waits
+  // and a drifted task list is reported as such.
   for (;;) {
     const result = await walkPhases(ctx);
-    if (result.redirected) continue;
-    // A finished change may be re-checked while nothing changed; anything else is new work. The record stays
-    // as the owner accepted it (the walk may have voided its approval).
-    if (finished && !result.pass) {
-      fs.writeFileSync(gatesFile(ctx), accepted);
-      throw new Error(`change #${ctx.change} is already accepted; open a new issue for new work (a re-check passes only while nothing has changed since the owner accepted it)`);
-    }
-    return result;
+    if (!result.redirected) return result;
   }
 }
 
