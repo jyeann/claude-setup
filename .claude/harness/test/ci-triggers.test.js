@@ -138,6 +138,9 @@ for (const [file, wf] of Object.entries(WORKFLOWS)) {
       assert.equal(all[1].id, 'scope', `${job}: the docs-only step comes right after checkout`);
       assert.match(all[1].text, /run: node \.claude\/harness\/bin\/docs-only\.js --base "origin\/\$BASE_REF"/);
       assert.match(all[1].text, /BASE_REF: \$\{\{ github\.base_ref \}\}/);
+      if (/^ {4}defaults:\n {6}run:\n {8}working-directory:/m.test(jobBlock(wf.text, job))) {
+        assert.match(all[1].text, /^ {8}working-directory: \.$/m, `${job}: the docs-only step runs from the repository root`);
+      }
       for (const s of all) assert.ok(s.ifs.length <= 1, `${job}: a step has two if: keys (YAML keeps only the last)`);
       for (const s of all.slice(2)) {
         assert.equal(s.ifs.length, 1, `${job}: every step after the docs-only check is conditional`);
@@ -172,7 +175,9 @@ const GATE = [...DEFAULT_PROTECTED];
 
 test('documentation is docs/ or *.md outside every gate input', () => {
   for (const f of ['docs/adr/0004.md', 'docs/img/flow.png', 'README.md', 'notes/CHANGES.MD', './docs/a.txt', 'packages/x/README.md']) assert.equal(isDocFile(f, GATE), true, f);
-  for (const f of ['.claude/rules/x.md', '.github/pull_request_template.md', 'acceptance/notes.md', 'spec.md', 'SPEC.md', 'src/a.js', 'Docs/a.js', 'docs.js', 'readme.md.js']) assert.equal(isDocFile(f, GATE), false, f);
+  for (const f of ['.claude/rules/x.md', '.github/pull_request_template.md', 'acceptance/notes.md', 'spec.md', 'SPEC.md', 'src/a.js', 'Docs/a.js', 'docs.js', 'readme.md.js',
+    '.CLAUDE/x.md', 'ACCEPTANCE/n.md', 'docs/site.js', 'docs/package.json', 'docs/caf\u00e9.js', 'docs\\x.md']) assert.equal(isDocFile(f, GATE), false, f);
+  assert.equal(isDocFile('docs/vite.config.md', [...GATE, 'vite.config.*']), false, 'adapter globs are gate inputs');
   assert.equal(isDocFile('testbench/x/spec.md', [...GATE, 'testbench/']), false, '--keep paths are gate inputs');
 });
 
@@ -233,6 +238,7 @@ test('docs-only CLI treats a move out of code, a workflow doc, a --keep path and
   const moved = prRepo({ 'src/a.js': 'a' }, { 'src/a.js': null, 'docs/a.md': 'a' });
   assert.equal(decide(moved).output, 'docs_only=false\n', 'a rename lists the old code path');
   assert.equal(decide(prRepo({ 'x.js': 'x' }, { '.github/notes.md': 'n' })).output, 'docs_only=false\n');
+  assert.equal(decide(prRepo({ 'src/a.js': 'a', 'README.md': 'r' }, { 'src/a.js': null, 'README.md': 'r2' })).output, 'docs_only=false\n', 'a deleted code file is code');
   assert.equal(decide(prRepo({ 'x.js': 'x' }, { 'testbench/golden/a.md': 'n' }), '--keep', 'testbench/').output, 'docs_only=false\n');
   const listed = prRepo({ '.harness-protected': 'prompts/\n' }, { 'prompts/build.md': 'p', '.harness-protected': '' });
   assert.equal(decide(listed).output, 'docs_only=false\n', 'the list comes from the base, so the PR cannot empty it');

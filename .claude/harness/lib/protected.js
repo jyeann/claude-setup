@@ -1,6 +1,6 @@
 'use strict';
-const { spawnSync } = require('node:child_process');
 // Server-side twin of the in-session read-only guard: which changed files must a PR not touch?
+const { spawnSync } = require('node:child_process');
 const DEFAULT_PROTECTED = ['.claude/', '.github/', '.harness-protected', 'verify.config.json', 'acceptance/', 'spec.md'];
 
 // Tool configs that can weaken an adapter's gate (#55, #60): a Vitest include list that drops tests, a coverage

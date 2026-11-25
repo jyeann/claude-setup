@@ -37,6 +37,7 @@ jobs:
         if: ${{ github.event_name == 'pull_request' }}
         env:
           BASE_REF: ${{ github.base_ref }}
+        # Markdown your tests read (fixtures, golden files) is a gate input: add `--keep <path>/` or list it in .harness-protected.
         run: node .claude/harness/bin/docs-only.js --base "origin/$BASE_REF"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: ${{ steps.scope.outputs.docs_only != 'true' }}

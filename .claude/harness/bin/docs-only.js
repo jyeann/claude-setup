@@ -2,7 +2,8 @@
 'use strict';
 // CI step: may this PR skip the heavy jobs because it changes only documentation? (#105, ADR-0004)
 // Prints the decision and, inside Actions, writes `docs_only=true|false` to $GITHUB_OUTPUT. The heavy steps run
-// unless the output is exactly "true", so a crash, a bad ref or a missing output all mean "run the full gate".
+// unless the output is exactly "true". An error (bad ref, git failure) exits 2, which fails the step and so the job:
+// the required check goes red and blocks the merge rather than passing. Neither path skips the gate silently.
 const fs = require('node:fs');
 const { baseProtectedList, changedFiles } = require('../lib/protected');
 const { isDocFile, isDocsOnly } = require('../lib/docs-only');

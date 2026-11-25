@@ -117,7 +117,7 @@ A pull request opened as a draft. CI runs only the fast checks on it (`secret-sc
 _Avoid_: WIP PR
 
 **Docs-only change**:
-A PR whose every changed file is under `docs/` or ends in `.md`, and none of them is a gate input (a protected path or a `--keep` path such as `testbench/`). Only such a PR skips the full gate's steps; one other file runs the gate. Recorded in ADR-0004.
+A PR whose every changed file ends in `.md` or is a text or image file under `docs/`, and none of them is a gate input (a protected path or a `--keep` path such as `testbench/`). Only such a PR skips the full gate's steps; one other file runs the gate. Recorded in ADR-0004.
 _Avoid_: docs PR, trivial change
 
 ## Layout
