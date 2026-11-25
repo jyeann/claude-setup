@@ -90,6 +90,18 @@ When the gate reports a holdout failure while the visible tests pass, do not sen
 
 Small fixes and single-file changes do not need phases 1-4: give the fix to `tdd-guide` under `/harness-build`. Run this skill for a new product or a feature with a user-facing surface. A change that touches a screen always runs 2 and 7.
 
+## Change requests
+
+Once the owner has added `accepted` to the first run's spec issue, a change to the product is a **change run** on its own spec issue (spec #88). Write the change's spec issue in `<product-repo>`, then start the harness with `--change <N>` (the issue number) added to the first run's verify command:
+
+`node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product <product-repo> --docs <product-repo>/docs/product/<slug> --change <N>' --task "<the change, verbatim>" --open-gate-files --no-commit-gate --max 30 --stall 4`
+
+- The walk is `spec`, gate `spec-approved` on issue #N, `plan`, `build`, `review`, `qa`, `release`, gate `accepted` on issue #N. The gates, waiting, layer verdicts, redirects, the 3-round limit and approvals tied to files work as in a first run, on issue #N. A redirect on problem, impression or approach goes back to the change's `spec`; correctness or craft to `build`.
+- The change's records go in `<product-repo>/docs/product/<slug>/changes/<N>/`: `decisions.md` (its decisions and its `AMEND:` lines), `TASKS.md` (`tasks-sync pull --spec <N> --out <that folder>/TASKS.md`), `reviews.md` with the `Open: CRITICAL 0, HIGH 0` line, `qa.md`, and any other file there is the change's spec output, approved at `spec-approved` (write a redone spec there after a redirect). Release: the product README still has run steps and its `CHANGELOG.md` names `#N`.
+- The product's frozen files (`spec.md`, `acceptance/`, `holdout/`, `ux.md`, `verify.config.json`, the adapter's tool configs) are compared with the product's last owner-accepted state (the latest accepted change, else the first run): every edit, also one made before the first check, needs an `AMEND: <path> - <reason>` line in the change's `decisions.md`, never in the first run's.
+- Use a new issue for each change. A run refuses an issue that already carries `accepted` or is closed when first seen, and refuses new work under a change that has passed `accepted`: after `accepted` an `AMEND:` line no longer explains a change to the product.
+- The first run's records and its state in `.harness/pipeline/` are only read, never written; the change keeps its own (`<slug>.change-<N>.*`). `pipeline.js` refuses to start a change run (exit 2) while the product has never been accepted, or when `<N>` is the first run's spec issue.
+
 ## Effort (measured defaults, sonnet, one product)
 
 From the per-phase comparison on the retro board (`docs/testbench/retro-board/effort-by-phase.md`, 24 cells of 1 to 2 trials, objective graders):

@@ -74,7 +74,7 @@ function stackPlanProblems({ docs }, config) {
   return out;
 }
 
-function planProblems({ product, docs }) {
+function planProblems({ product, docs, change }) {
   const out = [];
   if (read(path.join(product, 'spec.md')) === null) out.push('spec.md is missing in the product directory');
   const raw = read(path.join(product, 'verify.config.json'));
@@ -87,7 +87,7 @@ function planProblems({ product, docs }) {
     out.push(...stackPlanProblems({ docs }, config));
   }
   if (!filesUnder(path.join(product, 'acceptance')).some((f) => TEST_FILE.test(f))) out.push('no acceptance tests in acceptance/ (the test author writes them before any builder starts)');
-  if (read(path.join(product, 'TASKS.md')) === null && read(path.join(docs, 'TASKS.md')) === null) out.push('TASKS.md is missing: run tasks-sync pull --spec <n> to generate it from the spec issue (product or docs directory)');
+  if (!change && read(path.join(product, 'TASKS.md')) === null && read(path.join(docs, 'TASKS.md')) === null) out.push('TASKS.md is missing: run tasks-sync pull --spec <n> to generate it from the spec issue (product or docs directory)');
   return out;
 }
 
@@ -188,6 +188,8 @@ function pinnedSpec(ctx) {
 // `verdict: problem=pass impression=redirect "too cluttered" approach=pass correctness=pass craft=pass`;
 // the latest such comment is the verdict. A redirect sends the run back to the layer's phase only.
 const LAYERS = Object.freeze({ problem: 'discover', impression: 'ux', approach: 'design', correctness: 'build', craft: 'build' });
+// A change run (#89) has no discover, ux or design of its own: its short phases 1 to 4a are its spec phase.
+const CHANGE_LAYERS = Object.freeze({ problem: 'spec', impression: 'spec', approach: 'spec', correctness: 'build', craft: 'build' });
 const MAX_ROUNDS = 3;
 // A verdict line starts the line (up to 3 spaces). Lines inside fenced or indented code and blockquotes
 // are quotes, never verdicts, so an agent quoting the expected form does not post one.
@@ -209,7 +211,7 @@ const ENTRY = /\s*([^\s=]+)=([^\s"“]*)(?:\s*(?:"([^"]*)"|“([^”]*)”))?/y;
 const EXPECTED = `verdict: ${Object.keys(LAYERS).map((l) => `${l}=pass|redirect "<reason>"`).join(' ')}`;
 
 // null when the text has no verdict line; otherwise { ok, redirects: [{ layer, phase, reason }], errors }.
-function parseVerdict(text) {
+function parseVerdict(text, layers = LAYERS) {
   const lines = verdictLines(text);
   if (lines.length === 0) return null;
   if (lines.length > 1) return { ok: false, redirects: [], errors: [`the comment has more than one verdict line (${lines.length}); post one`] };
@@ -234,17 +236,17 @@ function parseVerdict(text) {
     named.add(layer);
   }
   for (const layer of Object.keys(LAYERS)) if (!named.has(layer)) errors.push(`no verdict for ${layer}`);
-  const redirects = [...given].filter(([, reason]) => reason).map(([layer, reason]) => ({ layer, phase: LAYERS[layer], reason }));
+  const redirects = [...given].filter(([, reason]) => reason).map(([layer, reason]) => ({ layer, phase: layers[layer], reason }));
   return { ok: errors.length === 0, redirects, errors };
 }
 
 // The latest verdict comment on the issue, by time (ties keep the issue's order), with a stable id.
-function latestVerdict(issue) {
+function latestVerdict(issue, layers) {
   const { comments } = issue ?? {};
   if (comments !== undefined && comments !== null && !Array.isArray(comments)) {
     return Number(comments) > 0 ? { unreadable: `the copy of the spec issue has ${Number(comments)} comments but not their text, so the layer verdicts cannot be read` } : null;
   }
-  const verdicts = (comments ?? []).map((c, i) => ({ c, i, v: parseVerdict(c?.body) })).filter((x) => x.v);
+  const verdicts = (comments ?? []).map((c, i) => ({ c, i, v: parseVerdict(c?.body, layers) })).filter((x) => x.v);
   verdicts.sort((a, b) => String(a.c.created_at ?? '').localeCompare(String(b.c.created_at ?? '')) || a.i - b.i);
   const last = verdicts.at(-1);
   return last ? { id: String(last.c.id ?? `${last.c.created_at}#${last.i}`), ...last.v } : null;
@@ -274,8 +276,13 @@ function saveGates(ctx) {
 // directories, node_modules, coverage and the generated TASKS.md belong to none.
 const FROZEN_IN_PRODUCT = /^(?:spec\.md|verify\.config\.json|(?:acceptance|holdout)\/.*)$/;
 const inside = (dir, abs) => { const r = path.relative(dir, abs); return !r.startsWith('..') && !path.isAbsolute(r); };
+// In a change run, the change's records folder holds its spec outputs (all but the logs of later phases),
+// and the first run's documents belong to no phase of the change: ux.md is still frozen (AMEND).
+const CHANGE_LOGS = new Set(['decisions.md', 'reviews.md', 'qa.md', 'TASKS.md']);
 function phaseOf(ctx, file) {
   const abs = path.join(ctx.root, file);
+  if (ctx.change && inside(ctx.records, abs)) return CHANGE_LOGS.has(rel(ctx.records, abs)) ? null : 'spec';
+  if (ctx.change && inside(ctx.docs, abs)) return null;
   if (inside(ctx.docs, abs)) {
     const d = rel(ctx.docs, abs);
     return { 'brief.md': 'discover', 'ux.md': 'ux', 'design.md': 'design' }[d] ?? (d.startsWith('adr/') ? 'design' : null);
@@ -313,10 +320,10 @@ function hashed(ctx, keep) {
   return Object.fromEntries(all.filter(keep).map((f) => [f, sha(fs.readFileSync(path.join(ctx.root, f)))]));
 }
 const phaseOutputs = (ctx, phase) => hashed(ctx, (f) => phaseOf(ctx, f) === phase);
-// spec-approved approves the brief, ux, design and the page; accepted approves the product.
+// spec-approved approves the brief, ux, design and the page (a change: its spec outputs); accepted approves the product.
 function approvedFiles(ctx, gate) {
-  const page = rel(ctx.root, path.join(ctx.docs, PAGE));
-  const phases = gate === 'accepted' ? ['plan', 'build'] : ['discover', 'ux', 'design'];
+  const page = ctx.change ? null : rel(ctx.root, path.join(ctx.docs, PAGE));
+  const phases = gate === 'accepted' ? ['plan', 'build'] : (ctx.change ? ['spec'] : ['discover', 'ux', 'design']);
   return hashed(ctx, (f) => f === page || phases.includes(phaseOf(ctx, f)));
 }
 const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((f) => a[f] !== b[f]);
@@ -327,7 +334,7 @@ const reopenedBy = (ctx, gate) => new Set(ctx.gates.reopened.filter((r) => gate 
 function voidedFiles(ctx, gate) {
   const approval = ctx.gates.approvals[gate];
   const now = approvedFiles(ctx, gate);
-  const counts = amendCounts(ctx.docs);
+  const counts = amendCounts(ctx.records);
   const reopened = reopenedBy(ctx, gate);
   const changed = changedKeys(now, approval.files);
   const unexplained = changed.filter((f) => (counts[f] ?? 0) <= (approval.amends[f] ?? 0) && !reopened.has(phaseOf(ctx, f)));
@@ -360,23 +367,32 @@ function stoppedAt(ctx, gate, spec, verdict, round) {
   return { gate, spec, rounds: round, layers: verdict.redirects.map((r) => r.layer), reasons };
 }
 
+// The spec issue is read once per check, whichever phase asks first.
+function readSpecIssue(ctx, spec) {
+  if (!ctx.issueReads.has(spec)) ctx.issueReads.set(spec, ctx.readIssue({ spec, cwd: ctx.product }));
+  return ctx.issueReads.get(spec);
+}
+const specOf = (ctx) => ctx.change ?? specIssueOf(ctx.docs);
+const cannotRead = (ctx, spec, why) => (ctx.change
+  ? `cannot read change spec issue #${spec} (${why}): check the --change number in the verify command; it must be an issue of this product's repository`
+  : `cannot read spec issue #${spec} (${why}): fix the "Spec issue: #N" line in decisions.md so it names this product's spec issue`);
+
 // An owner gate passes when its label is on the spec issue and the latest layer verdict, if any, is all pass.
 // Missing label, no answer from GitHub, a malformed verdict, a redirect waiting to be judged again or a void
 // approval: wait (never pass). Any other read error is the run's to fix, usually a wrong "Spec issue:" line.
 function ownerGate(gate) {
   return async (ctx) => {
-    const spec = specIssueOf(ctx.docs);
+    const spec = specOf(ctx);
     const pinned = pinnedSpec(ctx);
     if (pinned !== null && pinned !== spec) return [`decisions.md names spec issue #${spec}, but the owner approved spec issue #${pinned}: restore the line "Spec issue: #${pinned}"`];
-    if (!ctx.issueReads.has(spec)) ctx.issueReads.set(spec, ctx.readIssue({ spec, cwd: ctx.product }));
-    const r = await ctx.issueReads.get(spec);
-    if (r.error) return [`cannot read spec issue #${spec} (${r.error}): fix the "Spec issue: #N" line in decisions.md so it names this product's spec issue`];
+    const r = await readSpecIssue(ctx, spec);
+    if (r.error) return [cannotRead(ctx, spec, r.error)];
     if (r.savedCopy && !ctx.warnings.includes(`warning: ${r.savedCopy}`)) ctx.warnings.push(`warning: ${r.savedCopy}`);
     const wait = (...notes) => ({ waiting: { gate, spec }, notes });
     if (r.unreachable) return wait(`could not read the labels of spec issue #${spec} (${r.unreachable}), so the gate counts as not passed`);
     const g = ctx.gates;
     const labelled = labelNames(r.issue).includes(gate);
-    const latest = latestVerdict(r.issue);
+    const latest = latestVerdict(r.issue, ctx.layers);
 
     if (labelled && g.approvals[gate]) {
       const changed = voidedFiles(ctx, gate);
@@ -405,9 +421,14 @@ function ownerGate(gate) {
     if (voided && (!latest || latest.id === voided.verdict)) return wait(`the approval at ${gate} is void because ${voided.files.join(', ')} changed: waiting for a new verdict on spec issue #${spec}`);
     if (!labelled) return wait();
     // Approved: tie the approval to the files' hashes and close this gate's redirect rounds.
-    g.approvals[gate] = { files: approvedFiles(ctx, gate), amends: amendCounts(ctx.docs) };
+    g.approvals[gate] = { files: approvedFiles(ctx, gate), amends: amendCounts(ctx.records) };
     delete g.voided[gate];
     g.reopened = g.reopened.filter((x) => x.gate !== gate);
+    // An accepted change is finished, and its frozen files become the product's accepted baseline.
+    if (ctx.change && gate === 'accepted') {
+      g.finished = { files: finishedFiles(ctx) };
+      fs.writeFileSync(baselineFile(ctx), `${JSON.stringify({ change: ctx.change, files: frozenFiles(ctx) }, null, 2)}\n`);
+    }
     saveGates(ctx);
     if (pinned === null) {
       fs.mkdirSync(path.dirname(pinFile(ctx)), { recursive: true });
@@ -432,17 +453,21 @@ function redirectProblems(ctx, name) {
 
 // The task list is generated from a spec issue (docs/adr/0001): its header names the spec, and
 // `tasks-sync check` must find it unchanged. When GitHub is unreachable the check only warns.
+// A change's task list comes from the change issue and lives in the change records, beside the first run's.
+const taskDirs = (ctx) => (ctx.change ? [ctx.records] : [ctx.product, ctx.docs]);
+const pullCommand = (spec, where) => `node .claude/harness/bin/tasks-sync.js pull --spec ${spec} --out ${where}`;
 async function taskListProblems(ctx) {
-  const file = [ctx.product, ctx.docs].map((d) => path.join(d, 'TASKS.md')).find((f) => read(f) !== null);
-  if (!file) return [];
+  const file = taskDirs(ctx).map((d) => path.join(d, 'TASKS.md')).find((f) => read(f) !== null);
+  if (!file) return ctx.change ? [`TASKS.md is missing: run ${pullCommand(ctx.change, rel(ctx.root, path.join(ctx.records, 'TASKS.md')))}`] : [];
   const where = rel(ctx.root, file);
   const m = GENERATED_FROM.exec(read(file));
-  const pull = (spec) => `node .claude/harness/bin/tasks-sync.js pull --spec ${spec} --out ${where}`;
+  const pull = (spec) => pullCommand(spec, where);
   if (!m) return [`${where} was not generated from a spec issue: run ${pull('<n>')}`];
-  // The header's spec must be the one recorded in decisions.md (phase 4a), which the gates read.
+  // The header's spec must be the one the gates read: decisions.md's (phase 4a), or the change's.
   const spec = Number(m[1]);
-  const named = specIssueOf(ctx.docs);
-  if (named !== null && named !== spec) return [`${where} was generated from spec issue #${spec}, but decisions.md names spec issue #${named}: ${pull(named)}`];
+  const named = specOf(ctx);
+  const namer = ctx.change ? 'this change\'s spec issue is' : 'decisions.md names spec issue';
+  if (named !== null && named !== spec) return [`${where} was generated from spec issue #${spec}, but ${namer} #${named}: ${pull(named)}`];
   const r = await ctx.runTasksCheck({ spec, file, cwd: ctx.product });
   const said = [r.stdout, r.stderr].map((t) => String(t || '').trim()).filter(Boolean).join('\n');
   if (r.status === 0) {
@@ -477,15 +502,18 @@ function amendCounts(docs) {
   return counts;
 }
 
-function freezeFile({ root, product }) {
+// A change run keeps its own freeze, gates and pin beside the first run's ("<slug>.change-<N>.json"; a slug
+// never holds a dot), so it never writes the first run's state.
+function freezeFile({ root, product, change }) {
   const slug = rel(root, product).replace(/[^A-Za-z0-9_-]+/g, '_') || 'root';
-  return path.join(root, '.harness', 'pipeline', `${slug}.json`);
+  return path.join(root, '.harness', 'pipeline', `${slug}${change ? `.change-${change}` : ''}.json`);
 }
 
 function freezeProblems(ctx) {
   const file = freezeFile(ctx);
   const now = frozenFiles(ctx);
-  const counts = amendCounts(ctx.docs);
+  const counts = amendCounts(ctx.records);
+  const log = ctx.change ? rel(ctx.root, path.join(ctx.records, 'decisions.md')) : 'decisions.md';
   const saved = read(file);
   let state = saved ? JSON.parse(saved) : { files: now, amends: counts };
   const changed = [...new Set([...Object.keys(now), ...Object.keys(state.files)])].filter((f) => now[f] !== state.files[f]);
@@ -495,13 +523,40 @@ function freezeProblems(ctx) {
   if (unexplained.length === 0) state = { files: now, amends: counts };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
-  return unexplained.map((f) => `${f} changed after the plan phase froze it. Restore it; if it is wrong, its author (never the builder) fixes it and adds a line "AMEND: ${f} - <reason>" to decisions.md`);
+  const since = ctx.change ? 'changed since the owner last accepted the product (a frozen gate file)' : 'changed after the plan phase froze it';
+  return unexplained.map((f) => `${f} ${since}. Restore it; if it is wrong, its author (never the builder) fixes it and adds a line "AMEND: ${f} - <reason>" to ${log}`);
 }
 
 async function defaultGate(product) {
   const result = await runVerify(`node "${VERIFY_BIN}"`, { cwd: product, env: { CLAUDE_PROJECT_DIR: product } });
   return { pass: result.pass, output: result.output };
 }
+
+async function planPhase(ctx) {
+  const p = planProblems(ctx);
+  if (p.length) return p;
+  const t = await taskListProblems(ctx);
+  return t.length ? t : freezeProblems(ctx);
+}
+
+async function buildPhase(ctx) {
+  const gate = await ctx.runGate(ctx.product);
+  ctx.gateOutput = gate.output;
+  return gate.pass ? [] : ['the product gate (verify.js: tests, type check, coverage, test quality, holdout, browser journeys, mutation) fails; its output is below'];
+}
+
+function reviewProblems(dir, name = 'reviews.md') {
+  return doc(dir, 'reviews.md', 'review record', (t) => {
+    const m = OPEN_FINDINGS.exec(t);
+    if (!m) return [`${name} needs a line of exactly this form, with the true counts after the fix round: "Open: CRITICAL 0, HIGH 0"`];
+    return Number(m[1]) + Number(m[2]) === 0 ? [] : [`${name} records ${m[1]} CRITICAL and ${m[2]} HIGH findings still open: fix them, re-run the reviewers on the fix, then update the line`];
+  });
+}
+
+const releaseProblems = ({ product }) => [
+  ...(/```/.test(read(path.join(product, 'README.md')) ?? '') ? [] : ['README.md in the product directory needs run steps in a code block: someone with only the README must be able to run it']),
+  ...(read(path.join(product, 'CHANGELOG.md')) === null ? ['CHANGELOG.md is missing in the product directory'] : []),
+];
 
 const PHASES = [
   ['discover', ({ docs }) => doc(docs, 'brief.md', 'product brief', (t) => (/success criteria/i.test(t) ? [] : ['brief.md has no "Success criteria" section: list user-visible, testable criteria']))],
@@ -513,38 +568,108 @@ const PHASES = [
   ['design', ({ docs }) => doc(docs, 'design.md', 'system design', (t) => readStack(t, loadCatalogue()).problems)],
   ['spec', specProblems],
   ['spec-approved', ownerGate('spec-approved')],
-  ['plan', async (ctx) => {
-    const p = planProblems(ctx);
-    if (p.length) return p;
-    const t = await taskListProblems(ctx);
-    return t.length ? t : freezeProblems(ctx);
-  }],
-  ['build', async (ctx) => {
-    const gate = await ctx.runGate(ctx.product);
-    ctx.gateOutput = gate.output;
-    return gate.pass ? [] : ['the product gate (verify.js: tests, type check, coverage, test quality, holdout, browser journeys, mutation) fails; its output is below'];
-  }],
-  ['review', ({ docs }) => doc(docs, 'reviews.md', 'review record', (t) => {
-    const m = OPEN_FINDINGS.exec(t);
-    if (!m) return ['reviews.md needs a line of exactly this form, with the true counts after the fix round: "Open: CRITICAL 0, HIGH 0"'];
-    return Number(m[1]) + Number(m[2]) === 0 ? [] : [`reviews.md records ${m[1]} CRITICAL and ${m[2]} HIGH findings still open: fix them, re-run the reviewers on the fix, then update the line`];
-  })],
+  ['plan', planPhase],
+  ['build', buildPhase],
+  ['review', ({ docs }) => reviewProblems(docs)],
   ['qa', ({ docs }) => doc(docs, 'qa.md', 'independent browser walkthrough record')],
-  ['release', ({ product }) => [
-    ...(/```/.test(read(path.join(product, 'README.md')) ?? '') ? [] : ['README.md in the product directory needs run steps in a code block: someone with only the README must be able to run it']),
-    ...(read(path.join(product, 'CHANGELOG.md')) === null ? ['CHANGELOG.md is missing in the product directory'] : []),
-  ]],
+  ['release', releaseProblems],
   ['accepted', ownerGate('accepted')],
   ['retro', ({ docs }) => doc(docs, 'retro.md', 'retro')],
 ];
 
+// ---- Change-request runs (#89, spec #88). One change of an accepted product, on its own spec issue (named by
+// --change), walks the phases below; the first run's records and state are only read. Records go in
+// <docs>/changes/<N>/ (decisions.md with its AMEND lines, TASKS.md, reviews.md, qa.md, spec outputs).
+// The change spec: its issue is named and readable. #91 adds the one-page change spec check here.
+async function changeSpecProblems(ctx) {
+  const r = await readSpecIssue(ctx, ctx.change);
+  return r.error ? [cannotRead(ctx, ctx.change, r.error)] : [];
+}
+
+const CHANGE_PHASES = [
+  ['spec', changeSpecProblems],
+  ['spec-approved', ownerGate('spec-approved')],
+  ['plan', planPhase],
+  ['build', buildPhase],
+  ['review', (ctx) => reviewProblems(ctx.records, rel(ctx.root, path.join(ctx.records, 'reviews.md')))],
+  ['qa', ({ records }) => doc(records, 'qa.md', 'independent browser walkthrough record of the change')],
+  // Released means the product's README still runs it and its CHANGELOG names the change.
+  ['release', (ctx) => [
+    ...releaseProblems(ctx),
+    ...(new RegExp(`#${ctx.change}\\b`).test(read(path.join(ctx.product, 'CHANGELOG.md')) ?? '') ? [] : [`CHANGELOG.md has no entry naming change #${ctx.change}: add one for the released change`]),
+  ]],
+  ['accepted', ownerGate('accepted')],
+];
+
+// A change is for a product the owner has accepted: the first run's accepted approval must be on record.
+// Read only, without re-hashing: the change itself changes the product that approval covered.
+// Everything the owner judged in a change: what both gates approved and the product's frozen files. Once the
+// change is accepted, any difference is new work, AMEND line or not: nothing gets past accepted without the owner.
+const finishedFiles = (ctx) => ({ ...approvedFiles(ctx, 'spec-approved'), ...approvedFiles(ctx, 'accepted'), ...frozenFiles(ctx) });
+
+// The product's last owner-accepted frozen files: those of the latest accepted change, else the first run's
+// freeze. Written only at a change's accepted gate, so no unaccepted edit becomes a baseline.
+const baselineFile = (ctx) => freezeFile({ root: ctx.root, product: ctx.product }).replace(/\.json$/, '.accepted.json');
+function acceptedBaseline(ctx) {
+  const saved = read(baselineFile(ctx)) ?? read(freezeFile({ root: ctx.root, product: ctx.product }));
+  return saved === null ? null : JSON.parse(saved).files;
+}
+
+function changeStartProblem(ctx) {
+  const first = { root: ctx.root, product: ctx.product };
+  const name = rel(ctx.root, ctx.product) || '.';
+  // An accepted change also counts: a first-run check after it voids the first run's own approval.
+  if (!readGates(first).approvals.accepted && read(baselineFile(ctx)) === null) return `change request #${ctx.change}: the first run of ${name} is not accepted yet, so there is nothing to change. Finish the first run (pipeline.js check --product ${name} --docs ${rel(ctx.root, ctx.docs) || '.'}) until the owner adds accepted to its spec issue, then start the change`;
+  const firstSpec = pinnedSpec(first) ?? specIssueOf(ctx.docs);
+  if (firstSpec === ctx.change) return `change request #${ctx.change}: #${ctx.change} is the first run's spec issue: a change request needs its own spec issue`;
+  if (acceptedBaseline(ctx) === null) return `change request #${ctx.change}: the first run's frozen files are not on record (${rel(ctx.root, freezeFile(first))}), so there is no accepted state to change from`;
+  return null;
+}
+
+// The change's issue, the first time it is read: an issue the owner has already accepted or closed would let
+// the walk pass on old labels (a wrong number, or a fresh clone without .harness/). spec-approved alone is
+// fine: the owner may approve the change spec before the run starts. Recorded only after a real read.
+async function firstSightProblem(ctx) {
+  if (ctx.gates.firstSeen) return null;
+  const r = await readSpecIssue(ctx, ctx.change);
+  if (!r.issue) return null;
+  const n = ctx.change;
+  if (labelNames(r.issue).includes('accepted')) return `change request #${n}: issue #${n} already carries the label accepted, so a run on it would pass on an old approval: open a new issue for this change`;
+  if (r.issue.state === 'closed') return `change request #${n}: issue #${n} is closed: open a new issue for this change`;
+  ctx.gates.firstSeen = { labels: labelNames(r.issue) };
+  saveGates(ctx);
+  return null;
+}
+
 // Returns the phase list with the first incomplete (or waiting) phase's problems. Later phases are not evaluated.
 // A gate that takes a new redirect returns { redirected }, and the walk starts again so the redirected phase
 // is the one reported.
-async function checkPipeline({ root, product, docs, runGate = defaultGate, runTasksCheck = defaultTasksCheck, readIssue, issueJson }) {
-  const read = readIssue ?? ((q) => defaultReadIssue({ ...q, issueJson }));
-  const ctx = { root: path.resolve(root), product: path.resolve(root, product), docs: path.resolve(root, docs), runGate, runTasksCheck, readIssue: read, issueReads: new Map(), gateOutput: '', warnings: [] };
+async function checkPipeline({ root, product, docs, change, runGate = defaultGate, runTasksCheck = defaultTasksCheck, readIssue, issueJson }) {
+  const issueReader = readIssue ?? ((q) => defaultReadIssue({ ...q, issueJson }));
+  const ctx = { root: path.resolve(root), product: path.resolve(root, product), docs: path.resolve(root, docs), runGate, runTasksCheck, readIssue: issueReader, issueReads: new Map(), gateOutput: '', warnings: [] };
+  Object.assign(ctx, { change: null, records: ctx.docs, layers: LAYERS, phases: PHASES });
+  if (change !== undefined && change !== null) {
+    if (!Number.isSafeInteger(change) || change < 1) throw new Error(`--change needs an issue number (the change's spec issue), not ${change}`);
+    Object.assign(ctx, { change, records: path.join(ctx.docs, 'changes', String(change)), layers: CHANGE_LAYERS, phases: CHANGE_PHASES });
+    const refused = changeStartProblem(ctx);
+    if (refused) throw new Error(refused);
+  }
   ctx.gates = readGates(ctx);
+  const finished = ctx.change ? ctx.gates.finished : null;
+  if (finished) {
+    const changed = changedKeys(finishedFiles(ctx), finished.files ?? {});
+    if (changed.length) throw new Error(`change #${ctx.change} is already accepted; open a new issue for new work (${changed.join(', ')} changed since the owner accepted it; undo that to re-check this change)`);
+  } else if (ctx.change) {
+    const refused = await firstSightProblem(ctx);
+    if (refused) throw new Error(refused);
+    // Frozen from the product's last accepted state, so edits before the first check need AMEND lines too.
+    if (!fs.existsSync(freezeFile(ctx))) {
+      fs.mkdirSync(path.dirname(freezeFile(ctx)), { recursive: true });
+      fs.writeFileSync(freezeFile(ctx), `${JSON.stringify({ files: acceptedBaseline(ctx), amends: {} }, null, 2)}\n`);
+    }
+  }
+  // A finished change with its files as accepted is re-checked like any run, so an unreachable GitHub waits
+  // and a drifted task list is reported as such.
   for (;;) {
     const result = await walkPhases(ctx);
     if (!result.redirected) return result;
@@ -557,7 +682,7 @@ async function walkPhases(ctx) {
   let waiting;
   let stopped;
   ctx.gateOutput = '';
-  for (const [name, check] of PHASES) {
+  for (const [name, check] of ctx.phases) {
     if (blocked) { phases.push({ name, status: 'pending', problems: [] }); continue; }
     const redo = redirectProblems(ctx, name);
     const out = redo.length ? redo : await check(ctx);
@@ -571,7 +696,8 @@ async function walkPhases(ctx) {
     phases.push({ name, status: out.length ? 'incomplete' : 'done', problems: out });
     if (out.length) blocked = name;
   }
-  return { pass: blocked === null, blocked, ...(waiting ? { waiting } : {}), ...(stopped ? { stopped } : {}), phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
+  const log = ctx.change ? { log: rel(ctx.root, path.join(ctx.records, 'decisions.md')) } : {};
+  return { pass: blocked === null, blocked, ...(waiting ? { waiting } : {}), ...(stopped ? { stopped } : {}), ...log, phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
 }
 
 const waitLine = ({ gate, spec }) => `waiting for owner: spec issue #${spec} needs label ${gate}`;
@@ -579,7 +705,7 @@ const waitLine = ({ gate, spec }) => `waiting for owner: spec issue #${spec} nee
 // The Stop hook forwards only the tail of the output, so the instruction and the gate's own failure
 // details go last.
 // A waiting report ends with the waiting line, which the Stop hook recognises (lib/stop-loop.js).
-function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, warnings = [] }) {
+function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, warnings = [], log = 'decisions.md' }) {
   const lines = phases.map((p, i) => `[${i + 1}/${phases.length}] ${p.name}: ${p.status}`);
   if (pass) return [...lines, ...warnings, 'PIPELINE COMPLETE'].join('\n');
   const current = phases.find((p) => p.name === blocked);
@@ -603,11 +729,11 @@ function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, war
   }
   return [
     ...lines,
-    `PIPELINE INCOMPLETE at phase "${blocked}". Do this phase now; do not stop to ask a human. Decide, log the decision in decisions.md, continue.`,
+    `PIPELINE INCOMPLETE at phase "${blocked}". Do this phase now; do not stop to ask a human. Decide, log the decision in ${log}, continue.`,
     ...current.problems.map((p) => `  - ${p}`),
     ...warnings,
     ...(blocked === 'build' && gateOutput ? ['', gateOutput.trimEnd()] : []),
   ].join('\n');
 }
 
-module.exports = { PAGE_SECTIONS, LAYERS, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
+module.exports = { PAGE_SECTIONS, LAYERS, CHANGE_LAYERS, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };

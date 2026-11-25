@@ -49,6 +49,14 @@ The owner gate on a spec issue, including the chosen look, passed before tickets
 **Accepted**:
 The owner gate where the owner accepts the finished result against its spec issue.
 
+**Change request**:
+A request to change a product the owner has already accepted, written as its own spec issue and gated like a first run.
+_Avoid_: follow-up, v2, enhancement
+
+**Change run**:
+The harness run for one change request (`pipeline.js check ... --change <N>`): spec, spec-approved, plan, build, review, qa, release and accepted on the change's spec issue, with its records in `changes/<N>/` beside the first run's.
+_Avoid_: rerun, second run
+
 **Gate response**:
 The owner's first prompt after a run stopped at an owner gate (the pipeline reported `waiting`); not an intervention.
 
