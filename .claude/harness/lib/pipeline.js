@@ -424,6 +424,11 @@ function ownerGate(gate) {
     g.approvals[gate] = { files: approvedFiles(ctx, gate), amends: amendCounts(ctx.records) };
     delete g.voided[gate];
     g.reopened = g.reopened.filter((x) => x.gate !== gate);
+    // An accepted change is finished, and its frozen files become the product's accepted baseline.
+    if (ctx.change && gate === 'accepted') {
+      g.finished = true;
+      fs.writeFileSync(baselineFile(ctx), `${JSON.stringify({ change: ctx.change, files: frozenFiles(ctx) }, null, 2)}\n`);
+    }
     saveGates(ctx);
     if (pinned === null) {
       fs.mkdirSync(path.dirname(pinFile(ctx)), { recursive: true });
@@ -518,7 +523,8 @@ function freezeProblems(ctx) {
   if (unexplained.length === 0) state = { files: now, amends: counts };
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`);
-  return unexplained.map((f) => `${f} changed after the plan phase froze it. Restore it; if it is wrong, its author (never the builder) fixes it and adds a line "AMEND: ${f} - <reason>" to ${log}`);
+  const since = ctx.change ? 'changed since the owner last accepted the product (a frozen gate file)' : 'changed after the plan phase froze it';
+  return unexplained.map((f) => `${f} ${since}. Restore it; if it is wrong, its author (never the builder) fixes it and adds a line "AMEND: ${f} - <reason>" to ${log}`);
 }
 
 async function defaultGate(product) {
@@ -597,12 +603,37 @@ const CHANGE_PHASES = [
 
 // A change is for a product the owner has accepted: the first run's accepted approval must be on record.
 // Read only, without re-hashing: the change itself changes the product that approval covered.
+// The product's last owner-accepted frozen files: those of the latest accepted change, else the first run's
+// freeze. Written only at a change's accepted gate, so no unaccepted edit becomes a baseline.
+const baselineFile = (ctx) => freezeFile({ root: ctx.root, product: ctx.product }).replace(/\.json$/, '.accepted.json');
+function acceptedBaseline(ctx) {
+  const saved = read(baselineFile(ctx)) ?? read(freezeFile({ root: ctx.root, product: ctx.product }));
+  return saved === null ? null : JSON.parse(saved).files;
+}
+
 function changeStartProblem(ctx) {
   const first = { root: ctx.root, product: ctx.product };
   const name = rel(ctx.root, ctx.product) || '.';
-  if (!readGates(first).approvals.accepted) return `change request #${ctx.change}: the first run of ${name} is not accepted yet, so there is nothing to change. Finish the first run (pipeline.js check --product ${name} --docs ${rel(ctx.root, ctx.docs) || '.'}) until the owner adds accepted to its spec issue, then start the change`;
+  // An accepted change also counts: a first-run check after it voids the first run's own approval.
+  if (!readGates(first).approvals.accepted && read(baselineFile(ctx)) === null) return `change request #${ctx.change}: the first run of ${name} is not accepted yet, so there is nothing to change. Finish the first run (pipeline.js check --product ${name} --docs ${rel(ctx.root, ctx.docs) || '.'}) until the owner adds accepted to its spec issue, then start the change`;
   const firstSpec = pinnedSpec(first) ?? specIssueOf(ctx.docs);
   if (firstSpec === ctx.change) return `change request #${ctx.change}: #${ctx.change} is the first run's spec issue: a change request needs its own spec issue`;
+  if (acceptedBaseline(ctx) === null) return `change request #${ctx.change}: the first run's frozen files are not on record (${rel(ctx.root, freezeFile(first))}), so there is no accepted state to change from`;
+  return null;
+}
+
+// The change's issue, the first time it is read: an issue the owner has already accepted or closed would let
+// the walk pass on old labels (a wrong number, or a fresh clone without .harness/). spec-approved alone is
+// fine: the owner may approve the change spec before the run starts. Recorded only after a real read.
+async function firstSightProblem(ctx) {
+  if (ctx.gates.firstSeen) return null;
+  const r = await readSpecIssue(ctx, ctx.change);
+  if (!r.issue) return null;
+  const n = ctx.change;
+  if (labelNames(r.issue).includes('accepted')) return `change request #${n}: issue #${n} already carries the label accepted, so a run on it would pass on an old approval: open a new issue for this change`;
+  if (r.issue.state === 'closed') return `change request #${n}: issue #${n} is closed: open a new issue for this change`;
+  ctx.gates.firstSeen = { labels: labelNames(r.issue) };
+  saveGates(ctx);
   return null;
 }
 
@@ -614,17 +645,33 @@ async function checkPipeline({ root, product, docs, change, runGate = defaultGat
   const ctx = { root: path.resolve(root), product: path.resolve(root, product), docs: path.resolve(root, docs), runGate, runTasksCheck, readIssue: issueReader, issueReads: new Map(), gateOutput: '', warnings: [] };
   Object.assign(ctx, { change: null, records: ctx.docs, layers: LAYERS, phases: PHASES });
   if (change !== undefined && change !== null) {
-    if (!Number.isInteger(change) || change < 1) throw new Error(`--change needs an issue number (the change's spec issue), not ${change}`);
+    if (!Number.isSafeInteger(change) || change < 1) throw new Error(`--change needs an issue number (the change's spec issue), not ${change}`);
     Object.assign(ctx, { change, records: path.join(ctx.docs, 'changes', String(change)), layers: CHANGE_LAYERS, phases: CHANGE_PHASES });
     const refused = changeStartProblem(ctx);
     if (refused) throw new Error(refused);
   }
   ctx.gates = readGates(ctx);
-  // The product's frozen files are frozen from the change's first check on, not from its plan phase.
-  if (ctx.change && !fs.existsSync(freezeFile(ctx))) freezeProblems(ctx);
+  const finished = Boolean(ctx.change && ctx.gates.finished);
+  if (ctx.change && !finished) {
+    const refused = await firstSightProblem(ctx);
+    if (refused) throw new Error(refused);
+    // Frozen from the product's last accepted state, so edits before the first check need AMEND lines too.
+    if (!fs.existsSync(freezeFile(ctx))) {
+      fs.mkdirSync(path.dirname(freezeFile(ctx)), { recursive: true });
+      fs.writeFileSync(freezeFile(ctx), `${JSON.stringify({ files: acceptedBaseline(ctx), amends: {} }, null, 2)}\n`);
+    }
+  }
+  const accepted = finished ? read(gatesFile(ctx)) : null;
   for (;;) {
     const result = await walkPhases(ctx);
-    if (!result.redirected) return result;
+    if (result.redirected) continue;
+    // A finished change may be re-checked while nothing changed; anything else is new work. The record stays
+    // as the owner accepted it (the walk may have voided its approval).
+    if (finished && !result.pass) {
+      fs.writeFileSync(gatesFile(ctx), accepted);
+      throw new Error(`change #${ctx.change} is already accepted; open a new issue for new work (a re-check passes only while nothing has changed since the owner accepted it)`);
+    }
+    return result;
   }
 }
 

@@ -22,7 +22,7 @@ async function main([command, ...rest]) {
   }
   if (command !== 'check' || !flags.product || !flags.docs) throw new Error('Usage: pipeline.js check --product <dir> --docs <dir> [--change <issue>]');
   // Only a plain number: "#30" or "other/repo#30" is refused rather than guessed at.
-  const change = flags.change === undefined ? undefined : (/^\d+$/.test(flags.change) ? Number(flags.change) : Number.NaN);
+  const change = flags.change === undefined ? undefined : (/^\d+$/.test(flags.change) && Number.isSafeInteger(Number(flags.change)) ? Number(flags.change) : Number.NaN);
   if (Number.isNaN(change)) throw new Error(`--change needs an issue number (the change's spec issue), not ${flags.change}`);
   const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
   const result = await checkPipeline({ root, product: flags.product, docs: flags.docs, change, issueJson: flags['issue-json'] });

@@ -81,6 +81,8 @@ const stateFiles = (root) => Object.fromEntries(fs.readdirSync(path.join(root, '
 
 test('a change run walks spec, spec-approved, plan, build, review, qa, release and accepted', async () => {
   const root = await accepted(CHANGE_RECORDS);
+  // First seen before the owner accepted it: an issue that already carries accepted cannot start a run.
+  assert.deepEqual((await change(root, issues({ [CHANGE]: ['spec-approved'] }))).waiting, { gate: 'accepted', spec: CHANGE });
   const r = await change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] }));
   assert.deepEqual(r.phases.map((p) => p.name), ['spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted']);
   assert.equal(r.pass, true, formatReport(r));
@@ -185,7 +187,7 @@ test('the product\'s frozen files change for a change only with an AMEND line in
   const r = await change(root, live);
   assert.equal(r.blocked, 'plan');
   const problems = problemsOf(r, 'plan').join('\n');
-  assert.match(problems, /app\/spec\.md changed after the plan phase froze it.*adds a line "AMEND: app\/spec\.md - <reason>" to docs\/changes\/30\/decisions\.md/);
+  assert.match(problems, /app\/spec\.md changed since the owner last accepted the product.*adds a line "AMEND: app\/spec\.md - <reason>" to docs\/changes\/30\/decisions\.md/);
   assert.match(problems, /app\/acceptance\/sub\.test\.js changed/);
   // The first run's decisions.md is the first run's record: an AMEND line there does not cover the change.
   fs.appendFileSync(path.join(root, 'docs/decisions.md'), 'AMEND: app/spec.md - subtraction\nAMEND: app/acceptance/sub.test.js - subtraction\n');
@@ -193,7 +195,8 @@ test('the product\'s frozen files change for a change only with an AMEND line in
   write(root, { [`${R}/decisions.md`]: '# Decisions for change #30\nAMEND: app/spec.md - subtraction (#30)\nAMEND: app/acceptance/sub.test.js - new acceptance test for #30\n' });
   assert.equal(statusOf(await change(root, live)).plan, 'done');
   write(root, { 'docs/ux.md': `# UX\n### J1. Add (SC1)\nUC1 the sum is shown, and the difference. ${LONG}` });
-  assert.match(problemsOf(await change(root, live), 'plan').join('\n'), /docs\/ux\.md changed after the plan phase froze it/);
+  assert.match(problemsOf(await change(root, live), 'plan').join('\n'), /docs\/ux\.md changed since the owner last accepted the product/);
+  assert.doesNotMatch(problemsOf(await change(root, live), 'plan').join('\n'), /plan phase froze it/);
 });
 
 // ---- layer verdicts on the change's issue, from a saved copy of it (gh offline) ----
@@ -277,18 +280,21 @@ test('a 4th redirect on the change issue stops the change run', async () => {
 test('the change\'s approvals are tied to the files they approved', async () => {
   const root = await accepted({ ...CHANGE_RECORDS, [`${R}/change.md`]: '# Change #30\n' });
   const o = owner(root);
-  o.label('afk', 'spec-approved', 'accepted');
-  assert.equal((await change(root, o.read)).pass, true);
-  write(root, { 'app/src/extra.js': 'module.exports = 3;\n' });
-  const product = await change(root, o.read);
-  assert.deepEqual(product.waiting, { gate: 'accepted', spec: CHANGE });
-  assert.match(problemsOf(product, 'accepted').join('\n'), /app\/src\/extra\.js changed after the owner approved it at accepted.*spec issue #30/);
-  o.say(PASS);
-  assert.equal((await change(root, o.read)).pass, true);
+  o.label('afk', 'spec-approved');
+  assert.deepEqual((await change(root, o.read)).waiting, { gate: 'accepted', spec: CHANGE });
   write(root, { [`${R}/change.md`]: '# Change #30, rewritten\n' });
   const spec = await change(root, o.read);
   assert.deepEqual(spec.waiting, { gate: 'spec-approved', spec: CHANGE });
-  assert.match(problemsOf(spec, 'spec-approved').join('\n'), /docs\/changes\/30\/change\.md changed after the owner approved it at spec-approved/);
+  assert.match(problemsOf(spec, 'spec-approved').join('\n'), /docs\/changes\/30\/change\.md changed after the owner approved it at spec-approved.*spec issue #30/);
+  o.say(PASS);
+  assert.deepEqual((await change(root, o.read)).waiting, { gate: 'accepted', spec: CHANGE });
+  o.label('afk', 'spec-approved', 'accepted');
+  assert.equal((await change(root, o.read)).pass, true);
+  // The final re-check of a finished change still passes while nothing changed.
+  assert.equal((await change(root, o.read)).pass, true);
+  // Changing the product after the owner accepted the change is new work, not this change.
+  write(root, { 'app/src/extra.js': 'module.exports = 3;\n' });
+  await assert.rejects(change(root, o.read), /change #30 is already accepted; open a new issue for new work/);
 });
 
 test('a change run leaves the first run\'s state untouched, so its approval is not voided and the next change can start', async () => {
@@ -322,6 +328,114 @@ test('a change run leaves the first run\'s state untouched, so its approval is n
 test('a first run is unaffected by change records in the docs directory', async () => {
   const root = await accepted({ ...CHANGE_RECORDS, [`${R}/change.md`]: '# Change\n', [`${R}/decisions.md`]: 'AMEND: app/spec.md - x\n' });
   assert.equal((await firstRun(root)).pass, true);
+});
+
+// ---- the freeze baseline is the product's last owner-accepted state, not what is on disk at the first check ----
+const recordsOf = (n) => ({
+  [`docs/changes/${n}/TASKS.md`]: tasksFrom(n),
+  [`docs/changes/${n}/reviews.md`]: `# Reviews of change #${n}\n${LONG}\nOpen: CRITICAL 0, HIGH 0\n`,
+  [`docs/changes/${n}/qa.md`]: `# QA of change #${n}\n${LONG}`,
+});
+const approvedOnly = (n) => issues({ [n]: ['spec-approved'] });
+// Walks change n to the owner's accepted: first seen with spec-approved only, then accepted.
+async function acceptChange(root, n) {
+  assert.deepEqual((await change(root, approvedOnly(n), { number: n })).waiting, { gate: 'accepted', spec: n }, `change #${n} reaches accepted`);
+  const r = await change(root, issues({ [n]: ['spec-approved', 'accepted'] }), { number: n });
+  assert.equal(r.pass, true, formatReport(r));
+}
+
+test('frozen files edited before the change\'s first check still need an AMEND line', async () => {
+  const root = await accepted(CHANGE_RECORDS);
+  // The agent's first turn rewrites the spec, guts a test and loosens the gate, then stops for the first time.
+  write(root, {
+    'app/spec.md': '# Spec\nAnything goes.\n',
+    'app/acceptance/add.test.js': 'test("adds", () => {});\n// gutted\n',
+    'app/verify.config.json': { ...CONFIG, holdout: { command: 'true' } },
+  });
+  const r = await change(root, approvedOnly(CHANGE));
+  assert.equal(r.blocked, 'plan');
+  const problems = problemsOf(r, 'plan').join('\n');
+  for (const f of ['app/spec.md', 'app/acceptance/add.test.js', 'app/verify.config.json']) assert.match(problems, new RegExp(`${f.replace(/[./]/g, '\\$&')} changed since the owner last accepted the product`));
+  assert.equal((await change(root, approvedOnly(CHANGE))).blocked, 'plan', 'still blocked: the first check did not adopt the edits');
+  write(root, { [`${R}/decisions.md`]: 'AMEND: app/spec.md - x\nAMEND: app/acceptance/add.test.js - x\nAMEND: app/verify.config.json - x\n' });
+  assert.equal(statusOf(await change(root, approvedOnly(CHANGE))).plan, 'done');
+});
+
+test('the next change starts from the last accepted change, so it does not re-explain that change\'s amended files', async () => {
+  const root = await accepted({ ...CHANGE_RECORDS, ...recordsOf(31), 'app/CHANGELOG.md': '# Changelog\n- #30\n- #31\n' });
+  write(root, { 'app/spec.md': '# Spec\nSubtraction.\n', [`${R}/decisions.md`]: 'AMEND: app/spec.md - subtraction (#30)\n' });
+  await acceptChange(root, CHANGE);
+  const next = await change(root, approvedOnly(31), { number: 31 });
+  assert.equal(statusOf(next).plan, 'done', formatReport(next));
+  // An edit after change #30 was accepted is still caught in change #31.
+  write(root, { 'app/spec.md': '# Spec\nSubtraction and more.\n' });
+  assert.match(problemsOf(await change(root, approvedOnly(31), { number: 31 }), 'plan').join('\n'), /app\/spec\.md changed since the owner last accepted the product.*docs\/changes\/31\/decisions\.md/);
+});
+
+test('an unaccepted change\'s edits do not become the baseline of another change', async () => {
+  const root = await accepted({ ...CHANGE_RECORDS, ...recordsOf(31), 'app/CHANGELOG.md': '# Changelog\n- #30\n- #31\n' });
+  write(root, { 'app/spec.md': '# Spec\nSubtraction.\n', [`${R}/decisions.md`]: 'AMEND: app/spec.md - subtraction (#30)\n' });
+  assert.deepEqual((await change(root, approvedOnly(CHANGE))).waiting, { gate: 'accepted', spec: CHANGE });
+  const other = await change(root, approvedOnly(31), { number: 31 });
+  assert.equal(other.blocked, 'plan');
+  assert.match(problemsOf(other, 'plan').join('\n'), /app\/spec\.md changed since the owner last accepted the product/);
+});
+
+// ---- a wrong or reused issue number cannot pass on old labels ----
+test('an issue that already carries accepted when the change is first seen cannot start a change run', async () => {
+  const root = await accepted(CHANGE_RECORDS);
+  await assert.rejects(change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] })), /change request #30: issue #30 already carries the label accepted.*open a new issue/);
+  assert.equal(fs.existsSync(path.join(root, '.harness/pipeline/app.change-30.gates.json')), false, 'nothing is recorded for a refused run');
+  const closed = async ({ spec }) => ({ issue: { number: spec, state: 'closed', labels: [] } });
+  await assert.rejects(change(root, closed), /change request #30: issue #30 is closed/);
+});
+
+test('an issue first seen with spec-approved only starts the change: the owner approved it before the run', async () => {
+  const root = await accepted();
+  const r = await change(root, approvedOnly(CHANGE));
+  assert.equal(statusOf(r)['spec-approved'], 'done');
+  assert.equal(r.blocked, 'plan');
+});
+
+test('an unreachable GitHub at the first check waits and records nothing, so accepted is still refused later', async () => {
+  const root = await accepted(CHANGE_RECORDS);
+  const offline = await change(root, async () => ({ unreachable: 'gh is not installed' }));
+  assert.deepEqual(offline.waiting, { gate: 'spec-approved', spec: CHANGE });
+  await assert.rejects(change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] })), /already carries the label accepted/);
+  // An unreadable issue is the run's to fix and records nothing either.
+  await change(root, async () => ({ error: 'HTTP 404' }));
+  await assert.rejects(change(root, issues({ [CHANGE]: ['accepted'] })), /already carries the label accepted/);
+});
+
+test('a change number reused after that change was accepted refuses new work instead of re-walking on old approvals', async () => {
+  const root = await accepted(CHANGE_RECORDS);
+  await acceptChange(root, CHANGE);
+  write(root, { 'app/src/math.js': 'module.exports = 9;\n' });
+  await assert.rejects(change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] })), /change #30 is already accepted; open a new issue for new work/);
+  // The refusal leaves the change's record as the owner accepted it: undoing the edit passes the re-check again.
+  write(root, { 'app/src/math.js': 'module.exports = 1;\n' });
+  assert.equal((await change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] }))).pass, true);
+});
+
+test('a change run refuses to start when the first run\'s frozen files are not on record', async () => {
+  const root = await accepted();
+  fs.rmSync(path.join(root, '.harness/pipeline/app.json'));
+  await assert.rejects(change(root, approvedOnly(CHANGE)), /the first run's frozen files are not on record \(\.harness\/pipeline\/app\.json\)/);
+});
+
+test('change numbers must be safe integers', async () => {
+  const root = await accepted();
+  await assert.rejects(change(root, approvedOnly(2 ** 53), { number: 2 ** 53 }), /--change needs an issue number/);
+});
+
+test('a first-run check after an accepted change does not stop the next change from starting', async () => {
+  const root = await accepted({ ...CHANGE_RECORDS, 'app/CHANGELOG.md': '# Changelog\n- #30\n' });
+  write(root, { 'app/src/math.js': 'module.exports = 7;\n' });
+  await acceptChange(root, CHANGE);
+  // The first run's own check sees the product changed since its accepted: that approval is void there.
+  assert.deepEqual((await firstRun(root)).waiting, { gate: 'accepted', spec: 19 });
+  // The owner has accepted the product since (at change #30), so a next change still starts.
+  assert.deepEqual((await change(root, issues({ 31: [] }), { number: 31 })).waiting, { gate: 'spec-approved', spec: 31 });
 });
 
 // ---- the CLI and the Stop hook ----
@@ -366,4 +480,7 @@ test('CLI: --change refuses a product whose first run is not accepted, and a bad
   assert.match(refused.stderr, /first run of app is not accepted yet/);
   assert.equal(cli(root, gh.bin, ['--change', 'abc']).status, 2);
   assert.match(cli(root, gh.bin, ['--change', '#30']).stderr, /--change needs an issue number/);
+  const huge = cli(root, gh.bin, ['--change', '9007199254740993']);
+  assert.equal(huge.status, 2);
+  assert.match(huge.stderr, /--change needs an issue number/);
 });
