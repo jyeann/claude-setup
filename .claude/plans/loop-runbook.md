@@ -61,7 +61,7 @@ Every halt gets one bounded diagnosis turn (`HARNESS-DIAGNOSIS.md`) before the r
 ## Finish (agent does)
 1. Run full tests + lint + type check; confirm coverage >= 80%.
 2. Push the ticket branches and write a summary in `.claude/plans/loop-log.md` (done, blocked, how to roll back).
-3. Open a PR from the last ticket branch to the default branch, with every `Closes #N` in its body. DO NOT merge. A human reviews and merges.
+3. Open a PR from the last ticket branch to the default branch as a **draft**, with every `Closes #N` in its body; CI runs only the fast checks on it. Mark it ready when the work is pushed, which starts the full gate (ADR-0004). DO NOT merge. A human reviews and merges.
 
 ## Rollback
 `git revert` the loop's commits, or delete the branch. Default branch is never touched. After a crash, `harness.js restore`.

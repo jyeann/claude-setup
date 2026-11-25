@@ -1,4 +1,5 @@
 'use strict';
+const { spawnSync } = require('node:child_process');
 // Server-side twin of the in-session read-only guard: which changed files must a PR not touch?
 const DEFAULT_PROTECTED = ['.claude/', '.github/', '.harness-protected', 'verify.config.json', 'acceptance/', 'spec.md'];
 
@@ -73,4 +74,25 @@ function changedProtected(files, list) {
   return files.map(normalise).filter((f) => list.some((entry) => matchesProtected(f, entry)));
 }
 
-module.exports = { DEFAULT_PROTECTED, ADAPTER_PROTECTED, adapterProtected, matchesProtected, parseProtectedList, changedProtected };
+// Every protected path as the BASE ref defines it: the defaults, the base's .harness-protected, and the adapter
+// configs its verify.config.json names. Read from the base so a PR cannot shrink its own protection.
+function baseProtectedList(base) {
+  const show = (file) => spawnSync('git', ['show', `${base}:${file}`], { encoding: 'utf8' });
+  const listed = show('.harness-protected');
+  const config = show('verify.config.json');
+  return [...new Set([
+    ...DEFAULT_PROTECTED,
+    ...(listed.status === 0 ? parseProtectedList(listed.stdout) : []),
+    ...(config.status === 0 ? adapterProtected(config.stdout) : []),
+  ])];
+}
+
+// The files changed between base and head, NUL-separated so non-ASCII names are not C-quoted ("caf\303\251"),
+// and without rename detection so a move out of a path still lists the old name.
+function changedFiles(base, head = 'HEAD') {
+  const diff = spawnSync('git', ['diff', '-z', '--name-only', '--no-renames', `${base}...${head}`], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (diff.status !== 0) throw new Error(`git diff against "${base}" failed: ${diff.stderr.trim()}`);
+  return diff.stdout.split('\0').filter(Boolean);
+}
+
+module.exports = { DEFAULT_PROTECTED, ADAPTER_PROTECTED, adapterProtected, matchesProtected, parseProtectedList, changedProtected, baseProtectedList, changedFiles };

@@ -6,13 +6,28 @@ request whose checks pass, and the checks themselves cannot be quietly weakened.
 
 | File | Purpose |
 |---|---|
-| `/.github/workflows/ci.yml` | CI for **this** repo: `harness-tests` (all tests, 90% coverage floor) and `secret-scan` (tree + PR history). |
-| `verify.yml` | Template for a project **built with** the harness: `verify` (strong verify), `protected-files`, `secret-scan`. Copy to `.github/workflows/`. |
+| `/.github/workflows/ci.yml` | CI for **this** repo. Fast checks: `harness-tests` (all tests, 90% coverage floor) and `secret-scan` (tree + PR history). Full gate: `gate-retro-board`, `gate-slug-react`, `eval-kit-selftest`. |
+| `verify.yml` | Template for a project **built with** the harness. Fast checks: `protected-files`, `secret-scan`. Full gate: `verify` (strong verify). Copy to `.github/workflows/`. |
 | `ruleset.json` | Branch ruleset for the default branch: PR required, required checks pinned to the Actions app, no force-push, no deletion. |
 | `protect.sh` | Creates or updates that ruleset with `gh`. Dry run unless `--apply`. |
 | `CODEOWNERS.example` | For teams: code-owner review of the gate paths. |
 | `../bin/check-protected.js` | Fails a PR that touches `.claude/`, `.github/`, `acceptance/`, `verify.config.json`, `spec.md` or `.harness-protected`. Extra paths come from `.harness-protected` **on the base branch** (a PR cannot shrink its own list), unioned with the defaults; matching is case-insensitive and safe for non-ASCII names. |
+| `../bin/docs-only.js` | Step inside each full-gate job: writes `docs_only=true` only when every file the PR changes is under `docs/` or ends in `.md` and none is a protected or `--keep` path. Anything else, or an error, runs the gate. |
 | `../bin/scan-secrets.js` | Scans git-tracked files, and with `--history <base>` every line a PR added (a secret added then removed is still leaked). Prints `file:line`, never the secret, and lists every `harness:allow-secret` exemption for the reviewer. |
+
+## When CI runs (ADR-0004, #105)
+Actions minutes are paid, so the full gate runs only where it decides a merge.
+
+| Event | Fast checks | Full gate |
+|---|---|---|
+| Draft PR | run | skipped |
+| Ready PR: opened, reopened, new push, marked ready | run | runs (steps skip on a docs-only change) |
+| Push to `main` after a merge | run | skipped: strict up-to-date checks mean the merged tree already passed |
+| `workflow_dispatch` | run | runs |
+
+- **Open PRs as drafts and mark them ready when the work is done** (`gh pr ready <n>`, or `update_pull_request` with `draft: false`). Push the finished work first: every push to a ready PR runs the full gate again.
+- Job names are unchanged, so existing rulesets keep matching. Keep `strict_required_status_checks_policy: true`: the skip after a merge relies on it.
+- **Rolling out to an existing project:** copy `verify.yml` over the project's `.github/workflows/verify.yml` again, together with the harness (`bin/docs-only.js`, `lib/docs-only.js`, `lib/protected.js`), in one PR. If the project changed its copy, keep its changes and add the `types:` line, `workflow_dispatch`, the `verify` job's `if:`, `fetch-depth: 0`, the docs-only step and the step conditions. Paths whose Markdown the gate reads go in `.harness-protected` or a `--keep` argument.
 
 ## Turn it on (order matters)
 1. Merge or push the workflow so each check runs at least once. A required check that never reports blocks every merge.

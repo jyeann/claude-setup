@@ -1,7 +1,12 @@
 name: ci
 
+# Fast checks (harness-tests, secret-scan) run on every event. The heavy jobs (gate-retro-board, gate-slug-react,
+# eval-kit-selftest) run only on a PR that is not a draft, and on workflow_dispatch; a docs-only PR skips their
+# steps. A push to main runs only the fast checks: strict up-to-date checks mean the merged tree already passed.
+# Rules and why each is safe: docs/adr/0004-full-gate-only-on-ready-prs.md (#105).
 on:
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -50,25 +55,37 @@ jobs:
 
   gate-retro-board:
     name: gate-retro-board
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Docs-only change? (the steps below skip only when every changed file is documentation)
+        id: scope
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node .claude/harness/bin/docs-only.js --base "origin/$BASE_REF" --keep testbench/
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         with:
           node-version: 22
       - name: Install Playwright and Chromium for the browser journeys
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: |
           npm install -g playwright@1.63.0
           playwright install --with-deps chromium
       - name: Full verify gate (tests, coverage, test quality, hidden holdout, browser journeys, mutation)
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         working-directory: testbench/retro-board
         run: CLAUDE_PROJECT_DIR="$PWD" NODE_PATH="$(npm root -g)" node ../../.claude/harness/bin/verify.js
 
   gate-slug-react:
     name: gate-slug-react
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -77,34 +94,57 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Docs-only change? (the steps below skip only when every changed file is documentation)
+        id: scope
+        if: ${{ github.event_name == 'pull_request' }}
+        working-directory: .
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node .claude/harness/bin/docs-only.js --base "origin/$BASE_REF" --keep testbench/
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         with:
           # jsdom 31 needs Node ^22.22.2, vitest 5 ^22.12.0: the latest 22.x satisfies both.
           node-version: 22
           cache: npm
           cache-dependency-path: .claude/harness/fixtures/slug-react/package-lock.json
       - name: Install the fixture's pinned devDependencies
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: npm ci
       - name: Install Chromium for the fixture's own Playwright
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: npx playwright install --with-deps chromium
       - name: Full verify gate with the vitest-stryker adapter (type check, tests, coverage, test quality, holdout, journey, mutation)
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: CLAUDE_PROJECT_DIR="$PWD" node ../../bin/verify.js
 
   eval-kit-selftest:
     name: eval-kit-selftest
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Docs-only change? (the steps below skip only when every changed file is documentation)
+        id: scope
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node .claude/harness/bin/docs-only.js --base "origin/$BASE_REF" --keep testbench/
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         with:
           node-version: 22
       - name: Install Playwright and Chromium for the browser seeds
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: |
           npm install -g playwright@1.63.0
           playwright install --with-deps chromium
       - name: Graders accept the golden artifacts and reject degraded ones
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: NODE_PATH="$(npm root -g)" node testbench/retro-board/tune/selftest.js
