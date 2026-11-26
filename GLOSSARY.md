@@ -88,6 +88,17 @@ _Avoid_: rerun, second run
 **Gate response**:
 The owner's first prompt after a run stopped at an owner gate (the pipeline reported `waiting`); not an intervention.
 
+**Stopped**:
+The owner's "stop" (or `harness: stop`): nothing is published, pushed or written to GitHub until the owner says "continue", whoever started the turn (#113).
+_Avoid_: paused, halted
+
+**Run-unattended**:
+The owner's "run without me" (or `harness: unattended`): the session does not end a turn to ask permission for a step inside the agreed work. Owner gates and owner-only decisions still end the turn, on an **Owner decision line** (#113).
+_Avoid_: autopilot, auto mode
+
+**Owner decision line**:
+A line starting `Owner decision:` in a closing message: the one way to end a turn with a question while run-unattended.
+
 **Intervention**:
 A human prompt mid-run that is not an answer to an owner gate; counted as a defect in the KPI.
 _Avoid_: interruption
