@@ -86,18 +86,33 @@ Wrong hidden tests failed the gate in two runs because their author never ran th
 
 When the gate reports a holdout failure while the visible tests pass, do not send it straight to the builder. The test author (not the builder, who must not see the holdout) first checks each failing hidden test against its cited line, fixes any that are wrong, logs that in `decisions.md`, and only then passes "N hidden tests still fail" to the builder.
 
-## Right-sizing
-
-Small fixes and single-file changes do not need phases 1-4: give the fix to `tdd-guide` under `/harness-build`. Run this skill for a new product or a feature with a user-facing surface. A change that touches a screen always runs 2 and 7.
-
 ## Change requests
 
-Once the owner has added `accepted` to the first run's spec issue, a change to the product is a **change run** on its own spec issue (spec #88). Write the change's spec issue in `<product-repo>`, then start the harness with `--change <N>` (the issue number) added to the first run's verify command:
+Once the owner has added `accepted` to the first run's spec issue, every request to change the product starts as one issue and is a **change run** on that issue (spec #88).
+
+### Size the request first
+
+An agent sizes each request before any other work, writes the size and the reason as a comment on the request's issue, and logs it as a line `Size: <size> - <reason>` in `<product-repo>/docs/product/<slug>/changes/<N>/decisions.md`. `pipeline.js` reads the last `Size:` line and stops at its `size` phase until there is one.
+
+| Size | When | Issue #N | Walk |
+|---|---|---|---|
+| **fix** | no new behaviour | the owner's own issue is the request | `size`, `plan`, `build`, `review`, `release`, gate `accepted` on #N |
+| **change** | new behaviour inside the approved product | the change's own spec issue | `size`, `spec`, gate `spec-approved`, `plan`, `build`, `review`, `qa`, `release`, gate `accepted` |
+| **new direction** | changes what the product is | the change's own spec issue | `size`, `discover`, `ux`, `design`, `spec` (full phases 1 to 4a), gate `spec-approved`, then as a change |
+
+- **fix:** no spec issue and no `spec-approved` gate. The issue is its one ticket, so there is no `TASKS.md`; the frozen files and their `AMEND:` lines hold as for a change. Give the fix to `tdd-guide` under the build gate. The owner's `accepted` on the issue ends it. A redirect at `accepted` on any layer goes back to `build`.
+- **Re-size up, never down.** An agent that finds a fix needs new behaviour stops, adds `Size: change - <why>` to the change's `decisions.md`, says so on the issue, and writes the change spec: the run then waits at `spec-approved` on the same issue. A change that turns out to change what the product is becomes a new direction the same way; its approval at `spec-approved` is void until the owner judges the new spec. `pipeline.js` refuses a size smaller than one the request was already checked at, so sizing down cannot skip a gate.
+- **change:** its own spec issue and both gates, with the short spec phase (#91).
+- **new direction:** `brief.md`, `ux.md`, `design.md`, a `Look:` line and the `spec-approved-page.md` go in the change's records folder and are checked as in a first run; a redirect on problem, impression or approach goes back to its `discover`, `ux` or `design`.
+
+### Start the run
+
+Start the harness with `--change <N>` (the issue number) added to the first run's verify command:
 
 `node .claude/harness/bin/harness.js init --verify 'node .claude/harness/bin/pipeline.js check --product <product-repo> --docs <product-repo>/docs/product/<slug> --change <N>' --task "<the change, verbatim>" --open-gate-files --no-commit-gate --max 30 --stall 4`
 
-- The walk is `spec`, gate `spec-approved` on issue #N, `plan`, `build`, `review`, `qa`, `release`, gate `accepted` on issue #N. The gates, waiting, layer verdicts, redirects, the 3-round limit and approvals tied to files work as in a first run, on issue #N. A redirect on problem, impression or approach goes back to the change's `spec`; correctness or craft to `build`.
-- The change's records go in `<product-repo>/docs/product/<slug>/changes/<N>/`: `decisions.md` (its decisions and its `AMEND:` lines), `TASKS.md` (`tasks-sync pull --spec <N> --out <that folder>/TASKS.md`), `reviews.md` with the `Open: CRITICAL 0, HIGH 0` line, `qa.md`, and any other file there is the change's spec output, approved at `spec-approved` (write a redone spec there after a redirect). Release: the product README still has run steps and its `CHANGELOG.md` names `#N`.
+- The walk is the one for the request's size (above). The gates, waiting, layer verdicts, redirects, the 3-round limit and approvals tied to files work as in a first run, on issue #N. In a change, a redirect on problem, impression or approach goes back to the change's `spec`; correctness or craft to `build`.
+- The change's records go in `<product-repo>/docs/product/<slug>/changes/<N>/`: `decisions.md` (its `Size:` line, its decisions and its `AMEND:` lines), `TASKS.md` for a change or new direction (`tasks-sync pull --spec <N> --out <that folder>/TASKS.md`), `reviews.md` with the `Open: CRITICAL 0, HIGH 0` line, `qa.md`, and any other file there is the change's spec output, approved at `spec-approved` (write a redone spec there after a redirect). Release: the product README still has run steps and its `CHANGELOG.md` names `#N`.
 - The product's frozen files (`spec.md`, `acceptance/`, `holdout/`, `ux.md`, `verify.config.json`, the adapter's tool configs) are compared with the product's last owner-accepted state (the latest accepted change, else the first run): every edit, also one made before the first check, needs an `AMEND: <path> - <reason>` line in the change's `decisions.md`, never in the first run's.
 - Use a new issue for each change. A run refuses an issue that already carries `accepted` or is closed when first seen, and refuses new work under a change that has passed `accepted`: after `accepted` an `AMEND:` line no longer explains a change to the product.
 - The first run's records and its state in `.harness/pipeline/` are only read, never written; the change keeps its own (`<slug>.change-<N>.*`). `pipeline.js` refuses to start a change run (exit 2) while the product has never been accepted, or when `<N>` is the first run's spec issue.
