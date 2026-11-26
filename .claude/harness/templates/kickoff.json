@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "prototype": false,
+  "choices": {
+    "gate_how": "word",
+    "gate1": "me",
+    "gate2": "me",
+    "merge": "agent_safe",
+    "absent": "absent",
+    "halt": "email",
+    "standards": "agent_show",
+    "design": "key",
+    "look": "me",
+    "staging": "yes",
+    "uat": "both",
+    "security": "agent"
+  },
+  "alsoSensitive": []
+}
