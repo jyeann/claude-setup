@@ -9,6 +9,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { install } = require('./install');
+const { PIPELINE_COMMAND } = require('./stop-loop');
 
 const LABELS = [
   { name: 'spec-approved', color: '0E8A16', description: 'Owner gate: spec approved. Applied by the owner only.' },
@@ -94,8 +95,11 @@ function harnessCurrent(src, targetDir, dry) {
   return walk('');
 }
 
-function harnessRow(src, targetDir, check) {
+function harnessRow(src, targetDir, check, self) {
   const row = { id: 'harness', title: 'Harness (guards, verify gate, rules, settings)' };
+  // Run from the product's own installed copy (harness.js init does this): that copy is the harness here.
+  // There is nothing to compare it with, so it is not updated; setup-repo.js from claude-setup updates it.
+  if (self) return { ...row, status: 'already there', detail: 'this installed copy is running the check' };
   const dry = install({ sourceClaudeDir: src, targetDir, dryRun: true });
   if (!dry.ok) return { ...row, status: 'needs you', detail: dry.message, link: HARNESS_DOCS, action: dry.message.includes('harness.js off') ? 'Finish the run or run `node .claude/harness/bin/harness.js off`, then re-run.' : 'Fix the problem above, then re-run.' };
   if (harnessCurrent(src, targetDir, dry)) return { ...row, status: 'already there' };
@@ -132,20 +136,39 @@ function pluginRow(plugin, src, targetDir, check) {
   return { ...row, status: 'done', detail: `enabled ${key} in .claude/settings.json; plugins load when a session starts, so open a new session here` };
 }
 
-function labelsRow(repo, github, check) {
+// A saved copy of the repository's labels (#118): a JSON array of names or of label objects with a `name`,
+// or an object holding such an array under `labels`. Read only while gh cannot reach GitHub.
+function readSavedLabels(file) {
+  let data;
+  try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (err) { return { ok: false, message: err.message }; }
+  const list = Array.isArray(data) ? data : data && data.labels;
+  if (!Array.isArray(list)) return { ok: false, message: 'expected a JSON array of labels' };
+  const names = list.map((l) => (typeof l === 'string' ? l : l && l.name)).filter((n) => typeof n === 'string');
+  return { ok: true, names };
+}
+
+function labelsRow(repo, github, check, labelsJson) {
   const row = { id: 'labels', title: 'Labels (owner gates, afk/hitl, triage, needs-fable)' };
   const names = LABELS.map((l) => l.name);
   if (!repo) return { ...row, status: 'needs you', detail: 'no GitHub repository found (no origin remote)', link: SETUP_DOCS, action: 'Re-run with --repo owner/name.' };
   const link = `https://github.com/${repo}/labels`;
-  const listed = github.listLabels(repo);
-  if (!listed.ok) {
-    return { ...row, status: 'needs you', detail: `GitHub not reachable: ${listed.message}`, link, action: `Create the labels ${names.join(', ')} there, or re-run where gh can reach GitHub.` };
+  let listed = github.listLabels(repo);
+  let note = '';
+  if (!listed.ok && labelsJson) {
+    const saved = readSavedLabels(labelsJson);
+    if (!saved.ok) return { ...row, status: 'needs you', detail: `GitHub not reachable (${listed.message}) and the saved copy ${labelsJson} could not be read: ${saved.message}`, link, action: 'Save the repository\'s labels as a JSON array to that file, or re-run where gh can reach GitHub.' };
+    note = ` (from the saved copy ${labelsJson}; gh could not reach GitHub: ${listed.message})`;
+    listed = { ok: true, names: saved.names };
   }
+  if (!listed.ok) {
+    return { ...row, status: 'needs you', detail: `GitHub not reachable: ${listed.message}`, link, action: `Create the labels ${names.join(', ')} there, or re-run where gh can reach GitHub, or pass --labels-json <file> with a saved copy of the repository's labels.` };
+  }
+  const fromSaved = note !== '';
   // GitHub label names are case-insensitive: an existing `Accepted` is the `accepted` label.
   const have = new Set(listed.names.map((n) => n.toLowerCase()));
   const missing = LABELS.filter((l) => !have.has(l.name.toLowerCase()));
-  if (missing.length === 0) return { ...row, status: 'already there', link };
-  if (check) return { ...row, status: 'missing', detail: `missing: ${missing.map((l) => l.name).join(', ')}`, link };
+  if (missing.length === 0) return { ...row, status: 'already there', link, fromSaved, ...(fromSaved ? { detail: note.slice(2, -1) } : {}) };
+  if (check) return { ...row, status: 'missing', detail: `missing: ${missing.map((l) => l.name).join(', ')}${note}`, link, fromSaved };
   const failed = missing.filter((l) => !github.createLabel(repo, l).ok);
   if (failed.length > 0) {
     return { ...row, status: 'needs you', detail: `could not create: ${failed.map((l) => l.name).join(', ')}`, link, action: `Create the labels ${failed.map((l) => l.name).join(', ')} there.` };
@@ -187,17 +210,28 @@ function environmentRow(targetDir, repo, environment, check) {
   return { ...row, status: 'done', detail: `recorded ${environment} in ${ENV_FILE}` };
 }
 
-function setupRepo({ sourceClaudeDir, targetDir, repo, github = ghClient(), environment, check = false }) {
+// claude-setup itself: its `jyeann` marketplace serves the product-team plugin from its own .claude folder.
+function isSetupSource(dir) {
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'), 'utf8'));
+    return m.name === MARKETPLACE && (m.plugins || []).some((p) => p && p.name === 'product-team' && path.resolve(dir, String(p.source)) === path.resolve(dir, '.claude'));
+  } catch { return false; }
+}
+
+function setupRepo({ sourceClaudeDir, targetDir, repo, github = ghClient(), environment, check = false, labelsJson }) {
   const src = path.resolve(sourceClaudeDir);
   const dir = path.resolve(targetDir);
   if (!exists(dir) || !fs.statSync(dir).isDirectory()) return { ok: false, message: `${dir} is not a directory`, rows: [] };
-  if (real(path.join(dir, '.claude')) === real(src)) return { ok: false, message: 'the target is this repository (claude-setup); name the product repository', rows: [] };
+  if (isSetupSource(dir)) return { ok: false, message: 'the target is this repository (claude-setup); name the product repository', rows: [] };
+  const self = real(path.join(dir, '.claude')) === real(src);
+  // A target whose .claude resolves into claude-setup (a symlink) would get claude-setup's files rewritten.
+  if (self && isSetupSource(path.dirname(real(src)))) return { ok: false, message: 'the target\'s .claude is this repository\'s (claude-setup); name the product repository', rows: [] };
   if (repo !== undefined && parseRepo(repo) !== repo) return { ok: false, message: `--repo must be owner/name, got "${repo}"`, rows: [] };
   const name = repo || repoFromGit(dir);
   const rows = [
-    harnessRow(src, dir, check),
+    harnessRow(src, dir, check, self),
     ...PLUGINS.map((p) => pluginRow(p, src, dir, check)),
-    labelsRow(name, github, check),
+    labelsRow(name, github, check, labelsJson),
     docsRow(src, dir, name, check),
     environmentRow(dir, name, environment, check),
   ];
@@ -221,4 +255,34 @@ function formatChecklist(res) {
   return lines.join('\n');
 }
 
-module.exports = { setupRepo, ghClient, parseRepo, formatChecklist, LABELS, GATE_LABELS, ENV_FILE };
+// A product run is one whose definition of done is the whole pipeline (orch-product-team): the same test the
+// Stop hook uses to recognise the pipeline's owner gates.
+const isProductRun = (verifyCommand) => PIPELINE_COMMAND.test(String(verifyCommand || ''));
+const OK = new Set(['done', 'already there']);
+
+// #118: harness.js init runs this before it writes anything. A product run starts only in a repository whose
+// setup checklist (check mode: nothing written, nothing created) is complete. A build-only run and the runs
+// in claude-setup itself are not checked.
+function productRunGate({ sourceClaudeDir, projectDir, verifyCommand, github = ghClient(), labelsJson }) {
+  const dir = path.resolve(projectDir);
+  if (!isProductRun(verifyCommand)) return { ok: true, checked: false, warnings: [] };
+  if (isSetupSource(dir)) return { ok: true, checked: false, warnings: [] };
+  const res = setupRepo({ sourceClaudeDir, targetDir: dir, github, labelsJson, check: true });
+  if (!res.ok) return { ok: false, checked: true, message: `cannot check the setup checklist: ${res.message}` };
+  const warnings = res.rows.filter((r) => r.fromSaved && OK.has(r.status)).map((r) => `${r.title}: ${r.detail}`);
+  if (res.complete) return { ok: true, checked: true, warnings, res };
+  const open = res.rows.filter((r) => !OK.has(r.status));
+  const lines = [`a product run needs a complete setup checklist in ${dir}; not complete:`];
+  for (const r of open) {
+    lines.push(`  - [${r.status}] ${r.title}${r.detail ? `: ${r.detail}` : ''}`);
+    if (r.status === 'needs you') {
+      if (r.link) lines.push(`      -> ${r.link}`);
+      lines.push(`      ${r.action}`);
+    } else lines.push('      Set up by the command below.');
+  }
+  const env = open.some((r) => r.id === 'environment') ? ' --environment <name>' : '';
+  lines.push(`Set the repository up: \`node .claude/harness/bin/setup-repo.js ${dir}${env}\` (or the repo-setup skill), relay every needs-you row to the owner, commit, then start the run again. Nothing was written.`);
+  return { ok: false, checked: true, message: lines.join('\n'), res };
+}
+
+module.exports = { setupRepo, productRunGate, isProductRun, isSetupSource, ghClient, parseRepo, formatChecklist, LABELS, GATE_LABELS, ENV_FILE };

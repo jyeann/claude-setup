@@ -1,15 +1,19 @@
 #!/usr/bin/env node
 'use strict';
 const fs = require('node:fs');
+const path = require('node:path');
 const { readState, writeState, buildState } = require('../lib/state');
 const { runVerify } = require('../lib/verify');
 const { tailOutput } = require('../lib/stop-loop');
 const { writeCheckpoint, restoreCheckpoint } = require('../lib/checkpoint');
 const { preflightForProject } = require('../lib/preflight');
+const { productRunGate } = require('../lib/repo-setup');
 
 const USAGE = `harness <command>
   init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--verify-timeout SECONDS] [--lint "<cmd>"] [--no-commit-gate]
-        [--no-checkpoint] [--checkpoint-push] [--require-sandbox]\n        [--hide <paths>] [--no-diagnosis] [--open-gate-files]\n        [--max-minutes N] [--no-progress N]
+        [--no-checkpoint] [--checkpoint-push] [--require-sandbox]\n        [--hide <paths>] [--no-diagnosis] [--open-gate-files]\n        [--max-minutes N] [--no-progress N] [--labels-json <file>]
+        A product run (verify = pipeline.js check) starts only when setup-repo.js --check reports the checklist
+        complete; --labels-json is a saved copy of the repository's labels, read only when gh cannot reach GitHub.
   checkpoint    snapshot the worktree to refs/harness/wip/<branch> now (the Stop hook does this every iteration)
   restore       copy the latest checkpoint's files back into the worktree (fetches from origin if needed)
   status        show the current run
@@ -63,6 +67,10 @@ async function main([command, ...rest]) {
         lintCommand: f.lint,
         projectDir,
       });
+      // #118: refuse a product run, before anything is written, while the setup checklist is not complete.
+      const setup = productRunGate({ sourceClaudeDir: path.resolve(__dirname, '..', '..'), projectDir, verifyCommand: state.verifyCommand, labelsJson: f['labels-json'] });
+      if (!setup.ok) throw new Error(setup.message);
+      setup.warnings.forEach((w) => console.error(`[harness] WARNING: ${w}`));
       const { warnings, errors } = preflightForProject(projectDir, { requireSandbox: Boolean(f['require-sandbox']) });
       warnings.forEach((w) => console.error(`[harness] WARNING: ${w}`));
       if (errors.length > 0) throw new Error(errors.join(' '));

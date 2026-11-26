@@ -41,6 +41,10 @@ _Avoid_: project repo, app repo
 The rows `setup-repo.js` prints for a product repository (harness, the two plugins, labels, repository docs, cloud environment), each `done`, `already there` or `needs you` with a link and one action; complete when no row needs the owner.
 _Avoid_: onboarding, bootstrap
 
+**Product run**:
+A harness run whose verify command is `pipeline.js check` (a first run or a change run of `orch-product-team`); `harness.js init` starts one only when the product repository's setup checklist is complete. A run with `verify.js` as its command is a build-only run.
+_Avoid_: pipeline run (for the start check)
+
 ## Approvals
 
 **Owner**:
@@ -173,11 +177,23 @@ _Avoid_: page author, writer session
 _Avoid_: page list, artifact log
 
 **Current-direction file**:
-`docs/design/<product>/direction.md`: the chosen look, the tool, the characters, the reference images, and a dated log of changes. When the owner changes direction, this file changes first. Briefs link it and never copy it.
+`docs/design/<product>/direction.md`: the chosen look, the tool, the characters, the reference images, the quality check for each asset kind, and a dated log of changes. When the owner changes direction, this file changes first. Briefs link it and never copy it.
 _Avoid_: design notes, style guide, mood board
 
+**Check record**:
+`docs/design/<product>/checks.json`: for each asset kind, the last run of its quality check (command, exit code, pass count, time, a one-line result and a hash of every file the asset covers). `design-check.js run` writes it from the current-direction file's `Checks` section (#111).
+_Avoid_: test log, benchmark notes
+
+**Check line**:
+An asset's one-line result in the check record, such as `animations: pass - 56/56 passed, exit 0, <time>, <command>`. An asset is called done only by quoting its passing check line; with no line, a failing line or a stale one, it is not done.
+_Avoid_: done message, sign-off
+
+**Stale check**:
+A check record whose asset files were changed, added or removed (or whose command changed) after it ran. It no longer counts until the check is run again. When the session has uncommitted changes to that asset, the design Stop hook tells it to run the check before ending the turn.
+_Avoid_: old result, outdated benchmark
+
 **Design brief**:
-A hand-off to another session or agent, made from `templates/design-brief.md`. It has five sections: Task, Direction (a link to the current-direction file), Page and owner, Hand back, Done means. `design-check.js --brief` checks it.
+A hand-off to another session or agent, made from `templates/design-brief.md`. It has five sections: Task, Direction (a link to the current-direction file), Page and owner, Hand back, Done means (which asks for each asset's check line). `design-check.js --brief` checks it.
 _Avoid_: prompt, handover note
 
 **Hand back**:
