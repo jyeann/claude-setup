@@ -41,6 +41,9 @@ Blender only.
 ## Reference images
 - docs/design/gachi/references/variation-b.png
 
+## Checks
+- animations: \`node tools/bench.js\` files: docs/design/gachi/animations/**
+
 ## Changed
 - 2026-11-25: owner moved from 3D render to flat pastel.
 `;
@@ -60,7 +63,7 @@ Page ${PAGE} is owned by session sess-owner. Do not publish to it.
 Send the finished files to the owning session; it publishes.
 
 ## Done means
-The loop plays at 24 fps with no pop at the seam.
+The loop plays at 24 fps with no pop at the seam; report it done only with its line from checks.json.
 `;
 
 // --- direction file ---
