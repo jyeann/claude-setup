@@ -159,6 +159,14 @@ _Avoid_: plugin, driver
 The list of adapters in `.claude/harness/adapters/catalogue.json`, each with the stacks and product kinds it fits, the gate checks it provides and leaves out, and its status: `proven` (fixture green in CI and a product built), `experimental` (fixture green only) or `planned` (no adapter yet). The stack of each product is chosen from it at kickoff.
 _Avoid_: stack list, support matrix
 
+**Build standard**:
+One checkable line of what a product of a given kind must have, in the standards catalogue: what must be true, how it is tested, why, and a source (OWASP ASVS, an OWASP cheat sheet, WCAG, a file in this repository or an owner issue). Standards in scope become tested requirements; the rest are listed under "not building" (spec #127).
+_Avoid_: requirement (that is the product's own), rule, best practice
+
+**Standards catalogue**:
+The build standards in `.claude/harness/standards/`, one file per layer: every product, then per capability (for example accounts and sign-in), product kind, domain and implementation. A topic a layer should cover but has no source for is listed as a **gap**. Checked by `check-standards.js`.
+_Avoid_: checklist (outside owner-facing text), standards list
+
 **Report contract**:
 The standard reports the verify gate reads (JUnit XML for test results; lcov and the mutation-testing-elements JSON to follow) and the trust rules it applies to them: a non-zero exit fails, the gate owns a fresh report directory outside the project, only a report written during the run counts, and its totals must match the runner's own summary. Recorded in ADR-0003.
 _Avoid_: report format, output spec
