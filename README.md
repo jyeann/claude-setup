@@ -13,7 +13,7 @@ Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/READ
 |---|---|
 | `.claude/skills/orch-product-team/` | The nine-phase workflow: discover, UX, design, plan, build, review, QA, release, retro. |
 | `.claude/agents/` | The 15 agents the workflow calls (14 team roles plus `harness-optimizer`). |
-| `.claude/skills/` | 9 skills: the workflow, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference). |
+| `.claude/skills/` | 10 skills: the workflow, `repo-setup`, `harness-install`, and companions the agents use (API design, ADRs, TDD, e2e testing, security review, accessibility, engineering reference). |
 | `.claude/commands/` | `/harness-build` and `/harness-improve`. |
 | `.claude/rules/ecc-common/` | Five short always-loaded rules. |
 | `.claude/harness/` | Guard hooks, the verify gate (tests, type check, coverage, test quality, hidden holdout, browser journeys, mutation), the whole-pipeline stop gate, tracing and KPI roll-up. Dependency-free, with its own test suite. |
@@ -22,7 +22,7 @@ Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/READ
 
 ## Run the team
 Give a session an idea and tell it to use `orch-product-team`. The product is built in its own repository (or a
-path you give), never in this one: the skill installs the harness there (see below), works inside that repository,
+path you give), never in this one: the skill sets that repository up there (see "New repository" below), works inside that repository,
 and keeps the run records in `<product-repo>/docs/product/<slug>/`. With no target named, it proposes a new
 repository named after the product and asks you once. It then starts the harness with the whole pipeline as the
 definition of done, so the Stop hook sends the agent back to the next unfinished phase instead of letting it stop
@@ -32,29 +32,24 @@ missing, the pipeline reports `waiting for owner` and the turn ends; add the lab
 at a gate counts as a gate response, not an intervention. This repo keeps only the process and its test bench
 (`testbench/retro-board/`).
 
-## Install in another project
-Claude Code 2.1.275 or later:
-```
-/plugin install product-team --marketplace jyeann/claude-setup
-```
-or from a shell: `claude plugin marketplace add jyeann/claude-setup && claude plugin install product-team@jyeann`.
-
-To share with a team, declare it in the project's `.claude/settings.json`:
-```json
-{
-  "extraKnownMarketplaces": { "jyeann": { "source": { "source": "github", "repo": "jyeann/claude-setup" } } },
-  "enabledPlugins": { "product-team@jyeann": true }
-}
-```
-
-The plugin does **not** activate the harness: a plugin cannot ship deny rules, sandbox settings, a status line or
-always-loaded rules, and the guards expect to live in the project. Add them with `/product-team:harness-install`, or:
+## New repository
+Each product lives in its own repository. Set one up with one command (or tell a session "set up this repo",
+which uses the `repo-setup` skill):
 ```bash
-node .claude/harness/bin/install.js /path/to/project --dry-run   # from a clone of this repo; drop --dry-run to write
+node .claude/harness/bin/setup-repo.js /path/to/product-repo [--repo owner/name] [--environment <name>]
 ```
-It copies `.claude/harness/` (without this repo's own test suite), `.claude/rules/` and `.claude/plans/`, merges hooks,
-permissions, sandbox and status line into the project's `.claude/settings.json` without removing anything already there,
-and adds `.harness/` to `.gitignore`. Re-run it to update.
+It prints one checklist, one row per step: the harness (guards, verify gate, rules, settings), the `product-team`
+and `mattpocock-skills` plugins (enabled in the project's `.claude/settings.json`), the labels (`spec-approved`,
+`accepted`, `afk`, `hitl`, `needs-triage`, `needs-info`, `wontfix`, `needs-fable`, created through `gh`), the
+repository docs (`docs/agents/`, `GLOSSARY.md`, `docs/adr/`) and the cloud environment. Each row is `done`,
+`already there`, or `needs you` with a link and the one thing to do. It never creates a cloud environment, a
+repository or a paid service, and never applies a gate label to an issue. Re-run it any time: it changes nothing
+that is already right and reports what was missing; `--check` only reports. Then commit what it wrote and open a
+new session in that repository, because plugins and hooks load only when a session starts.
+
+From a Claude Code session without a clone of this repo, install the plugin first
+(`/plugin install product-team --marketplace jyeann/claude-setup`) and run `/product-team:repo-setup`.
+The installer alone is still there for the harness only: `node .claude/harness/bin/install.js <dir> [--dry-run]`.
 
 ## Where the agents came from
 Twelve of the 15 agents and six of the skills are taken from **ECC (Everything Claude Code)** v2.2.3 (upstream commit

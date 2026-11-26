@@ -33,6 +33,14 @@ A ticket's `todo` / `doing` / `done` / `blocked` in the task list, computed from
 A local git branch for one ticket, named with a path segment `issue-<N>` or `issue-<N>-<slug>` (for example `claude/issue-22-derived-status`); it makes the ticket `doing` until a closing commit on the current branch, an open PR or the closed issue makes it `done`.
 _Avoid_: feature branch (for this meaning)
 
+**Product repository**:
+The repository one product lives in, never `claude-setup` itself.
+_Avoid_: project repo, app repo
+
+**Setup checklist**:
+The rows `setup-repo.js` prints for a product repository (harness, the two plugins, labels, repository docs, cloud environment), each `done`, `already there` or `needs you` with a link and one action; complete when no row needs the owner.
+_Avoid_: onboarding, bootstrap
+
 ## Approvals
 
 **Owner**:

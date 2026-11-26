@@ -11,6 +11,9 @@ The plugin gives a project the agents, commands and skills. It cannot give it th
 plugin cannot ship permission rules, sandbox settings, a status line or always-loaded rules, and the
 guards expect to live at `.claude/harness/` inside the project. This skill copies them in.
 
+For a new product repository, use `repo-setup` instead: it runs this installer and also enables the
+plugins, creates the labels and the repository docs, and prints one checklist.
+
 ## Steps
 
 1. Confirm the project root with the user if it is not the current directory.
