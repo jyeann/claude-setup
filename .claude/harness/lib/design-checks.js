@@ -31,6 +31,7 @@ function parseChecks(text, product) {
     if (!cmd) { problems.push(`Checks: "${line.slice(0, 60)}" needs the form "- <asset>: \`<command>\` files: <glob>" with the command in backticks`); continue; }
     const asset = m[1];
     if (list.some((c) => c.asset === asset)) { problems.push(`Checks: asset "${asset}" is named twice`); continue; }
+    if (cmd[2] && /[{}]/.test(cmd[2])) { problems.push(`Checks: "${asset}" uses braces in files:; list each glob separated by commas instead`); continue; }
     const files = cmd[2] ? cmd[2].split(',').map((g) => g.trim()).filter(Boolean) : [`${DESIGN}/${product}/**`];
     list.push({ asset, command: cmd[1].trim(), files });
   }
@@ -91,6 +92,7 @@ function walk(root, rel = '') {
 function projectFiles(root) {
   if (isGit(root)) {
     const listed = gitOut(root, ['ls-files', '-z', '-co', '--exclude-standard']);
+    if (listed === null) return walk(root);
     return listed.split('\0').filter((f) => f && fs.existsSync(path.join(root, f)));
   }
   return walk(root);
@@ -101,12 +103,15 @@ const isBookkeeping = (file) => {
   return parts.length === 4 && `${parts[0]}/${parts[1]}` === DESIGN && BOOKKEEPING.has(parts[3]);
 };
 
-// path -> sha1 of each file the asset's globs cover.
-function fingerprint(root, globs, files = projectFiles(root)) {
+// path -> sha1 of each file the asset's globs cover. `cache` shares hashes between assets in one pass.
+function fingerprint(root, globs, files = projectFiles(root), cache = new Map()) {
   const res = globs.map(globToRegExp);
   const out = {};
   for (const f of files.filter((x) => !isBookkeeping(x) && res.some((re) => re.test(x))).sort()) {
-    out[f] = crypto.createHash('sha1').update(fs.readFileSync(path.join(root, f))).digest('hex');
+    const abs = path.join(root, f);
+    if (!fs.existsSync(abs)) continue; // removed since the list was taken (e.g. by the check itself)
+    if (!cache.has(f)) cache.set(f, crypto.createHash('sha1').update(fs.readFileSync(abs)).digest('hex'));
+    out[f] = cache.get(f);
   }
   return out;
 }
@@ -120,21 +125,23 @@ function describeCount(count) {
   return count ? `${count.passed}/${count.total} passed` : 'no count printed';
 }
 
-function runOne(root, check, { now = () => new Date().toISOString(), timeoutS = DEFAULT_TIMEOUT_S, files } = {}) {
+// The file list is taken after the command, so files the check itself writes or removes are part of the record.
+function runOne(root, check, { now = () => new Date().toISOString(), timeoutS = DEFAULT_TIMEOUT_S } = {}) {
   const r = spawnSync('sh', ['-c', check.command], {
     cwd: root, encoding: 'utf8', timeout: timeoutS * 1000, maxBuffer: 64 * 1024 * 1024,
   });
   const output = `${r.stdout || ''}${r.stderr || ''}`;
   const count = countFrom(output);
   const exit = typeof r.status === 'number' ? r.status : null;
-  const ok = exit === 0 && (!count || count.passed === count.total);
+  // A check that ran nothing (0/0) proves nothing, so it is a fail.
+  const ok = exit === 0 && (!count || (count.total > 0 && count.passed === count.total));
   const at = now();
   const how = exit === null ? `stopped (${r.signal || r.error?.code || 'no exit code'})` : `exit ${exit}`;
   const line = `${check.asset}: ${ok ? 'pass' : 'fail'} - ${describeCount(count)}, ${how}, ${at}, \`${check.command}\``;
   return {
     record: {
       asset: check.asset, command: check.command, exit, passed: count ? count.passed : null, total: count ? count.total : null,
-      ok, at, line, files: fingerprint(root, check.files, files),
+      ok, at, line, files: fingerprint(root, check.files),
     },
     output,
   };
@@ -177,12 +184,13 @@ function writeRecords(root, product, fresh) {
 
 // One entry per asset kind: done (with its check line), or not done with why.
 // state: done | failing | missing | stale.
-function assetStatus(root, product, checkList, records, files = projectFiles(root)) {
+function assetStatus(root, product, checkList, records, files = projectFiles(root), cache = new Map()) {
+  const fingerprint_ = (globs) => fingerprint(root, globs, files, cache);
   return checkList.map((check) => {
     const rec = records.find((r) => r.asset === check.asset);
-    if (!rec) return { product, asset: check.asset, state: 'missing', why: 'no check record', files: Object.keys(fingerprint(root, check.files, files)) };
-    if (rec.command !== check.command) return { product, asset: check.asset, state: 'stale', why: `stale: the check command changed since ${rec.at}`, line: rec.line };
-    const changed = changedFiles(rec.files, fingerprint(root, check.files, files));
+    if (!rec) return { product, asset: check.asset, state: 'missing', why: 'no check record', files: Object.keys(fingerprint_(check.files)) };
+    if (rec.command !== check.command) return { product, asset: check.asset, state: 'stale', why: `stale: the check command changed since ${rec.at}`, line: rec.line, changed: [`${DESIGN}/${product}/direction.md`] };
+    const changed = changedFiles(rec.files, fingerprint_(check.files));
     if (changed.length) return { product, asset: check.asset, state: 'stale', why: `stale: changed since the check (${rec.at}): ${changed.join(', ')}`, line: rec.line, changed };
     if (!rec.ok) return { product, asset: check.asset, state: 'failing', why: `check failed: ${rec.line}`, line: rec.line };
     return { product, asset: check.asset, state: 'done', line: rec.line };
@@ -194,6 +202,7 @@ function statusAll(root, productDirs, { product } = {}) {
   const items = [];
   const problems = [];
   const files = productDirs.length ? projectFiles(root) : [];
+  const cache = new Map();
   for (const p of productDirs.filter((x) => !product || x === product)) {
     const dirFile = path.join(root, DESIGN, p, 'direction.md');
     if (!fs.existsSync(dirFile)) continue;
@@ -201,7 +210,7 @@ function statusAll(root, productDirs, { product } = {}) {
     problems.push(...parsed.problems.map((x) => `${DESIGN}/${p}/direction.md: ${x}`));
     const { records, error } = readRecords(root, p);
     if (error) { problems.push(error); continue; }
-    items.push(...assetStatus(root, p, parsed.checks, records, files));
+    items.push(...assetStatus(root, p, parsed.checks, records, files, cache));
   }
   return { items, problems };
 }
@@ -210,6 +219,7 @@ function statusAll(root, productDirs, { product } = {}) {
 function dirtyFiles(root) {
   if (!isGit(root)) return null;
   const out = gitOut(root, ['status', '--porcelain', '-z', '-uall']);
+  if (out === null) return null;
   const entries = out.split('\0').filter(Boolean);
   const files = new Set();
   for (let i = 0; i < entries.length; i++) {
@@ -220,14 +230,16 @@ function dirtyFiles(root) {
   return files;
 }
 
-// Stop hook: assets whose files changed after their last record, and unchecked assets being worked on now.
+// Stop hook: assets being worked on now (uncommitted changes to their files, or to direction.md for a changed
+// command) whose record is stale or missing. A stale record that arrived committed (a merge, a pull) does not hold
+// unrelated sessions; `status` still lists it as not done. Outside git every stale or missing asset counts.
 function staleForStop(root, productDirs) {
-  const { items } = statusAll(root, productDirs);
-  const stale = items.filter((i) => i.state === 'stale');
-  const missing = items.filter((i) => i.state === 'missing' && i.files.length);
-  if (!missing.length) return stale;
   const dirty = dirtyFiles(root);
-  return [...stale, ...missing.filter((i) => !dirty || i.files.some((f) => dirty.has(f)))];
+  if (dirty && dirty.size === 0) return []; // nothing being worked on: skip hashing entirely
+  const { items } = statusAll(root, productDirs);
+  const touched = (list) => !dirty || list.some((f) => dirty.has(f));
+  return items.filter((i) => (i.state === 'stale' && touched(i.changed || []))
+    || (i.state === 'missing' && i.files.length && touched(i.files)));
 }
 
 module.exports = {

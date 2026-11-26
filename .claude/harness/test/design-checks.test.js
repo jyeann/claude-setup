@@ -352,3 +352,41 @@ test('the skill states the done-only-with-a-check-line rule', () => {
   assert.match(skill, /checks\.json/);
   assert.match(skill, /not done/);
 });
+
+// --- review fixes ---
+
+test('a stale record holds only a session with uncommitted changes to that asset', () => {
+  const dir = project();
+  gitRepo(dir);
+  setup(dir);
+  runBin(dir, 'run');
+  write(dir, 'docs/design/gachi/animations/idle.json', '{"frames":30}');
+  commitAll(dir);
+  assert.equal(stopHook(dir).stdout, '', 'a stale record from a merge does not hold an unrelated session');
+  assert.match(runBin(dir, 'status').stdout, /not done: animations - stale/, 'status still says not done');
+  write(dir, 'docs/design/gachi/animations/idle.json', '{"frames":31}');
+  assert.match(JSON.parse(stopHook(dir).stdout).reason, /animations/);
+});
+
+test('a check that writes inside its own files is current right after run, and one that deletes a file does not crash', () => {
+  const dir = project();
+  write(dir, 'docs/design/gachi/direction.md', direction([
+    '- art: `mkdir -p docs/design/gachi/art && echo r > docs/design/gachi/art/report.txt` files: docs/design/gachi/art/**',
+    '- old: `rm docs/design/gachi/old/a.png` files: docs/design/gachi/old/**',
+  ].join('\n')));
+  write(dir, 'docs/design/gachi/old/a.png', 'x');
+  const r = runBin(dir, 'run');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(runBin(dir, 'status').status, 0);
+});
+
+test('brace globs are refused instead of silently matching nothing', () => {
+  assert.match(checks.parseChecks('- art: `true` files: **/*.{png,jpg}', 'g').problems[0], /braces/);
+});
+
+test('a check that ran no tests is a fail', () => {
+  const dir = project();
+  write(dir, 'docs/design/gachi/direction.md', direction("- art: `echo '# pass 0'; echo '# fail 0'`"));
+  assert.equal(runBin(dir, 'run').status, 1);
+  assert.match(read(dir, 'docs/design/gachi/checks.json'), /0\/0 passed/);
+});

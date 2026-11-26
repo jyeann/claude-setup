@@ -29,7 +29,6 @@ const directionOf = (product) => read(path.join(root, 'docs', 'design', product,
 function run() {
   if (only.product && !products.includes(only.product)) fail(`no product folder "${only.product}" under docs/design`);
   const timeoutS = Number(valuesOf('--timeout')[0]) || undefined;
-  const files = checks.projectFiles(root);
   const results = [];
   for (const product of products.filter((p) => !only.product || p === only.product)) {
     const text = directionOf(product);
@@ -40,7 +39,7 @@ function run() {
     const fresh = [];
     for (const check of list) {
       console.log(`design-check: running ${product}/${check.asset}: ${check.command}`);
-      const { record, output } = checks.runOne(root, check, { timeoutS, files });
+      const { record, output } = checks.runOne(root, check, { timeoutS });
       if (output.trim()) process.stdout.write(`${output.trimEnd()}\n`);
       fresh.push(record);
     }

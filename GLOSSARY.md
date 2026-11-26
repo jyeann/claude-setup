@@ -181,7 +181,7 @@ An asset's one-line result in the check record, such as `animations: pass - 56/5
 _Avoid_: done message, sign-off
 
 **Stale check**:
-A check record whose asset files were changed, added or removed (or whose command changed) after it ran. It no longer counts until the check is run again. The design Stop hook tells the session to run it before ending the turn.
+A check record whose asset files were changed, added or removed (or whose command changed) after it ran. It no longer counts until the check is run again. When the session has uncommitted changes to that asset, the design Stop hook tells it to run the check before ending the turn.
 _Avoid_: old result, outdated benchmark
 
 **Design brief**:

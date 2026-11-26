@@ -72,8 +72,13 @@ animations. So:
   `not done: <asset> - <why>`); paste it rather than paraphrasing.
 - **A change after the check makes it stale.** The record holds a hash of every file the asset covers. Editing,
   adding or removing one, or changing the command, makes the record stale until the check runs again. The
-  `stop-design.js` Stop hook holds the turn once when an asset is stale, or has no record while its files have
-  uncommitted changes, and tells the session to run the check first.
+  `stop-design.js` Stop hook holds the turn once when an asset with uncommitted changes is stale or has no record,
+  and tells the session to run the check first. A stale record that arrived committed (a merge or pull) does not
+  hold the turn, but `status` still lists the asset as not done.
+- **A check that ran nothing is a fail.** A printed count of 0/0 records a fail.
+- **Checks lines run as shell commands.** `run` executes what `direction.md` says, so treat its Checks section as
+  owner-approved content: do not `run` on a branch whose `direction.md` has not been reviewed. Write each glob in
+  `files:` separately (no `{a,b}` braces). The Stop hook never runs the commands.
 - **Briefs ask for it.** A brief's `Done means` asks the receiving session for each asset's check line;
   `design-check.js --brief` fails a brief whose `Done means` does not mention `checks.json`.
 
