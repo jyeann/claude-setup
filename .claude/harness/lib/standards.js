@@ -24,6 +24,8 @@ const ISSUE_REF = /^#\d+$/;
 const STANDARD_FIELDS = ['id', 'layer', 'topic', 'title', 'mustBeTrue', 'test', 'why', 'sources'];
 
 const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const list = (v) => (Array.isArray(v) ? v : []);
 
 // Problems with one source; repoRoot is where "repo" sources are looked up.
 function sourceProblems(src, repoRoot) {
@@ -41,9 +43,11 @@ function sourceProblems(src, repoRoot) {
       return ISSUE_REF.test(src.ref) ? [] : [`issue ref "${src.ref}" is not like #127 (an issue in this repository)`];
     default: {
       const file = path.join(repoRoot, src.ref);
-      if (path.isAbsolute(src.ref) || !file.startsWith(path.resolve(repoRoot) + path.sep) || !fs.existsSync(file)) return [`repository file "${src.ref}" does not exist`];
+      const isFile = () => { try { return fs.statSync(file).isFile(); } catch { return false; } };
+      if (path.isAbsolute(src.ref) || !file.startsWith(path.resolve(repoRoot) + path.sep) || !isFile()) return [`repository file "${src.ref}" does not exist`];
       if (src.section === undefined) return [];
-      const heading = new RegExp(`^#{1,6}\\s+${src.section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'm');
+      if (!nonEmpty(src.section)) return [`repository file "${src.ref}": section must be the text of a heading`];
+      const heading = new RegExp(`^#{1,6}\\s+${escapeRe(src.section)}\\s*$`, 'm');
       return heading.test(fs.readFileSync(file, 'utf8')) ? [] : [`repository file "${src.ref}" has no heading "${src.section}"`];
     }
   }
@@ -55,16 +59,22 @@ function validateLayer(doc, { repoRoot = REPO_ROOT, file = '<layer>' } = {}) {
   const at = (where, msg) => problems.push(`${file}: ${where}: ${msg}`);
   const layer = doc?.layer;
   if (!layer || typeof layer !== 'object') return [`${file}: has no "layer" block`];
-  if (!LAYER_ID.test(layer.id ?? '')) at('layer', `id "${layer.id}" is not lower-case words joined by "-"`);
+  if (typeof layer.id !== 'string') return [`${file}: layer: has no id`];
+  if (!LAYER_ID.test(layer.id)) at('layer', `id "${layer.id}" is not lower-case words joined by "-"`);
   if (!LAYER_KINDS.includes(layer.kind)) at('layer', `kind "${layer.kind}" is not one of ${LAYER_KINDS.join(', ')}`);
   for (const f of ['title', 'appliesWhen']) if (!nonEmpty(layer[f])) at('layer', `has no ${f}`);
-  const topics = Array.isArray(layer.topics) ? layer.topics : [];
+  const topics = list(layer.topics);
   if (topics.length === 0) at('layer', 'declares no topics');
-  if (!Array.isArray(doc.standards) || doc.standards.length === 0) at('layer', 'lists no standards');
+  for (const t of topics) if (typeof t !== 'string' || !LAYER_ID.test(t)) at('layer', `topic ${JSON.stringify(t)} is not lower-case words joined by "-"`);
+  if (new Set(topics).size !== topics.length) at('layer', 'declares a topic twice');
+  const standards = list(doc.standards);
+  if (doc.standards !== undefined && !Array.isArray(doc.standards)) at('layer', 'standards is not a list');
+  if (standards.length === 0) at('layer', 'lists no standards');
+  if (doc.gaps !== undefined && !Array.isArray(doc.gaps)) at('gaps', 'gaps is not a list');
 
-  const idPattern = new RegExp(`^${String(layer.id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.${SLUG}$`);
+  const idPattern = new RegExp(`^${escapeRe(layer.id)}\\.${SLUG}$`);
   const seen = new Set();
-  (Array.isArray(doc.standards) ? doc.standards : []).forEach((s, i) => {
+  standards.forEach((s, i) => {
     const where = nonEmpty(s?.id) ? s.id : `standard ${i + 1}`;
     const missing = STANDARD_FIELDS.filter((f) => s?.[f] === undefined || (typeof s[f] === 'string' && !nonEmpty(s[f])));
     if (missing.length) return at(where, `missing ${missing.join(', ')}`);
@@ -79,11 +89,11 @@ function validateLayer(doc, { repoRoot = REPO_ROOT, file = '<layer>' } = {}) {
     for (const src of s.sources) for (const p of sourceProblems(src, repoRoot)) at(where, p);
   });
 
-  for (const g of Array.isArray(doc.gaps) ? doc.gaps : []) {
+  for (const g of list(doc.gaps)) {
     if (!nonEmpty(g?.topic) || !nonEmpty(g?.reason)) at('gaps', 'each gap needs a topic and a reason');
   }
-  const used = new Set((doc.standards ?? []).map((s) => s?.topic));
-  const gapTopics = new Set((doc.gaps ?? []).map((g) => g?.topic));
+  const used = new Set(standards.map((s) => s?.topic));
+  const gapTopics = new Set(list(doc.gaps).map((g) => g?.topic));
   for (const t of topics) if (!used.has(t) && !gapTopics.has(t)) at('layer', `topic "${t}" has no standard and is not listed as a gap`);
   return problems;
 }
@@ -111,11 +121,11 @@ function validateCatalogue(entries, { repoRoot = REPO_ROOT } = {}) {
     if (error) { problems.push(error); continue; }
     problems.push(...validateLayer(doc, { repoRoot, file }));
     const id = doc?.layer?.id;
-    if (!id) continue;
+    if (typeof id !== 'string' || id === '') continue;
     if (file !== `${id}.json`) problems.push(`${file}: file name must be ${id}.json`);
     if (counts[id] !== undefined) problems.push(`${file}: layer ${id} is defined twice`);
-    counts[id] = Array.isArray(doc.standards) ? doc.standards.length : 0;
-    for (const s of doc.standards ?? []) {
+    counts[id] = list(doc.standards).length;
+    for (const s of list(doc.standards)) {
       if (!nonEmpty(s?.id)) continue;
       if (owner.has(s.id) && owner.get(s.id) !== file) problems.push(`${file}: ${s.id}: id is also used in ${owner.get(s.id)}`);
       owner.set(s.id, file);

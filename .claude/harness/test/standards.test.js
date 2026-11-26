@@ -85,6 +85,16 @@ test('every declared topic has a standard or is listed as a gap with a reason', 
   assert.match(problemsOf(two([{ topic: 'backups' }])).join('\n'), /each gap needs a topic and a reason/);
 });
 
+test('wrongly shaped JSON is reported, never a crash', () => {
+  assert.deepEqual(validateLayer({ layer: { id: 5 } }, { file: 'x.json' }), ['x.json: layer: has no id']);
+  assert.match(problemsOf({ ...layerDoc(), standards: { a: 1 } }).join('\n'), /standards is not a list/);
+  assert.match(problemsOf({ ...layerDoc(), gaps: 'x' }).join('\n'), /gaps: gaps is not a list/);
+  assert.match(problemsOf(layerDoc([null])).join('\n'), /standard 1: missing id/);
+  assert.match(problemsOf(layerDoc([standard({ topic: 1 })], { topics: [1] })).join('\n'), /topic 1 is not lower-case words/);
+  assert.match(problemsOf(layerDoc([standard()], { topics: ['login', 'login'] })).join('\n'), /declares a topic twice/);
+  assert.deepEqual(validateCatalogue([{ file: 'x.json', doc: { layer: { id: {} }, standards: {} } }]).counts, {});
+});
+
 // ---- sources the checker can verify
 
 test('source kinds are the five the checker can verify', () => {
@@ -122,6 +132,8 @@ test('a repository source must name a file that exists, and a heading in it when
   assert.match(sourceProblems({ kind: 'repo', ref: 'no/such/file.md' }, REPO_ROOT)[0], /repository file "no\/such\/file\.md" does not exist/);
   assert.match(sourceProblems({ kind: 'repo', ref: '../outside.md' }, REPO_ROOT)[0], /does not exist/);
   assert.match(sourceProblems({ kind: 'repo', ref: '/etc/passwd' }, REPO_ROOT)[0], /does not exist/);
+  assert.match(sourceProblems({ kind: 'repo', ref: '.claude', section: 'x' }, REPO_ROOT)[0], /repository file "\.claude" does not exist/);
+  assert.match(sourceProblems({ kind: 'repo', ref: skill, section: 5 }, REPO_ROOT)[0], /section must be the text of a heading/);
 });
 
 test('a bad source is reported against its standard', () => {
@@ -161,7 +173,7 @@ test('loadStandards reads every .json file in order and reports one that is not 
 // ---- the real catalogue
 
 const real = loadStandards();
-const byLayer = Object.fromEntries(real.map((e) => [e.doc.layer.id, e.doc]));
+const byLayer = Object.fromEntries(real.filter((e) => e.doc?.layer?.id).map((e) => [e.doc.layer.id, e.doc]));
 
 test('the real catalogue validates clean', () => {
   assert.equal(STANDARDS_DIR, path.join(__dirname, '..', 'standards'));

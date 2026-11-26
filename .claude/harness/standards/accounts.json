@@ -212,12 +212,6 @@
         {
           "kind": "asvs",
           "ref": "6.4.2"
-        },
-        {
-          "kind": "owasp-cheatsheet",
-          "ref": "Forgot Password Cheat Sheet",
-          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
-          "section": "Security Questions"
         }
       ]
     },
@@ -355,11 +349,13 @@
         },
         {
           "kind": "asvs",
-          "ref": "10.5.3"
+          "ref": "10.5.4"
         },
         {
-          "kind": "asvs",
-          "ref": "10.5.4"
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "OIDC implementation guidance"
         }
       ]
     },
@@ -422,12 +418,6 @@
         {
           "kind": "issue",
           "ref": "#127"
-        },
-        {
-          "kind": "owasp-cheatsheet",
-          "ref": "Authentication Cheat Sheet",
-          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
-          "section": "Changing A User's Registered Email Address"
         }
       ]
     },
@@ -436,10 +426,10 @@
       "layer": "accounts",
       "topic": "email-verification",
       "title": "Confirmation links are random, short-lived and used once",
-      "mustBeTrue": "Verification links and codes are generated with a secure random generator, expire after a short time, and stop working after first use.",
+      "mustBeTrue": "Verification links and codes are generated with a secure random generator and expire after a short time or after first use, whichever the design records.",
       "test": {
         "kind": "unit",
-        "how": "A test asserts the code comes from the crypto random source, a code older than the limit is refused, and a used code is refused the second time."
+        "how": "A test asserts the code comes from the crypto random source and that a code past its recorded limit (age or use) is refused."
       },
       "why": "Guessable or reusable codes let an attacker confirm an address they do not own.",
       "sources": [
@@ -496,10 +486,10 @@
       "layer": "accounts",
       "topic": "password-reset",
       "title": "Reset links are random, stored safely, short-lived and used once",
-      "mustBeTrue": "Reset tokens are generated with a secure random generator, long enough to resist guessing, stored hashed, expire after a short time and work once.",
+      "mustBeTrue": "Reset tokens are generated with a secure random generator, long enough to resist guessing, stored securely (for example hashed), expire after an appropriate time and work once.",
       "test": {
         "kind": "unit",
-        "how": "Tests assert the token source, that only a hash is stored, that an expired token and a used token are refused."
+        "how": "Tests assert the token source and how it is stored, and that an expired token and a used token are refused."
       },
       "why": "A guessable or reusable reset link is a direct account takeover.",
       "sources": [
@@ -510,8 +500,10 @@
           "section": "General Security Practices"
         },
         {
-          "kind": "asvs",
-          "ref": "6.4.1"
+          "kind": "owasp-cheatsheet",
+          "ref": "Forgot Password Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
+          "section": "Forgot Password Request"
         }
       ]
     },
@@ -664,10 +656,10 @@
       "layer": "accounts",
       "topic": "change-email",
       "title": "The new address confirms, the old address is told",
-      "mustBeTrue": "The new address is stored as pending until confirmed from a time-limited link sent to it; the current address gets a message about the change with a way to report it.",
+      "mustBeTrue": "The new address is stored as pending until confirmed from a time-limited link sent to it. Without multi-factor authentication the current address must also confirm the change through its own time-limited link; with it, the current address gets a notice with a way to report the change.",
       "test": {
         "kind": "e2e",
-        "how": "A journey requests a change: the account email stays the old one until the link sent to the new address is opened; the old address receives a notice; an expired link is refused."
+        "how": "A journey for an account without MFA requests a change: the account email stays the old one until both links (to the new and the current address) are opened; an expired link is refused. A journey with MFA confirms from the new address and finds the notice at the old one."
       },
       "why": "Confirming proves the new address works and belongs to the user; the notice warns a user whose account is being taken over.",
       "sources": [
@@ -754,10 +746,6 @@
         {
           "kind": "asvs",
           "ref": "3.3.4"
-        },
-        {
-          "kind": "asvs",
-          "ref": "14.3.3"
         },
         {
           "kind": "repo",

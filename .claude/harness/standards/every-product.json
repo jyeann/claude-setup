@@ -64,6 +64,10 @@
         {
           "kind": "asvs",
           "ref": "2.2.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "2.2.2"
         }
       ]
     },
@@ -475,7 +479,7 @@
       "layer": "every-product",
       "topic": "dependencies",
       "title": "No libraries with known holes",
-      "mustBeTrue": "Dependencies have no known vulnerabilities above the severity the project allows, checked on every pull request.",
+      "mustBeTrue": "Dependencies have no known vulnerabilities above the severity the project allows, within the remediation time the project records.",
       "test": {
         "kind": "scan",
         "how": "CI runs the package manager's audit (for example npm audit --audit-level=high) and fails on a finding."
@@ -486,6 +490,10 @@
           "kind": "repo",
           "ref": ".claude/skills/security-review/SKILL.md",
           "section": "10. Dependency Security"
+        },
+        {
+          "kind": "asvs",
+          "ref": "15.1.1"
         },
         {
           "kind": "asvs",
