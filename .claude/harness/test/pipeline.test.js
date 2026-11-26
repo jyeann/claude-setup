@@ -249,7 +249,8 @@ test('CLI: exit 1 with the next task when incomplete, exit 2 on bad usage', () =
   const run = (args) => spawnSync('node', [PIPELINE, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
   const incomplete = run(['check', '--product', '.', '--docs', 'docs']);
   assert.equal(incomplete.status, 1);
-  assert.match(incomplete.stdout, /\[1\/12\] discover: incomplete/);
+  assert.match(incomplete.stdout, /\[1\/14\] discover: incomplete/);
+  assert.match(incomplete.stdout, /\[3\/14\] look: pending/);
   assert.equal(run(['check']).status, 2);
   assert.equal(run(['check', '--nope', 'x']).status, 2);
 });

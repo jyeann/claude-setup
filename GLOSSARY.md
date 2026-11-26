@@ -48,15 +48,23 @@ _Avoid_: pipeline run (for the start check)
 ## Approvals
 
 **Owner**:
-The person who decides scope, spend, secrets, legal questions, and the two owner gates.
+The person who decides scope, spend, secrets, legal questions, and the owner gates.
 _Avoid_: user, admin
 
 **Owner gate**:
-A point where a run waits for the owner; there are exactly two, spec-approved and accepted.
+A point where a run waits for the owner; there are three, design-approved, spec-approved and accepted (two for a product with no designed screens, or a run started before design-approved existed).
 _Avoid_: human gate, checkpoint, approval step
 
+**Design-approved**:
+The owner gate on a spec issue where the owner approves the look and the key screens, rendered, before the system is designed. Its phase is the look phase; its page is the design-approved page.
+_Avoid_: design review, design sign-off
+
+**Look phase**:
+The phase between the experience phase and system design that renders look variations and the key screens with the chosen look onto the design-approved page, with the rendered files in `screens/`.
+_Avoid_: design phase (that is system design)
+
 **Spec-approved**:
-The owner gate on a spec issue, including the chosen look, passed before tickets and tests are written.
+The owner gate on a spec issue, passed before tickets and tests are written. It includes the chosen look only when the run has no design-approved gate; otherwise its page links the approved design.
 
 **Accepted**:
 The owner gate where the owner accepts the finished result against its spec issue.

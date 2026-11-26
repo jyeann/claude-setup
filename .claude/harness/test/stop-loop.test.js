@@ -233,6 +233,16 @@ test('after the owner adds the label, the next stop is judged as usual again', (
   assert.match(atAccepted.reason, /needs label accepted/);
 });
 
+test('the design gate waits like the other two (#149)', () => {
+  const line = 'waiting for owner: spec issue #19 needs label design-approved';
+  const first = decideStop(PIPELINE_RUN, waiting(line));
+  assert.equal(first.decision, 'block');
+  assert.match(first.reason, /owner gate "design-approved"/);
+  const second = decideStop(first.nextState, waiting(line));
+  assert.equal(second.decision, 'allow');
+  assert.deepEqual(second.waiting, { gate: 'design-approved', spec: 19 });
+});
+
 test('only the pipeline can report waiting: other commands, other exit codes or other lines still block', () => {
   for (const [state, result] of [
     [{ ...base, verifyCommand: 'node verify.js' }, waiting()],

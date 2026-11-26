@@ -171,7 +171,7 @@ test('a change run on a product set up by hand before this command existed is re
   const change = `${PIPELINE} --change 12`;
   const r = gate(dir, change, { github: fakeGithub(['spec-approved', 'accepted', 'afk', 'hitl']) });
   assert.equal(r.ok, false);
-  assert.match(r.message, /missing: needs-triage, needs-info, wontfix, needs-fable/);
+  assert.match(r.message, /missing: design-approved, needs-triage, needs-info, wontfix, needs-fable/);
   assert.match(r.message, /Cloud environment/);
   assert.match(r.message, /node \.claude\/harness\/bin\/setup-repo\.js .* --environment <name>/);
   assert.doesNotMatch(r.message, /\[missing\] Harness/);

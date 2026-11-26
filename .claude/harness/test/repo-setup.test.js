@@ -174,6 +174,8 @@ test('the gh client only reads and creates repository labels, never touches an i
     assert.ok(!c.some((a) => /issues/.test(a)), c.join(' '));
   }
   assert.ok(GATE_LABELS.every((g) => LABELS.some((l) => l.name === g)));
+  assert.deepEqual(GATE_LABELS, ['design-approved', 'spec-approved', 'accepted']);
+  assert.match(LABELS.find((l) => l.name === 'design-approved').description, /Owner gate.*owner only/);
 });
 
 test('the gh client reports a failure with its first stderr line', () => {

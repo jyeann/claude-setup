@@ -36,7 +36,7 @@ function trackProgress(state, failing) {
 // Owner gates (#24): pipeline.js exits 3 and ends its report with this line while a gate label is missing on
 // the spec issue. Only the pipeline can report it, so a test that prints the line cannot end a build early.
 const WAIT_EXIT = 3;
-const WAIT_LINE = /^waiting for owner: spec issue #(\d+) needs label (spec-approved|accepted)$/;
+const WAIT_LINE = /^waiting for owner: spec issue #(\d+) needs label (design-approved|spec-approved|accepted)$/;
 const PIPELINE_COMMAND = /(?:^|[\s/'"])pipeline\.js['"]?\s+check\b/;
 
 function ownerWait(state, result) {

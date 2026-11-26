@@ -28,8 +28,10 @@ building the adapter first as its own spec.>
 
 ## Screens
 
-<Links to the rendered screens or look variations, with one line each on what the screen is for.
-"No screens" for a product without a screen.>
+<When the run had the design gate: a link to design-approved-page.md, which the owner approved at
+design-approved, and one line saying so; do not ask about the look again. Otherwise: links to the rendered
+screens or look variations, with one line each on what the screen is for. "No screens" for a product without
+a screen.>
 
 ## Done means
 

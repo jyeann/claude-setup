@@ -131,8 +131,9 @@ function readKickoff(file) {
 // Whether a check enforces a choice's current value today, and which; `choices` is the whole resolved set,
 // because some checks hold only while another choice keeps the owner at a gate.
 const LABEL_GATE = 'pipeline.js waits for the label on the spec issue, and a harness guard stops agents adding it with gh';
+// design-approved (#149) is a third owner label; the same gap applies to it.
 // A known hole in an enforced choice: shown beside it until the ticket closes it.
-const LABEL_GAP = 'agents can still add the label through the GitHub MCP tools or curl; closing this is planned in #146';
+const LABEL_GAP = 'agents can still add the label (spec-approved, accepted or design-approved) through the GitHub MCP tools or curl; closing this is planned in #146';
 const TODAY = 'matches how a run works today, but no check holds it';
 const ENFORCEMENT = {
   gate_how: (v) => (v === 'label'
@@ -154,10 +155,14 @@ const ENFORCEMENT = {
     ? [false, `${TODAY}: a halted run shows in the session and nothing else is sent`]
     : [false, `a halted run does not yet send ${v === 'email' ? 'an email' : 'a phone notification'}; planned in #133`]),
   standards: () => [false, 'the build standards checklist does not exist yet; it is spec #127, and the run will read this choice in #134'],
-  design: () => [false, 'nothing checks which screens are designed yet; planned in #134'],
-  look: (v, c) => (v === 'me' && c.gate1 === 'me'
-    ? [true, 'pipeline.js needs a "Look:" line in decisions.md, and the owner approves the look with the spec at spec-approved', LABEL_GAP]
-    : [false, 'nothing yet lets an agent pick the look in the owner\'s place, or holds the owner\'s pick without the owner judging Gate 1; planned in #134']),
+  design: (v) => (v === 'none'
+    ? [true, 'pipeline.js leaves out the look phase and the design-approved gate for a run that starts with this choice (#149)']
+    : [false, 'pipeline.js holds the run at the design-approved gate until the owner approves the rendered screens (#149), but nothing checks which screens are designed; planned in #134']),
+  look: (v, c) => {
+    if (v === 'me' && c.design !== 'none') return [true, 'pipeline.js needs a "Look:" line and the rendered variations on the design-approved page, and the owner approves the look at design-approved (#149)', LABEL_GAP];
+    if (v === 'me' && c.gate1 === 'me') return [true, 'pipeline.js needs a "Look:" line in decisions.md, and the owner approves the look with the spec at spec-approved', LABEL_GAP];
+    return [false, 'nothing yet lets an agent pick the look in the owner\'s place, or holds the owner\'s pick without the owner judging a gate; planned in #134'];
+  },
   staging: (v) => (v === 'no'
     ? [false, `${TODAY}: there is no staging step`]
     : [false, 'nothing checks for a staging site yet; planned in #134']),
