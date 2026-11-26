@@ -227,26 +227,19 @@ function secretReadViolation({ argv, redirects }) {
     : null;
 }
 
-// The real path of `abs`, resolving symlinks in the part that exists (a file not written yet keeps its name).
-function realish(abs) {
-  let head = abs;
-  const rest = [];
-  while (!fs.existsSync(head) && path.dirname(head) !== head) {
-    rest.unshift(path.basename(head));
-    head = path.dirname(head);
-  }
-  try { return path.join(fs.realpathSync(head), ...rest); } catch { return abs; }
-}
-
-// A project-relative path is in the work folder only if it is there both as written and after resolving
-// symlinks, so a link inside the folder cannot reach the rest of .harness/ (or anything else).
+// A project-relative path is in the work folder only if no part of it from `.harness` down is a symlink: a link,
+// even one whose target does not exist yet, could point the write anywhere. Without a project dir, it never is.
 function inWorkDir(rel, projectDir) {
   const asDir = (p) => (p.endsWith('/') ? p : `${p}/`);
-  if (!asDir(rel).startsWith(WORK_DIR)) return false;
-  if (!projectDir) return true;
-  const root = fs.existsSync(projectDir) ? fs.realpathSync(projectDir) : projectDir;
-  const real = path.relative(root, realish(path.join(projectDir, rel))).split(path.sep).join('/');
-  return asDir(real).startsWith(WORK_DIR);
+  if (!projectDir || !asDir(rel).startsWith(WORK_DIR)) return false;
+  let at = projectDir;
+  for (const part of rel.split('/').filter(Boolean)) {
+    at = path.join(at, part);
+    let st;
+    try { st = fs.lstatSync(at); } catch { return true; } // the rest is not created yet
+    if (st.isSymbolicLink()) return false;
+  }
+  return true;
 }
 
 // Is a project-relative path guarded? `.harness/` is, except its work folder; protected paths always are.
@@ -263,15 +256,18 @@ function guardedMatcher(ctx, opts) {
   const guarded = [...HARNESS_PATHS, ...protectedPaths];
   const projectDir = ctx.projectDir ? trimSlash(ctx.projectDir) : null;
   const isGuarded = (arg) => {
-    let a = arg.replace(/^of=/, '');
-    if (a.startsWith('/')) {
-      if (!projectDir || !a.startsWith(`${projectDir}/`)) return false;
-      a = a.slice(projectDir.length + 1);
+    const raw = arg.replace(/^of=/, '');
+    const trailing = raw.endsWith('/') ? '/' : '';
+    if (!projectDir) {
+      if (raw.startsWith('/')) return false;
+      // No root to resolve against: guarded if either spelling hits, so normalising never lets a path through.
+      return [stripDot(raw), stripDot(path.posix.normalize(raw))].some((a) => guardedRel(a, protectedPaths, null, opts));
     }
-    // `.harness/work/../state.json` is `.harness/state.json`; a path that climbs out of the project is not guarded here.
-    a = stripDot(path.posix.normalize(a));
-    if (a === '.' || a === './' || a === '..' || a.startsWith('../')) return false;
-    return guardedRel(a, protectedPaths, projectDir, opts);
+    // Resolve against the project: `.harness/work/../state.json` and `../<project>/.claude/x` are what they point at.
+    const abs = path.posix.resolve(projectDir, raw);
+    if (abs !== projectDir && !abs.startsWith(`${projectDir}/`)) return false;
+    const a = path.posix.relative(projectDir, abs);
+    return a !== '' && guardedRel(`${a}${trailing}`, protectedPaths, projectDir, opts);
   };
   const mentions = (text) => guarded.some((p) => text.includes(GLOB(p) ? p.slice(0, p.indexOf('*')) : p));
   return { isGuarded, mentions };
@@ -342,6 +338,11 @@ function checkBash(command, ctx = {}) {
     const cdsIntoGuarded = commands.some((c) => ['cd', 'pushd'].includes(c.argv[0]) && c.argv[1] && strict.isGuarded(c.argv[1]));
     if (cdsIntoGuarded && commands.some(writesLike)) {
       return deny('Guardrail, state and acceptance files are read-only during a harness run.');
+    }
+    // A link made now is not resolved by the checks above (they run before it exists), and a hard link never is:
+    // no link may name a guarded path or the work folder during a run.
+    if (commands.some((c) => c.argv[0] === 'ln' && c.argv.slice(1).some((a) => !a.startsWith('-') && strict.isGuarded(a)))) {
+      return deny('Making links to or inside guarded paths (the work folder included) is blocked during a harness run.');
     }
     for (const c of commands) {
       const reason = activeViolation(c, matcher);

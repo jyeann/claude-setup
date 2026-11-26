@@ -47,7 +47,7 @@ test('helpers may write, move and delete inside the work folder during a run', (
     'echo hi > .harness/work/run-1/a.txt',
     'mkdir -p .harness/work/run-1 && cp notes.md .harness/work/run-1/',
     'mv .harness/work/run-1/page.html docs/design/gachi/page.html',
-    'rm -rf .harness/work/run-1',
+    'rm -r .harness/work/run-1',
   ]) assert.equal(checkBash(cmd, live(dir)).block, false, `should allow: ${cmd}`);
 });
 
@@ -87,6 +87,42 @@ test('a work folder that is itself a symlink out of .harness/ is not a work fold
   fs.symlinkSync('../acceptance', path.join(dir, '.harness/work'));
   assert.equal(write('.harness/work/spec.test.js', dir).block, true);
   assert.equal(checkBash('echo x > .harness/work/spec.test.js', live(dir)).block, true);
+});
+
+test('a path that climbs out of the project and back in stays guarded (review #120)', () => {
+  const dir = tmp();
+  const name = path.basename(dir);
+  for (const cmd of [
+    `echo x > .claude/../../${name}/.claude/settings.json`,
+    `echo x > .harness/work/../../../${name}/.harness/state.json`,
+    `cp a .harness/../../${name}/acceptance/`,
+    `echo x > ../${name}/.harness/state.json`,
+  ]) assert.equal(checkBash(cmd, live(dir)).block, true, `should block: ${cmd}`);
+  assert.equal(checkBash('echo x > ../elsewhere/file.txt', live(dir)).block, false);
+});
+
+test('a dangling symlink in the work folder cannot create a guarded file (review #120)', () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, '.harness/work'), { recursive: true });
+  fs.symlinkSync('../../.claude/settings.local.json', path.join(dir, '.harness/work/s'));
+  fs.symlinkSync('../../acceptance/new.test.js', path.join(dir, '.harness/work/t'));
+  for (const rel of ['.harness/work/s', '.harness/work/t']) {
+    assert.equal(write(rel, dir).block, true, `Write ${rel}`);
+    assert.equal(checkBash(`echo x > ${rel}`, live(dir)).block, true, `echo > ${rel}`);
+  }
+});
+
+test('links cannot be made into the work folder during a run (review #120)', () => {
+  const dir = tmp();
+  for (const cmd of [
+    'ln -s ../state.json .harness/work/l',
+    'ln .harness/state.json .harness/work/h',
+    'ln -s ../acceptance .harness/work',
+  ]) assert.equal(checkBash(cmd, live(dir)).block, true, `should block: ${cmd}`);
+});
+
+test('without a project dir the work folder is not writable', () => {
+  assert.equal(checkBash('echo x > .harness/work/a', { active: true, protectedPaths: [] }).block, true);
 });
 
 // --- the guidance names the platform hook, its three triggers and the work folder ---
