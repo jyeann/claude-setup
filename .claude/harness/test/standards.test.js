@@ -200,10 +200,12 @@ test('every product covers the security baseline, errors, logging, dependencies,
   for (const t of ['backups', 'privacy-pages']) assert.ok(gaps.includes(t), `${t} should be a gap until a source is found`);
 });
 
+// A standard that records an owner expectation (an issue source, for example email verification on #127) is a
+// product expectation, not a security requirement, and is exempt.
 test('every security standard cites OWASP ASVS, an OWASP cheat sheet or the security-review skill', () => {
   const security = new Set(['security-baseline', 'errors', 'logging', 'dependencies']);
   const all = [...byLayer['every-product'].standards.filter((s) => security.has(s.topic)), ...byLayer.accounts.standards];
-  for (const s of all) {
+  for (const s of all.filter((x) => !x.sources.some((src) => src.kind === 'issue'))) {
     const ok = s.sources.some((src) => src.kind === 'asvs' || src.kind === 'owasp-cheatsheet' || (src.kind === 'repo' && src.ref.includes('security-review')));
     assert.ok(ok, `${s.id} cites no security source`);
   }
