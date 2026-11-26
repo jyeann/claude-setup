@@ -82,6 +82,26 @@ animations. So:
 - **Briefs ask for it.** A brief's `Done means` asks the receiving session for each asset's check line;
   `design-check.js --brief` fails a brief whose `Done means` does not mention `checks.json`.
 
+## Helpers keep unfinished work out of git's view
+
+In the 2026-11-25 sessions one session posted the same checkpoint message as 17 of its 48 closing messages. The
+message is not from this repository: cloud sessions have a platform Stop hook, `~/.claude/stop-hook-git-check.sh`.
+It blocks every stop while the checkout has any of:
+
+- **tracked changes**, staged or not ("There are uncommitted changes in the repository...");
+- **untracked files** that are not gitignored (what `git ls-files --others --exclude-standard` lists);
+- **unpushed commits** on the current branch.
+
+It cannot be changed or turned off from here, and must not be (`security.md`). So do not trigger it:
+
+- **Helpers write unfinished work to `.harness/work/<run>/`** (or the session scratchpad), never straight into
+  the tree. `.harness/` is gitignored by the installer, and the run guards keep `.harness/work/` writable while the
+  rest of `.harness/` is read-only. Say in a brief's "Hand back" section where the drafts go.
+- **Move it in only when it is finished**, then commit and push in one step. Commit at each finished step, so a
+  stop finds little open work.
+- **Do not end a turn while your helpers are still running** (`agents.md`; a Stop-hook check for it is #86).
+
 ## Not covered here
 
-The platform's commit-loop stop message (#112), "run without me" and "stop" (#113), and the list of owner requests at the end (#114) are separate tickets under #109.
+"Run without me" and "stop" (#113), and the list of owner requests at the end (#114) are separate tickets
+under #109.

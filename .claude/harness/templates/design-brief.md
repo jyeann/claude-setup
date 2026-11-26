@@ -13,7 +13,7 @@ Read docs/design/<product>/direction.md before starting; it is the current direc
 <page url> is owned by session <owning session id>. Do not publish to it.
 
 ## Hand back
-<how the finished content reaches the owning session, e.g. files on branch X, then send_message to the owner>
+<how the finished content reaches the owning session, e.g. drafts in .harness/work/<run>/, finished files on branch X, then send_message to the owner>
 
 ## Done means
 <what the owner will see when this is done>

@@ -9,6 +9,9 @@ const deny = (reason) => ({ block: true, reason });
 
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 const HARNESS_PATHS = ['.claude/', '.harness/'];
+// Gitignored scratch space for helper agents' unfinished work (#112). It is the one writable part of .harness/
+// during a run, so work in progress stays out of git's view (and out of the cloud platform's commit-check Stop hook).
+const WORK_DIR = '.harness/work/';
 const ALLOW_SECRET_MARKER = 'harness:allow-secret';
 
 const WRITE_VERBS = new Set(['rm', 'mv', 'cp', 'chmod', 'chown', 'tee', 'truncate', 'ln', 'dd', 'install', 'patch', 'rsync', 'touch']);
@@ -224,20 +227,66 @@ function secretReadViolation({ argv, redirects }) {
     : null;
 }
 
-function guardedMatcher(ctx) {
-  const guarded = [...HARNESS_PATHS, ...(ctx.protectedPaths ?? []).map(stripDot)];
+// A project-relative path is in the work folder only if no part of it from `.harness` down is a symlink: a link,
+// even one whose target does not exist yet, could point the write anywhere. Without a project dir, it never is.
+function inWorkDir(rel, projectDir) {
+  const asDir = (p) => (p.endsWith('/') ? p : `${p}/`);
+  if (!projectDir || !asDir(rel).startsWith(WORK_DIR)) return false;
+  let at = projectDir;
+  for (const part of rel.split('/').filter(Boolean)) {
+    at = path.join(at, part);
+    let st;
+    try { st = fs.lstatSync(at); } catch { return true; } // the rest is not created yet
+    if (st.isSymbolicLink()) return false;
+  }
+  return true;
+}
+
+// Is a project-relative path guarded? `.harness/` is, except its work folder; protected paths always are.
+function guardedRel(rel, protectedPaths, projectDir, { workDirWritable = true } = {}) {
+  const asDir = rel.endsWith('/') ? rel : `${rel}/`;
+  const hits = (p) => hitsEntry(rel, p) || (!GLOB(p) && asDir.startsWith(p));
+  if (protectedPaths.some(hits)) return true;
+  if (!HARNESS_PATHS.some(hits)) return false;
+  return !(workDirWritable && inWorkDir(rel, projectDir));
+}
+
+function guardedMatcher(ctx, opts) {
+  const protectedPaths = (ctx.protectedPaths ?? []).map(stripDot);
+  const guarded = [...HARNESS_PATHS, ...protectedPaths];
   const projectDir = ctx.projectDir ? trimSlash(ctx.projectDir) : null;
   const isGuarded = (arg) => {
-    let a = stripDot(arg.replace(/^of=/, ''));
-    if (a.startsWith('/')) {
-      if (!projectDir || !a.startsWith(`${projectDir}/`)) return false;
-      a = a.slice(projectDir.length + 1);
+    const raw = arg.replace(/^of=/, '');
+    const trailing = raw.endsWith('/') ? '/' : '';
+    if (!projectDir) {
+      if (raw.startsWith('/')) return false;
+      // No root to resolve against: guarded if either spelling hits, so normalising never lets a path through.
+      return [stripDot(raw), stripDot(path.posix.normalize(raw))].some((a) => guardedRel(a, protectedPaths, null, opts));
     }
-    const asDir = a.endsWith('/') ? a : `${a}/`;
-    return guarded.some((p) => hitsEntry(a, p) || (!GLOB(p) && asDir.startsWith(p)));
+    // Resolve against the project: `.harness/work/../state.json` and `../<project>/.claude/x` are what they point at.
+    const abs = path.posix.resolve(projectDir, raw);
+    if (abs !== projectDir && !abs.startsWith(`${projectDir}/`)) return false;
+    const a = path.posix.relative(projectDir, abs);
+    return a !== '' && guardedRel(`${a}${trailing}`, protectedPaths, projectDir, opts);
   };
   const mentions = (text) => guarded.some((p) => text.includes(GLOB(p) ? p.slice(0, p.indexOf('*')) : p));
   return { isGuarded, mentions };
+}
+
+// `ln`, `link`, and `cp` in link mode (-l, -s, --link, --symbolic-link, bundled as in -al).
+function makesLink([cmd, ...args]) {
+  if (cmd === 'ln' || cmd === 'link') return true;
+  return cmd === 'cp' && args.some((a) => a === '--link' || a === '--symbolic-link' || /^-[a-zA-Z]*[ls]/.test(a));
+}
+
+// `rm -r .claude/../..` resolves to above the project; the raw-text check in rmViolation cannot see that.
+function recursiveRmAtOrAbove([cmd, ...args], projectDir) {
+  if (cmd !== 'rm' || !projectDir || !args.some((a) => a === '--recursive' || /^-[a-zA-Z]*[rR]/.test(a))) return false;
+  const root = trimSlash(projectDir);
+  return args.filter((a) => !a.startsWith('-')).some((a) => {
+    const abs = path.posix.resolve(root, a);
+    return abs === root || abs === '/' || root.startsWith(`${abs}/`);
+  });
 }
 
 function activeViolation({ argv, redirects }, matcher) {
@@ -300,9 +349,19 @@ function checkBash(command, ctx = {}) {
   if (ctx.active && hiddenViolation(command, ctx)) return deny(HIDDEN_MSG);
   if (ctx.active) {
     const matcher = guardedMatcher(ctx);
-    const cdsIntoGuarded = commands.some((c) => ['cd', 'pushd'].includes(c.argv[0]) && c.argv[1] && matcher.isGuarded(c.argv[1]));
+    // From inside the work folder `../state.json` is harness state, so cd counts the work folder as guarded too.
+    const strict = guardedMatcher(ctx, { workDirWritable: false });
+    const cdsIntoGuarded = commands.some((c) => ['cd', 'pushd'].includes(c.argv[0]) && c.argv[1] && strict.isGuarded(c.argv[1]));
     if (cdsIntoGuarded && commands.some(writesLike)) {
       return deny('Guardrail, state and acceptance files are read-only during a harness run.');
+    }
+    // A link made now is not resolved by the checks above (they run before it exists), and a hard link never is:
+    // no link may name a guarded path or the work folder during a run.
+    if (commands.some((c) => makesLink(c.argv) && c.argv.slice(1).some((a) => !a.startsWith('-') && strict.isGuarded(a)))) {
+      return deny('Making links to or inside guarded paths (the work folder included) is blocked during a harness run.');
+    }
+    if (commands.some((c) => recursiveRmAtOrAbove(c.argv, ctx.projectDir))) {
+      return deny('Recursively deleting the project folder or anything above it is blocked during a harness run.');
     }
     for (const c of commands) {
       const reason = activeViolation(c, matcher);
@@ -368,8 +427,8 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   const input = event.tool_input ?? {};
   const file = input.file_path ?? input.notebook_path ?? '';
   if (ctx.active && file) {
-    const guarded = [...HARNESS_PATHS, ...(ctx.protectedPaths ?? []).map(stripDot)];
-    const hit = candidateRelPaths(file, projectDir).some((rel) => guarded.some((p) => hitsEntry(rel, p)));
+    const protectedPaths = (ctx.protectedPaths ?? []).map(stripDot);
+    const hit = candidateRelPaths(file, projectDir).some((rel) => guardedRel(rel, protectedPaths, projectDir));
     if (hit) return deny(`${file} is protected during a harness run (guardrails, state and acceptance tests are read-only).`);
   }
   if (TEMPLATE_ENV.test(path.basename(file))) return ok;
@@ -377,4 +436,4 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;
 }
 
-module.exports = { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets, isSecretPath, impliesBulkStaging, secretPathsInStatus };
+module.exports = { WORK_DIR, checkBash, checkWrite, checkRead, isGitCommit, scanSecrets, isSecretPath, impliesBulkStaging, secretPathsInStatus };

@@ -22,7 +22,7 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | Secret scan | `hooks/pre-write.js` | Blocks writes containing high-confidence secrets. |
 | One writer per page | `hooks/pre-publish.js` + `hooks/post-publish.js` + `lib/design.js` | An Artifact publish to a page that `docs/design/<product>/pages.json` gives to another session is blocked. The first publish of an unregistered page records its session as owner. `bin/design-check.js` checks the current-direction file and design briefs. See the `design-sessions` skill. |
 | Checked before "done" | `bin/design-check.js run`/`status` + `hooks/stop-design.js` + `lib/design-checks.js` | `run` executes each asset kind's check from `direction.md`'s `## Checks` section and records exit code, pass count and file hashes in `docs/design/<product>/checks.json`; it fails when any check fails. `status` lists each asset as done (with its check line) or not done (no record, failed, stale). The Stop hook holds the turn once when design files with uncommitted changes are newer than their last record; it never runs the check commands. |
-| Self-protection | `lib/guards.js` | While a run is active, settings, harness files, `.harness/` and `--protect` paths are read-only, and the agent cannot run `harness off/init`. |
+| Self-protection | `lib/guards.js` | While a run is active, settings, harness files, `.harness/` and `--protect` paths are read-only, and the agent cannot run `harness off/init`. The one exception is the work folder `.harness/work/` (below). A path through a symlink inside it, dangling or not, stays guarded; shell paths are resolved against the project (`..` included); and `ln`, `link` and `cp -l`/`-s` may not name a guarded path or the work folder. |
 
 | Session trace | `hooks/post-tool.js` + `lib/trace.js` | Records every tool call (ok or failed), guard block and stop to `.harness/traces/<session>.jsonl`. Redacted, truncated summaries only; never blocks. |
 | Scorers | `lib/score.js` | `efficiency` (failed or repeated tool calls), `verified-before-done` (a passing check after the last code edit), `guardrail-attempts`. |
@@ -195,6 +195,25 @@ While a run is active, shell commands and `Read`/`Grep`/`Glob` calls that name t
 failing assertions come back in the verify output; that is the intended feedback channel. They resolve the project from the
 current directory (`path.resolve('src/...')`), so they also run against the mutation copy. See [`fixtures/sheet-engine/`](fixtures/sheet-engine/).
 Limits: this stops a good-faith agent from reading the suite, not a determined one, and every failure reveals one expected value.
+
+## The cloud commit-check Stop hook and the work folder (#112)
+The repeated "There are uncommitted changes in the repository. Please commit and push these changes to the remote
+branch." message does **not** come from this harness. Claude Code cloud containers have their own Stop hook,
+`~/.claude/stop-hook-git-check.sh`, registered in `~/.claude/launcher-settings.json` (which also denies edits to
+it). It blocks every stop (exit 2) when the checkout has any of:
+- **tracked changes**, staged or not;
+- **untracked files** that are not gitignored (`git ls-files --others --exclude-standard`);
+- **unpushed commits** on the current branch (and unsigned ones, where signing is on).
+
+It stays quiet only when the stop already comes from a stop hook. The harness cannot change or turn it off and does
+not try. Instead, helper agents keep unfinished work in **`.harness/work/<run>/`**: gitignored (the installer adds
+`.harness/`, and `test/work-folder.test.js` checks that git does not list the folder in an installed project), and
+writable during a run while the rest of `.harness/` stays read-only. Finished files move into the tree in one
+commit. The rule is in `agents.md` and the `design-sessions` skill. Not ending a turn while helpers still run is #86.
+Limits: symlinks are checked as they exist when the guard runs, so a link swapped in by a program the guard cannot
+see gets through (as anywhere else in the project), and a link's target is checked as written, relative to the project
+root, not to the link's own folder; `node -e` that mentions `.harness/` is still refused, so write
+there with the Write tool or plain shell commands.
 
 ## Test
 ```bash
