@@ -130,4 +130,4 @@ function decideStop(givenState, result, options = {}) {
   return { decision: 'block', reason, nextState };
 }
 
-module.exports = { decideStop, failureSignature, tailOutput };
+module.exports = { decideStop, failureSignature, tailOutput, PIPELINE_COMMAND };

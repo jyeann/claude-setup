@@ -41,6 +41,10 @@ _Avoid_: project repo, app repo
 The rows `setup-repo.js` prints for a product repository (harness, the two plugins, labels, repository docs, cloud environment), each `done`, `already there` or `needs you` with a link and one action; complete when no row needs the owner.
 _Avoid_: onboarding, bootstrap
 
+**Product run**:
+A harness run whose verify command is `pipeline.js check` (a first run or a change run of `orch-product-team`); `harness.js init` starts one only when the product repository's setup checklist is complete. A run with `verify.js` as its command is a build-only run.
+_Avoid_: pipeline run (for the start check)
+
 ## Approvals
 
 **Owner**:
