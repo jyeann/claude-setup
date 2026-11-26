@@ -1,0 +1,864 @@
+{
+  "_about": "Build standards, layer \"accounts and sign-in\" (#136, spec #127). Applies when users sign in. Format and checker: .claude/harness/lib/standards.js, bin/check-standards.js. ASVS refs are OWASP ASVS 5.0.0 requirement ids. Email verification, change email and change password are here because the owner expected them as standard in the first Gachi Market run and they arrived as change requests (#127).",
+  "layer": {
+    "id": "accounts",
+    "kind": "capability",
+    "title": "Accounts and sign-in",
+    "appliesWhen": "The product has user accounts: anyone signs up, signs in, or has data that belongs to them.",
+    "topics": [
+      "login",
+      "single-sign-on",
+      "email-verification",
+      "password-reset",
+      "change-email",
+      "change-password",
+      "session-expiry",
+      "rate-limits",
+      "security-baseline"
+    ]
+  },
+  "standards": [
+    {
+      "id": "accounts.password-length",
+      "layer": "accounts",
+      "topic": "login",
+      "title": "Passwords: at least 8 characters, up to at least 64",
+      "mustBeTrue": "A password must have at least 8 characters (15 recommended), passwords of at least 64 characters are accepted, and the password is checked exactly as typed (no truncation or case change).",
+      "test": {
+        "kind": "unit",
+        "how": "Sign-up and password change refuse a 7-character password, accept an 8- and a 64-character one, and a login with the 64-character password differing only in the last character or in case fails."
+      },
+      "why": "Length is what makes a password hard to guess; truncation silently weakens long passwords.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.2.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.2.9"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.2.8"
+        }
+      ]
+    },
+    {
+      "id": "accounts.no-composition-rules",
+      "layer": "accounts",
+      "topic": "login",
+      "title": "No \"must contain a symbol\" rules",
+      "mustBeTrue": "Passwords of any characters are accepted; there is no rule requiring upper case, digits or symbols, and no forced periodic change.",
+      "test": {
+        "kind": "unit",
+        "how": "A long password of only lower-case letters is accepted; no expiry date is stored on a password."
+      },
+      "why": "Composition rules and forced rotation push users to predictable patterns.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.2.5"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.2.10"
+        }
+      ]
+    },
+    {
+      "id": "accounts.common-passwords-refused",
+      "layer": "accounts",
+      "topic": "login",
+      "title": "Common and leaked passwords are refused",
+      "mustBeTrue": "Passwords chosen at sign-up or change are checked against at least the 3,000 most common passwords that meet the length rule, and against a set of breached passwords.",
+      "test": {
+        "kind": "unit",
+        "how": "Sign-up with a password from the common list is refused with a clear message; one not on the list is accepted."
+      },
+      "why": "Attackers try the common and leaked passwords first.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.2.4"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.2.12"
+        }
+      ]
+    },
+    {
+      "id": "accounts.password-managers-work",
+      "layer": "accounts",
+      "topic": "login",
+      "title": "Password managers and paste work",
+      "mustBeTrue": "Password fields are masked (with an optional show button), and pasting, browser password helpers and password managers work; signing in needs no puzzle or memory test.",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey pastes a password into the sign-in and sign-up forms and signs in; the fields have type=password and an autocomplete attribute."
+      },
+      "why": "Blocking paste pushes people to short passwords; cognitive tests exclude people with some disabilities.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.2.6"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.2.7"
+        },
+        {
+          "kind": "wcag",
+          "ref": "3.3.8"
+        }
+      ]
+    },
+    {
+      "id": "accounts.generic-login-failure",
+      "layer": "accounts",
+      "topic": "login",
+      "title": "A failed sign-in does not say which part was wrong",
+      "mustBeTrue": "A failed sign-in gives the same message, status code and timing whether the account exists or not.",
+      "test": {
+        "kind": "integration",
+        "how": "Sign-in with an unknown email and with a wrong password for a known email return the same body and status; their response times differ by less than a set margin over repeated tries."
+      },
+      "why": "Different answers let attackers find which emails have accounts.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.3.8"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Authentication Responses"
+        }
+      ]
+    },
+    {
+      "id": "accounts.new-session-on-sign-in",
+      "layer": "accounts",
+      "topic": "login",
+      "title": "Signing in starts a fresh session",
+      "mustBeTrue": "A new session token is issued at sign-in (and re-authentication) and the previous one stops working.",
+      "test": {
+        "kind": "integration",
+        "how": "A test captures the session cookie before sign-in, signs in, and asserts the cookie changed and the old value is refused."
+      },
+      "why": "Reusing the pre-login token lets an attacker who planted it ride the user's session (session fixation).",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.2.4"
+        }
+      ]
+    },
+    {
+      "id": "accounts.passwords-hashed",
+      "layer": "accounts",
+      "topic": "security-baseline",
+      "title": "Passwords are stored only as slow, salted hashes",
+      "mustBeTrue": "Passwords are stored with a password hashing function (Argon2id, scrypt, bcrypt or PBKDF2) with current recommended settings and a unique salt; never in plain text or with a fast hash.",
+      "test": {
+        "kind": "unit",
+        "how": "A test creates an account and asserts the stored value is a hash in the chosen algorithm's format with the configured cost, and differs for two accounts with the same password."
+      },
+      "why": "If the database leaks, fast or unsalted hashes are cracked in hours.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "11.4.2"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Password Storage Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html"
+        }
+      ]
+    },
+    {
+      "id": "accounts.no-default-accounts",
+      "layer": "accounts",
+      "topic": "security-baseline",
+      "title": "No built-in admin or test accounts",
+      "mustBeTrue": "No default accounts (such as admin, root or test) exist in a deployed product.",
+      "test": {
+        "kind": "integration",
+        "how": "A test against a fresh deployment asserts that signing in as each common default account name fails and that the seed data creates no such account."
+      },
+      "why": "Default accounts are the first thing attackers try.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.3.2"
+        }
+      ]
+    },
+    {
+      "id": "accounts.no-password-hints",
+      "layer": "accounts",
+      "topic": "security-baseline",
+      "title": "No password hints or secret questions",
+      "mustBeTrue": "There are no password hints and no \"secret questions\" for sign-in or recovery.",
+      "test": {
+        "kind": "review",
+        "how": "The review checks the sign-up, sign-in and recovery screens and the data model for hint or security-question fields."
+      },
+      "why": "Answers to secret questions are often public or guessable.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.4.2"
+        }
+      ]
+    },
+    {
+      "id": "accounts.auth-events-logged",
+      "layer": "accounts",
+      "topic": "security-baseline",
+      "title": "Every sign-in attempt is logged",
+      "mustBeTrue": "Every authentication attempt, successful or not, is logged with the method used, without the password.",
+      "test": {
+        "kind": "integration",
+        "how": "A successful and a failed sign-in each produce a log entry with user, outcome, method and time, and no password."
+      },
+      "why": "Sign-in logs show credential-stuffing attacks and support investigations.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "16.3.1"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Logging and Monitoring"
+        }
+      ]
+    },
+    {
+      "id": "accounts.same-strength-on-every-path",
+      "layer": "accounts",
+      "topic": "security-baseline",
+      "title": "Every way in is equally protected",
+      "mustBeTrue": "All ways to sign in (password, single sign-on, magic link, API key) are documented and enforce the same controls (rate limits, MFA where enabled, logging).",
+      "test": {
+        "kind": "review",
+        "how": "The design record lists every sign-in path with its controls; the review checks each one against the list."
+      },
+      "why": "An attacker uses the weakest way in.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.1.3"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.3.4"
+        }
+      ]
+    },
+    {
+      "id": "accounts.disabled-account-signed-out",
+      "layer": "accounts",
+      "topic": "security-baseline",
+      "title": "Disabling an account signs it out everywhere",
+      "mustBeTrue": "When an account is disabled or deleted, all its active sessions end immediately.",
+      "test": {
+        "kind": "integration",
+        "how": "A test signs in on two clients, disables the account, and asserts both sessions are refused on their next request."
+      },
+      "why": "A removed user must not keep access through a session that is still open.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.4.2"
+        }
+      ]
+    },
+    {
+      "id": "accounts.identity-is-issuer-and-subject",
+      "layer": "accounts",
+      "topic": "single-sign-on",
+      "title": "A sign-on identity is the provider plus its user id",
+      "mustBeTrue": "An external identity is stored and matched as the pair issuer (iss) and subject (sub), never by email or display name alone.",
+      "test": {
+        "kind": "unit",
+        "how": "Two ID tokens with the same sub from different issuers map to different accounts; a token with a matching email but a different iss/sub does not sign into an existing account."
+      },
+      "why": "Matching by email lets a user of another provider take over an account with the same email.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.8.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "10.5.2"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Secure Federated Account Linking"
+        }
+      ]
+    },
+    {
+      "id": "accounts.no-auto-link-by-email",
+      "layer": "accounts",
+      "topic": "single-sign-on",
+      "title": "Accounts are linked only by a signed-in user",
+      "mustBeTrue": "Linking or unlinking an external identity requires the user to be signed in to the existing account (and re-authenticated); accounts are never linked automatically because emails match.",
+      "test": {
+        "kind": "integration",
+        "how": "A first sign-on with an email that already has a password account creates no link and no session for that account; linking from the signed-in settings page works."
+      },
+      "why": "Automatic linking by email is a known account-takeover route.",
+      "sources": [
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Secure Federated Account Linking"
+        }
+      ]
+    },
+    {
+      "id": "accounts.id-token-validated",
+      "layer": "accounts",
+      "topic": "single-sign-on",
+      "title": "Sign-on tokens are fully checked",
+      "mustBeTrue": "The ID token's signature, issuer, audience (aud equals the client id), expiry and nonce are validated; an unsigned or wrongly signed token is refused.",
+      "test": {
+        "kind": "unit",
+        "how": "Tests feed tokens with a bad signature, no signature (alg none), a wrong aud, a wrong iss, an expired exp and a wrong nonce; each is refused."
+      },
+      "why": "An unchecked token lets anyone forge a sign-in.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.8.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "10.5.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "10.5.4"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "OIDC implementation guidance"
+        }
+      ]
+    },
+    {
+      "id": "accounts.flow-bound-to-browser",
+      "layer": "accounts",
+      "topic": "single-sign-on",
+      "title": "The sign-on flow cannot be started by another site",
+      "mustBeTrue": "The authorization code flow uses PKCE or a state value bound to the user's browser session, and the client accepts only responses to flows it started.",
+      "test": {
+        "kind": "integration",
+        "how": "A callback with a missing or foreign state or code verifier is refused and creates no session."
+      },
+      "why": "Without it, an attacker can sign a victim into the attacker's account (login CSRF).",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "10.1.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "10.2.1"
+        }
+      ]
+    },
+    {
+      "id": "accounts.sso-session-lifetimes",
+      "layer": "accounts",
+      "topic": "single-sign-on",
+      "title": "Sign-on session lifetimes are written down",
+      "mustBeTrue": "The design records how the product's session lifetime and sign-out relate to the identity provider's, and when the user must sign in again.",
+      "test": {
+        "kind": "review",
+        "how": "The design record has a section on session lifetime and sign-out with single sign-on; the review checks the code matches it."
+      },
+      "why": "Unclear lifetimes leave users signed in after they signed out at the provider.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.1.3"
+        },
+        {
+          "kind": "asvs",
+          "ref": "7.6.1"
+        }
+      ]
+    },
+    {
+      "id": "accounts.email-confirmed",
+      "layer": "accounts",
+      "topic": "email-verification",
+      "title": "A new account's email is confirmed",
+      "mustBeTrue": "A new account's email address is confirmed through a link or code sent to it before the product relies on it (for sign-in by email, password reset or notices).",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey signs up, asserts that the account is marked unverified and that features needing a confirmed email are blocked, opens the emailed link, and asserts the account is verified."
+      },
+      "why": "An unconfirmed address may belong to someone else; resets and notices would go to them. The owner expected this as standard (#127).",
+      "sources": [
+        {
+          "kind": "issue",
+          "ref": "#127"
+        }
+      ]
+    },
+    {
+      "id": "accounts.verification-code-random-expiring",
+      "layer": "accounts",
+      "topic": "email-verification",
+      "title": "Confirmation links are random, short-lived and used once",
+      "mustBeTrue": "Verification links and codes are generated with a secure random generator and expire after a short time or after first use, whichever the design records.",
+      "test": {
+        "kind": "unit",
+        "how": "A test asserts the code comes from the crypto random source and that a code past its recorded limit (age or use) is refused."
+      },
+      "why": "Guessable or reusable codes let an attacker confirm an address they do not own.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.4.1"
+        }
+      ]
+    },
+    {
+      "id": "accounts.resend-does-not-reveal-accounts",
+      "layer": "accounts",
+      "topic": "email-verification",
+      "title": "Asking for a new link does not reveal who has an account",
+      "mustBeTrue": "Sign-up and \"resend confirmation\" give the same answer whether or not the address already has an account.",
+      "test": {
+        "kind": "integration",
+        "how": "Resend for a registered and an unregistered address return the same body and status."
+      },
+      "why": "Different answers let attackers list which emails use the product.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.3.8"
+        }
+      ]
+    },
+    {
+      "id": "accounts.reset-same-answer",
+      "layer": "accounts",
+      "topic": "password-reset",
+      "title": "\"Forgot password\" does not reveal who has an account",
+      "mustBeTrue": "The forgot-password request returns the same message, in about the same time, for existing and unknown accounts, and changes nothing on the account until a valid token is used.",
+      "test": {
+        "kind": "integration",
+        "how": "Requests for a known and an unknown email return the same body and status; the known account is not locked or changed by the request."
+      },
+      "why": "A different answer lists the product's users; locking on request lets anyone lock others out.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.3.8"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Forgot Password Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
+          "section": "Forgot Password Request"
+        }
+      ]
+    },
+    {
+      "id": "accounts.reset-token-safe",
+      "layer": "accounts",
+      "topic": "password-reset",
+      "title": "Reset links are random, stored safely, short-lived and used once",
+      "mustBeTrue": "Reset tokens are generated with a secure random generator, long enough to resist guessing, stored securely (for example hashed), expire after an appropriate time and work once.",
+      "test": {
+        "kind": "unit",
+        "how": "Tests assert the token source and how it is stored, and that an expired token and a used token are refused."
+      },
+      "why": "A guessable or reusable reset link is a direct account takeover.",
+      "sources": [
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Forgot Password Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
+          "section": "General Security Practices"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Forgot Password Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
+          "section": "Forgot Password Request"
+        }
+      ]
+    },
+    {
+      "id": "accounts.reset-keeps-mfa",
+      "layer": "accounts",
+      "topic": "password-reset",
+      "title": "A reset never skips the second factor",
+      "mustBeTrue": "Resetting a forgotten password does not bypass multi-factor authentication where the user has it enabled.",
+      "test": {
+        "kind": "integration",
+        "how": "For an account with MFA, completing a reset still requires the second factor before a session is created."
+      },
+      "why": "Otherwise the reset flow is a way around MFA.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.4.3"
+        }
+      ]
+    },
+    {
+      "id": "accounts.reset-then-sign-in",
+      "layer": "accounts",
+      "topic": "password-reset",
+      "title": "After a reset the user signs in normally, and is told",
+      "mustBeTrue": "After a reset the user is not signed in automatically, receives an email saying the password was changed (without the password), and is offered to end all other sessions (or they end automatically).",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey completes a reset, asserts no session was created, finds the notice email, and asserts other sessions of the account were ended or the option was shown."
+      },
+      "why": "Automatic sign-in adds risk; the notice warns a user whose account was taken over; ending sessions removes an attacker who was signed in.",
+      "sources": [
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Forgot Password Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
+          "section": "User Resets Password"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.3.7"
+        },
+        {
+          "kind": "asvs",
+          "ref": "7.4.3"
+        }
+      ]
+    },
+    {
+      "id": "accounts.users-can-change-password",
+      "layer": "accounts",
+      "topic": "change-password",
+      "title": "Users can change their password",
+      "mustBeTrue": "A signed-in user can change their password, and must give the current password to do so.",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey changes the password with the right current password (new one works, old one fails) and is refused with a wrong current password."
+      },
+      "why": "An unattended signed-in browser must not be enough to take over the account.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.2.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.2.3"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Change Password Feature"
+        }
+      ]
+    },
+    {
+      "id": "accounts.change-password-ends-other-sessions",
+      "layer": "accounts",
+      "topic": "change-password",
+      "title": "After a password change other sessions can be ended",
+      "mustBeTrue": "After a password change the user is offered to sign out all other sessions, and is notified of the change.",
+      "test": {
+        "kind": "integration",
+        "how": "After a change with \"sign out other sessions\" chosen, a second session is refused; a notice is sent to the account email."
+      },
+      "why": "If the password was changed because it leaked, the attacker's session must end too.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.4.3"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.3.7"
+        }
+      ]
+    },
+    {
+      "id": "accounts.users-can-change-email",
+      "layer": "accounts",
+      "topic": "change-email",
+      "title": "Users can change their email address",
+      "mustBeTrue": "A signed-in user can change the email address on their account. The owner expected this as standard (#127).",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey changes the email, confirms it from the new address, and signs in with the new address."
+      },
+      "why": "People change email providers; without this they lose their account.",
+      "sources": [
+        {
+          "kind": "issue",
+          "ref": "#127"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Changing A User's Registered Email Address"
+        }
+      ]
+    },
+    {
+      "id": "accounts.change-email-reauthenticates",
+      "layer": "accounts",
+      "topic": "change-email",
+      "title": "Changing email asks for the password (or second factor) again",
+      "mustBeTrue": "Changing the email address requires full re-authentication: the current password, or the second factor when MFA is enabled.",
+      "test": {
+        "kind": "integration",
+        "how": "A change-email request without the current password (or MFA code) is refused and changes nothing."
+      },
+      "why": "The email address controls password reset; changing it is a takeover route.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.5.1"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Changing A User's Registered Email Address"
+        }
+      ]
+    },
+    {
+      "id": "accounts.change-email-confirmed-and-notified",
+      "layer": "accounts",
+      "topic": "change-email",
+      "title": "The new address confirms, the old address is told",
+      "mustBeTrue": "The new address is stored as pending until confirmed from a time-limited link sent to it. Without multi-factor authentication the current address must also confirm the change through its own time-limited link; with it, the current address gets a notice with a way to report the change.",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey for an account without MFA requests a change: the account email stays the old one until both links (to the new and the current address) are opened; an expired link is refused. A journey with MFA confirms from the new address and finds the notice at the old one."
+      },
+      "why": "Confirming proves the new address works and belongs to the user; the notice warns a user whose account is being taken over.",
+      "sources": [
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Changing A User's Registered Email Address"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.3.7"
+        }
+      ]
+    },
+    {
+      "id": "accounts.idle-and-absolute-timeout",
+      "layer": "accounts",
+      "topic": "session-expiry",
+      "title": "Sessions end after inactivity and after a maximum time",
+      "mustBeTrue": "A session ends after a set period of inactivity and after a set maximum lifetime, both written in the design with the reason for the values.",
+      "test": {
+        "kind": "integration",
+        "how": "With the clock moved past the idle limit, the next request is refused; with activity kept up but the clock past the absolute limit, it is refused too."
+      },
+      "why": "Sessions that never end turn a stolen cookie into permanent access.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.1.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "7.3.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "7.3.2"
+        }
+      ]
+    },
+    {
+      "id": "accounts.sign-out-ends-session",
+      "layer": "accounts",
+      "topic": "session-expiry",
+      "title": "Signing out really ends the session",
+      "mustBeTrue": "Sign-out is reachable from every signed-in page and invalidates the session on the server; the old token cannot be used again.",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey signs out from a page, then replays the old session cookie and is refused."
+      },
+      "why": "If sign-out only deletes the cookie in the browser, a copied token keeps working.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.4.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "7.4.4"
+        }
+      ]
+    },
+    {
+      "id": "accounts.session-cookie-flags",
+      "layer": "accounts",
+      "topic": "session-expiry",
+      "title": "The session cookie is locked down",
+      "mustBeTrue": "The session cookie has Secure, HttpOnly and a SameSite value suited to its use, uses the __Host- prefix (or __Secure-), and the token is never readable by page scripts or stored in localStorage.",
+      "test": {
+        "kind": "config",
+        "how": "A test signs in and asserts the Set-Cookie attributes and name prefix, and that no token is written to localStorage."
+      },
+      "why": "A script-readable or plain-HTTP session token is stolen by any XSS or network attacker.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "3.3.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "3.3.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "3.3.4"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "4. Authentication & Authorization"
+        }
+      ]
+    },
+    {
+      "id": "accounts.session-token-random",
+      "layer": "accounts",
+      "topic": "session-expiry",
+      "title": "Session tokens cannot be guessed",
+      "mustBeTrue": "Session tokens are generated by a secure random generator with at least 128 bits of entropy and verified only on the server.",
+      "test": {
+        "kind": "unit",
+        "how": "A test asserts the token generator uses the crypto random source with at least 16 random bytes, and that a token not issued by the server is refused."
+      },
+      "why": "Guessable tokens let an attacker take over sessions without a password.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.2.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "7.2.3"
+        }
+      ]
+    },
+    {
+      "id": "accounts.users-see-their-sessions",
+      "layer": "accounts",
+      "topic": "session-expiry",
+      "title": "Users can see and end their other sessions",
+      "mustBeTrue": "A user can list their active sessions and, after re-authenticating, end any or all of them.",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey signs in on two clients, lists sessions on one, ends the other after entering the password, and the other is refused."
+      },
+      "why": "A user who suspects a stolen session needs a way to end it.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "7.5.2"
+        }
+      ]
+    },
+    {
+      "id": "accounts.sign-in-throttled",
+      "layer": "accounts",
+      "topic": "rate-limits",
+      "title": "Repeated sign-in attempts are slowed down",
+      "mustBeTrue": "Failed sign-in attempts are limited per account and per source (delays, lockout or a challenge), as written in the design, without letting an attacker lock other users out indefinitely.",
+      "test": {
+        "kind": "integration",
+        "how": "After the configured number of failed attempts for one account the next attempt is delayed or refused; a correct password from the owner still has a documented way in (for example a reset)."
+      },
+      "why": "Without limits, passwords are guessed by brute force or credential stuffing.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "6.1.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.3.1"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "7. Rate Limiting"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Authentication Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html",
+          "section": "Login Throttling"
+        }
+      ]
+    },
+    {
+      "id": "accounts.account-endpoints-rate-limited",
+      "layer": "accounts",
+      "topic": "rate-limits",
+      "title": "Sign-up, reset and code requests are rate limited",
+      "mustBeTrue": "Sign-up, forgot-password, resend-confirmation and code-entry endpoints are rate limited per account and per source.",
+      "test": {
+        "kind": "integration",
+        "how": "Calling each endpoint past its limit returns 429 and sends no further email."
+      },
+      "why": "Unlimited requests flood users with email, cost money, and let codes be brute-forced.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "2.4.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "6.6.3"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "7. Rate Limiting"
+        },
+        {
+          "kind": "owasp-cheatsheet",
+          "ref": "Forgot Password Cheat Sheet",
+          "url": "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
+          "section": "Forgot Password Request"
+        }
+      ]
+    }
+  ]
+}

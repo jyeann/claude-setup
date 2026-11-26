@@ -1,0 +1,764 @@
+{
+  "_about": "Build standards, layer \"every product\" (#136, spec #127). Applies to every product a run builds. Format and checker: .claude/harness/lib/standards.js, bin/check-standards.js. ASVS refs are OWASP ASVS 5.0.0 requirement ids; WCAG refs are WCAG 2.2 success criteria. A topic with no source is listed under gaps, never invented.",
+  "layer": {
+    "id": "every-product",
+    "kind": "every-product",
+    "title": "Every product",
+    "appliesWhen": "Always: every product built by a run gets this layer.",
+    "topics": [
+      "security-baseline",
+      "errors",
+      "logging",
+      "dependencies",
+      "accessibility",
+      "tests",
+      "backups",
+      "privacy-pages"
+    ]
+  },
+  "standards": [
+    {
+      "id": "every-product.no-secrets-in-source",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "No secrets in the code",
+      "mustBeTrue": "API keys, passwords and tokens come from environment variables or a secret manager; none is in source files or in git history.",
+      "test": {
+        "kind": "scan",
+        "how": "A secret scan of tracked files and of the branch history finds nothing (for example .claude/harness/bin/scan-secrets.js in CI)."
+      },
+      "why": "A secret in the repository is readable by everyone who can read the code, forever, even after it is deleted.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "1. Secrets Management"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/rules/ecc-common/security.md"
+        },
+        {
+          "kind": "asvs",
+          "ref": "13.3.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.input-validated-on-server",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Every input is checked on the server",
+      "mustBeTrue": "Every request field is validated on the server against an allow list or an expected structure (type, length, range, format) before it is used.",
+      "test": {
+        "kind": "integration",
+        "how": "For each endpoint, a request with a wrong type, an over-long value and an out-of-range value is rejected with a 4xx response and nothing is stored."
+      },
+      "why": "Browser checks can be skipped by anyone; unchecked input is how most injection and data-corruption bugs start.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "2. Input Validation"
+        },
+        {
+          "kind": "asvs",
+          "ref": "2.2.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "2.2.2"
+        }
+      ]
+    },
+    {
+      "id": "every-product.parameterized-queries",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Database queries cannot be injected",
+      "mustBeTrue": "Database queries use parameters, an ORM or a query builder; user input is never joined into a query string.",
+      "test": {
+        "kind": "integration",
+        "how": "A search or lookup with an injection payload (for example a quote and OR 1=1) returns no extra rows and no error; a lint or grep finds no query built by string concatenation."
+      },
+      "why": "SQL injection lets an attacker read or change any data in the database.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "3. SQL Injection Prevention"
+        },
+        {
+          "kind": "asvs",
+          "ref": "1.2.4"
+        }
+      ]
+    },
+    {
+      "id": "every-product.output-encoded",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "User content is shown as text, never run",
+      "mustBeTrue": "Content that came from users is encoded for the place it is shown (HTML, attribute, URL, script), and user-supplied HTML is sanitized.",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey saves content containing a script tag and an event-handler attribute; the page shows it as text and no script runs."
+      },
+      "why": "Cross-site scripting runs an attacker's code in another user's browser, with that user's session.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "5. XSS Prevention"
+        },
+        {
+          "kind": "asvs",
+          "ref": "1.2.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.content-security-policy",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Pages send a Content Security Policy",
+      "mustBeTrue": "Every HTML response carries a Content-Security-Policy header that limits where scripts and objects load from (at least object-src 'none' and base-uri 'none') and sets frame-ancestors.",
+      "test": {
+        "kind": "config",
+        "how": "A test fetches each page type and asserts the header and its directives."
+      },
+      "why": "A policy stops most injected scripts from running even when an encoding mistake slips through, and stops the page being framed for clickjacking.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "5. XSS Prevention"
+        },
+        {
+          "kind": "asvs",
+          "ref": "3.4.3"
+        },
+        {
+          "kind": "asvs",
+          "ref": "3.4.6"
+        }
+      ]
+    },
+    {
+      "id": "every-product.https-only",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "HTTPS only, with HSTS",
+      "mustBeTrue": "All traffic between users and the product uses TLS with a publicly trusted certificate, with no fallback to plain HTTP; responses carry Strict-Transport-Security with a max-age of at least one year.",
+      "test": {
+        "kind": "config",
+        "how": "A test against the deployed staging site: plain HTTP redirects to HTTPS, and the HSTS header is present with max-age >= 31536000."
+      },
+      "why": "Without TLS anyone on the network path can read or change passwords, sessions and data.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "12.2.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "12.2.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "3.4.1"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "Pre-Deployment Security Checklist"
+        }
+      ]
+    },
+    {
+      "id": "every-product.nosniff-header",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Browsers may not guess content types",
+      "mustBeTrue": "Every response carries X-Content-Type-Options: nosniff and a Content-Type that matches its body, with a charset.",
+      "test": {
+        "kind": "config",
+        "how": "A test fetches a page, a JSON response and a static file and asserts both headers."
+      },
+      "why": "Content-type guessing lets an uploaded or returned file be run as a script.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "3.4.4"
+        },
+        {
+          "kind": "asvs",
+          "ref": "4.1.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.csrf-protection",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Other sites cannot act for a signed-in user",
+      "mustBeTrue": "Every state-changing request uses POST, PUT, PATCH or DELETE and is protected against cross-site request forgery (a token, a checked Origin header, or SameSite cookies plus a preflight-forcing content type).",
+      "test": {
+        "kind": "integration",
+        "how": "A state-changing request sent with a foreign Origin, or without the CSRF token, is rejected and changes nothing; a GET to the same route changes nothing."
+      },
+      "why": "Without it, any web page the user visits can submit actions in their name.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "6. CSRF Protection"
+        },
+        {
+          "kind": "asvs",
+          "ref": "3.5.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "3.5.3"
+        }
+      ]
+    },
+    {
+      "id": "every-product.cors-allowlist",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Cross-origin access only for listed sites",
+      "mustBeTrue": "Access-Control-Allow-Origin is a fixed value or checked against an allow list; a wildcard is only used for public data with no credentials.",
+      "test": {
+        "kind": "integration",
+        "how": "A request with an unlisted Origin gets no Access-Control-Allow-Origin for it; a listed one does."
+      },
+      "why": "An open CORS policy lets any site read a signed-in user's data through their browser.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "3.4.2"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "Pre-Deployment Security Checklist"
+        }
+      ]
+    },
+    {
+      "id": "every-product.authorization-on-server",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Users can reach only what they are allowed to",
+      "mustBeTrue": "Every function and every data item is checked against the caller's permissions on the server; nothing relies on hidden buttons or client-side checks.",
+      "test": {
+        "kind": "integration",
+        "how": "For each resource type, user A requesting user B's item by id gets 403 or 404 and no data; a non-admin calling an admin route is refused."
+      },
+      "why": "Broken access control (reading another user's data by changing an id) is the most common serious web flaw.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "4. Authentication & Authorization"
+        },
+        {
+          "kind": "asvs",
+          "ref": "8.2.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "8.2.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "8.3.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.no-sensitive-data-in-urls",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "No secrets in web addresses",
+      "mustBeTrue": "Session tokens, API keys and other sensitive values travel in headers or the request body, never in the URL or query string.",
+      "test": {
+        "kind": "integration",
+        "how": "A test walks the API routes and asserts that no route takes a token or key as a query parameter; logs of a journey contain no token in a URL."
+      },
+      "why": "URLs end up in browser history, server logs and the Referer header sent to other sites.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "14.2.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.production-hardened",
+      "layer": "every-product",
+      "topic": "security-baseline",
+      "title": "Nothing for developers is left on the live site",
+      "mustBeTrue": "In production, debug modes are off, the .git folder and other source-control metadata are not served, and test code, sample pages and developer tools are not deployed.",
+      "test": {
+        "kind": "config",
+        "how": "A test against staging asserts that /.git/HEAD and a debug route return 404 and that error pages show no debug output."
+      },
+      "why": "Debug output and source metadata hand attackers the code and the configuration.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "13.4.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "13.4.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "15.2.3"
+        }
+      ]
+    },
+    {
+      "id": "every-product.generic-error-messages",
+      "layer": "every-product",
+      "topic": "errors",
+      "title": "Errors tell users little, logs tell developers enough",
+      "mustBeTrue": "An unexpected error returns a generic message to the user (no stack trace, query, file path, secret or token); the detail goes to the server log.",
+      "test": {
+        "kind": "integration",
+        "how": "A forced server error returns a generic body with no stack trace or internal path, and the same error appears in the log with its detail."
+      },
+      "why": "Error details tell an attacker which software, queries and files to target.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "8. Sensitive Data Exposure"
+        },
+        {
+          "kind": "asvs",
+          "ref": "16.5.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.fail-closed",
+      "layer": "every-product",
+      "topic": "errors",
+      "title": "A failure never lets an action through",
+      "mustBeTrue": "When validation or a dependency fails, the action is refused; nothing is processed on the error path (fail closed).",
+      "test": {
+        "kind": "unit",
+        "how": "A test makes the validator or a downstream call throw and asserts that the action was not performed and no partial record was saved."
+      },
+      "why": "Fail-open bugs process payments or grant access precisely when something has gone wrong.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "16.5.3"
+        }
+      ]
+    },
+    {
+      "id": "every-product.last-resort-handler",
+      "layer": "every-product",
+      "topic": "errors",
+      "title": "One handler catches anything unexpected",
+      "mustBeTrue": "A last-resort handler catches every unhandled error, logs it and returns a generic response, so the process keeps serving other users.",
+      "test": {
+        "kind": "integration",
+        "how": "A route that throws an unexpected error returns a generic 500, the error is logged, and the next request succeeds."
+      },
+      "why": "An uncaught error can take the whole product down or lose the error detail needed to fix it.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "16.5.4"
+        },
+        {
+          "kind": "asvs",
+          "ref": "16.3.4"
+        }
+      ]
+    },
+    {
+      "id": "every-product.no-secrets-in-logs",
+      "layer": "every-product",
+      "topic": "logging",
+      "title": "Passwords and tokens never reach the logs",
+      "mustBeTrue": "Logs never contain passwords, secrets, full session tokens or payment details; values that must be traced are masked or hashed.",
+      "test": {
+        "kind": "unit",
+        "how": "A test logs a request containing a password, a token and an API key and asserts that none appears in the log output."
+      },
+      "why": "Logs are copied widely and kept long; a secret in a log is a leaked secret.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "8. Sensitive Data Exposure"
+        },
+        {
+          "kind": "asvs",
+          "ref": "16.2.5"
+        }
+      ]
+    },
+    {
+      "id": "every-product.log-entries-traceable",
+      "layer": "every-product",
+      "topic": "logging",
+      "title": "Each log line says when, where, who and what",
+      "mustBeTrue": "Each log entry has a UTC (or offset) timestamp, the component, the acting user or client, and the event, in a format the log tool can parse.",
+      "test": {
+        "kind": "unit",
+        "how": "A test captures a log entry for a request and asserts the timestamp format, component, user id and event fields."
+      },
+      "why": "Without these fields an incident cannot be reconstructed.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "16.2.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "16.2.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "16.2.4"
+        }
+      ]
+    },
+    {
+      "id": "every-product.log-injection-safe",
+      "layer": "every-product",
+      "topic": "logging",
+      "title": "User input cannot forge log lines",
+      "mustBeTrue": "Values written to logs are encoded so user input cannot add lines or break the log format.",
+      "test": {
+        "kind": "unit",
+        "how": "A test logs a value containing a newline and a fake log prefix and asserts the output is one entry with the value escaped."
+      },
+      "why": "Forged log lines hide an attack or frame another user.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "16.4.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.security-events-logged",
+      "layer": "every-product",
+      "topic": "logging",
+      "title": "Refused access and bypass attempts are logged",
+      "mustBeTrue": "Failed authorization attempts and attempts to bypass validation or rate limits are logged as security events.",
+      "test": {
+        "kind": "integration",
+        "how": "A refused request (another user's item, a rate-limited call, an invalid payload) produces a security log entry naming the user and the rule."
+      },
+      "why": "These events are the early warning of an attack in progress.",
+      "sources": [
+        {
+          "kind": "asvs",
+          "ref": "16.3.2"
+        },
+        {
+          "kind": "asvs",
+          "ref": "16.3.3"
+        }
+      ]
+    },
+    {
+      "id": "every-product.no-known-vulnerable-dependencies",
+      "layer": "every-product",
+      "topic": "dependencies",
+      "title": "No libraries with known holes",
+      "mustBeTrue": "Dependencies have no known vulnerabilities above the severity the project allows, within the remediation time the project records.",
+      "test": {
+        "kind": "scan",
+        "how": "CI runs the package manager's audit (for example npm audit --audit-level=high) and fails on a finding."
+      },
+      "why": "Most breaches of small products come through an outdated library, not the product's own code.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "10. Dependency Security"
+        },
+        {
+          "kind": "asvs",
+          "ref": "15.1.1"
+        },
+        {
+          "kind": "asvs",
+          "ref": "15.2.1"
+        }
+      ]
+    },
+    {
+      "id": "every-product.lockfile-committed",
+      "layer": "every-product",
+      "topic": "dependencies",
+      "title": "Exact library versions are pinned",
+      "mustBeTrue": "The lock file is committed and CI installs from it (for example npm ci), so every build uses the same versions.",
+      "test": {
+        "kind": "config",
+        "how": "CI fails if the lock file is missing or out of date with the manifest."
+      },
+      "why": "Unpinned installs can pull a different, compromised version between test and release.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/security-review/SKILL.md",
+          "section": "10. Dependency Security"
+        }
+      ]
+    },
+    {
+      "id": "every-product.keyboard-operable",
+      "layer": "every-product",
+      "topic": "accessibility",
+      "title": "Everything works with a keyboard",
+      "mustBeTrue": "Every action can be done with a keyboard alone, and focus never gets stuck; dialogs keep focus inside while open and give it back on close.",
+      "test": {
+        "kind": "e2e",
+        "how": "A keyboard-only journey (Tab, Shift+Tab, Enter, Space, Escape) completes each key task, opens and closes each dialog, and focus returns to the trigger."
+      },
+      "why": "People who cannot use a mouse, and screen-reader users, depend on the keyboard.",
+      "sources": [
+        {
+          "kind": "wcag",
+          "ref": "2.1.1"
+        },
+        {
+          "kind": "wcag",
+          "ref": "2.1.2"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Anti-Patterns to Avoid"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Best Practices Checklist"
+        }
+      ]
+    },
+    {
+      "id": "every-product.focus-visible",
+      "layer": "every-product",
+      "topic": "accessibility",
+      "title": "You can always see where you are",
+      "mustBeTrue": "The keyboard focus is always visible and is not hidden behind sticky headers, banners or other content.",
+      "test": {
+        "kind": "e2e",
+        "how": "The keyboard journey takes a screenshot at each focus stop and asserts a visible focus indicator inside the viewport; an automated accessibility scan reports no focus issue."
+      },
+      "why": "Without a visible focus a keyboard user is lost on the page.",
+      "sources": [
+        {
+          "kind": "wcag",
+          "ref": "2.4.7"
+        },
+        {
+          "kind": "wcag",
+          "ref": "2.4.11"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Step 3: Implement Operable Controls"
+        }
+      ]
+    },
+    {
+      "id": "every-product.target-size",
+      "layer": "every-product",
+      "topic": "accessibility",
+      "title": "Buttons are big enough to hit",
+      "mustBeTrue": "Interactive targets are at least 24 by 24 CSS pixels (44 by 44 points on native apps), or have that much space around them.",
+      "test": {
+        "kind": "e2e",
+        "how": "A browser test measures every button and link on the key screens and fails on one below 24x24 without the spacing exception."
+      },
+      "why": "Small targets are hard to hit for people with limited dexterity and on phones.",
+      "sources": [
+        {
+          "kind": "wcag",
+          "ref": "2.5.8"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Step 3: Implement Operable Controls"
+        }
+      ]
+    },
+    {
+      "id": "every-product.names-and-alternatives",
+      "layer": "every-product",
+      "topic": "accessibility",
+      "title": "Every image and control has a name",
+      "mustBeTrue": "Images that carry meaning have text alternatives, and every control (including icon-only buttons) has an accessible name, role and state.",
+      "test": {
+        "kind": "e2e",
+        "how": "An automated accessibility scan (for example axe) on every key screen reports no missing names or alternatives."
+      },
+      "why": "Screen readers announce unnamed controls as \"button\" or skip them.",
+      "sources": [
+        {
+          "kind": "wcag",
+          "ref": "1.1.1"
+        },
+        {
+          "kind": "wcag",
+          "ref": "4.1.2"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Best Practices Checklist"
+        }
+      ]
+    },
+    {
+      "id": "every-product.contrast",
+      "layer": "every-product",
+      "topic": "accessibility",
+      "title": "Text and controls are readable",
+      "mustBeTrue": "Text has a contrast ratio of at least 4.5:1 (3:1 for large text), and controls and their states at least 3:1 against what is next to them.",
+      "test": {
+        "kind": "e2e",
+        "how": "The accessibility scan on each key screen, in light and dark themes, reports no contrast failure."
+      },
+      "why": "Low contrast makes the product unreadable for people with low vision and in sunlight.",
+      "sources": [
+        {
+          "kind": "wcag",
+          "ref": "1.4.3"
+        },
+        {
+          "kind": "wcag",
+          "ref": "1.4.11"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Step 2: Define Perceivable Attributes"
+        }
+      ]
+    },
+    {
+      "id": "every-product.reflow",
+      "layer": "every-product",
+      "topic": "accessibility",
+      "title": "Works at 320 pixels wide and when zoomed",
+      "mustBeTrue": "Content reflows at a width of 320 CSS pixels (400% zoom) without horizontal scrolling or lost content.",
+      "test": {
+        "kind": "e2e",
+        "how": "A browser test renders each key screen at 320px wide and asserts no horizontal scroll and that each main control is visible."
+      },
+      "why": "People who zoom in, and phone users, must not lose content.",
+      "sources": [
+        {
+          "kind": "wcag",
+          "ref": "1.4.10"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Best Practices Checklist"
+        }
+      ]
+    },
+    {
+      "id": "every-product.form-errors-explained",
+      "layer": "every-product",
+      "topic": "accessibility",
+      "title": "Form errors say what is wrong and how to fix it",
+      "mustBeTrue": "A form error names the field in text and, where known, suggests the fix; information already given is not asked for again in the same process.",
+      "test": {
+        "kind": "e2e",
+        "how": "A journey submits each form with a wrong value and asserts a text error tied to the field and a suggestion; a multi-step form keeps earlier answers."
+      },
+      "why": "Colour-only or vague errors block people from finishing a task.",
+      "sources": [
+        {
+          "kind": "wcag",
+          "ref": "3.3.1"
+        },
+        {
+          "kind": "wcag",
+          "ref": "3.3.3"
+        },
+        {
+          "kind": "wcag",
+          "ref": "3.3.7"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/skills/accessibility/SKILL.md",
+          "section": "Step 4: Ensure Understandable Logic"
+        }
+      ]
+    },
+    {
+      "id": "every-product.coverage-floor",
+      "layer": "every-product",
+      "topic": "tests",
+      "title": "At least 80% of the code is run by tests",
+      "mustBeTrue": "Line coverage of the product's own code is at least 80%, measured by the verify gate, with acceptance tests written by a human and never weakened to pass.",
+      "test": {
+        "kind": "scan",
+        "how": "The verify gate reports coverage and fails below the floor in verify.config.json."
+      },
+      "why": "Untested code is where regressions hide; the floor is this repository's working agreement.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": ".claude/rules/ecc-common/testing.md"
+        }
+      ]
+    },
+    {
+      "id": "every-product.tests-on-every-pull-request",
+      "layer": "every-product",
+      "topic": "tests",
+      "title": "Tests run before every merge",
+      "mustBeTrue": "Fast checks run on every pull request, and the full gate runs before a pull request is merged.",
+      "test": {
+        "kind": "config",
+        "how": "The CI workflow runs the fast checks on pull_request events and the full gate on ready pull requests; a failing check blocks the merge."
+      },
+      "why": "A check that does not run before a merge does not protect the product.",
+      "sources": [
+        {
+          "kind": "repo",
+          "ref": "docs/adr/0004-full-gate-only-on-ready-prs.md"
+        },
+        {
+          "kind": "repo",
+          "ref": ".claude/rules/ecc-common/git-workflow.md"
+        }
+      ]
+    }
+  ],
+  "gaps": [
+    {
+      "topic": "backups",
+      "reason": "No source yet: OWASP ASVS 5.0.0 and this repository's skills have no backup or restore requirement. Needs a public source (for example the hosting provider's guidance) through its own ticket (#139)."
+    },
+    {
+      "topic": "privacy-pages",
+      "reason": "A privacy notice and terms are a legal question, not a technical standard; the catalogue names the question for the owner and gives no opinion (spec #127, \"not building\"). To be added with the domain layers (#138)."
+    }
+  ]
+}
