@@ -154,6 +154,10 @@ _Avoid_: example, sample app, demo
 The repository (or owner-given path) where `orch-product-team` builds one new product, with the harness installed and the run records in `<product-repo>/docs/product/<slug>/`. Never this repo.
 _Avoid_: example folder, product folder
 
+**Work folder**:
+`.harness/work/<run>/`: gitignored space where helper agents keep unfinished work, writable during a harness run. Files move into the tree only when finished, so the cloud platform's commit-check Stop hook does not fire on work in progress (#112).
+_Avoid_: scratch dir, tmp folder, staging area
+
 ## Design
 
 **Design run**:

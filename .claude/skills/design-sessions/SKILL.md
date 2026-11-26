@@ -51,7 +51,26 @@ look the owner had already moved past. The owner said "Blender only" three times
   empty or still a placeholder, when the brief does not link `direction.md`, or when it repeats a direction heading
   or copies a line of the direction file. Run it with no `--brief` to check every product folder.
 
+## Helpers keep unfinished work out of git's view
+
+In the 2026-11-25 sessions one session posted the same checkpoint message as 17 of its 48 closing messages. The
+message is not from this repository: cloud sessions have a platform Stop hook, `~/.claude/stop-hook-git-check.sh`.
+It blocks every stop while the checkout has any of:
+
+- **tracked changes**, staged or not ("There are uncommitted changes in the repository...");
+- **untracked files** that are not gitignored (what `git ls-files --others --exclude-standard` lists);
+- **unpushed commits** on the current branch.
+
+It cannot be changed or turned off from here, and must not be (`security.md`). So do not trigger it:
+
+- **Helpers write unfinished work to `.harness/work/<run>/`** (or the session scratchpad), never straight into
+  the tree. `.harness/` is gitignored by the installer, and the run guards keep `.harness/work/` writable while the
+  rest of `.harness/` is read-only. Say in a brief's "Hand back" section where the drafts go.
+- **Move it in only when it is finished**, then commit and push in one step. Commit at each finished step, so a
+  stop finds little open work.
+- **Do not end a turn while your helpers are still running** (`agents.md`; a Stop-hook check for it is #86).
+
 ## Not covered here
 
-Quality checks before calling an asset done (#111), the platform's commit-loop stop message (#112), "run without
-me" and "stop" (#113), and the list of owner requests at the end (#114) are separate tickets under #109.
+Quality checks before calling an asset done (#111), "run without me" and "stop" (#113), and the list of owner
+requests at the end (#114) are separate tickets under #109.

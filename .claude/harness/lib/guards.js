@@ -9,6 +9,9 @@ const deny = (reason) => ({ block: true, reason });
 
 const PROTECTED_BRANCHES = new Set(['main', 'master']);
 const HARNESS_PATHS = ['.claude/', '.harness/'];
+// Gitignored scratch space for helper agents' unfinished work (#112). It is the one writable part of .harness/
+// during a run, so work in progress stays out of git's view (and out of the cloud platform's commit-check Stop hook).
+const WORK_DIR = '.harness/work/';
 const ALLOW_SECRET_MARKER = 'harness:allow-secret';
 
 const WRITE_VERBS = new Set(['rm', 'mv', 'cp', 'chmod', 'chown', 'tee', 'truncate', 'ln', 'dd', 'install', 'patch', 'rsync', 'touch']);
@@ -224,17 +227,51 @@ function secretReadViolation({ argv, redirects }) {
     : null;
 }
 
-function guardedMatcher(ctx) {
-  const guarded = [...HARNESS_PATHS, ...(ctx.protectedPaths ?? []).map(stripDot)];
+// The real path of `abs`, resolving symlinks in the part that exists (a file not written yet keeps its name).
+function realish(abs) {
+  let head = abs;
+  const rest = [];
+  while (!fs.existsSync(head) && path.dirname(head) !== head) {
+    rest.unshift(path.basename(head));
+    head = path.dirname(head);
+  }
+  try { return path.join(fs.realpathSync(head), ...rest); } catch { return abs; }
+}
+
+// A project-relative path is in the work folder only if it is there both as written and after resolving
+// symlinks, so a link inside the folder cannot reach the rest of .harness/ (or anything else).
+function inWorkDir(rel, projectDir) {
+  const asDir = (p) => (p.endsWith('/') ? p : `${p}/`);
+  if (!asDir(rel).startsWith(WORK_DIR)) return false;
+  if (!projectDir) return true;
+  const root = fs.existsSync(projectDir) ? fs.realpathSync(projectDir) : projectDir;
+  const real = path.relative(root, realish(path.join(projectDir, rel))).split(path.sep).join('/');
+  return asDir(real).startsWith(WORK_DIR);
+}
+
+// Is a project-relative path guarded? `.harness/` is, except its work folder; protected paths always are.
+function guardedRel(rel, protectedPaths, projectDir, { workDirWritable = true } = {}) {
+  const asDir = rel.endsWith('/') ? rel : `${rel}/`;
+  const hits = (p) => hitsEntry(rel, p) || (!GLOB(p) && asDir.startsWith(p));
+  if (protectedPaths.some(hits)) return true;
+  if (!HARNESS_PATHS.some(hits)) return false;
+  return !(workDirWritable && inWorkDir(rel, projectDir));
+}
+
+function guardedMatcher(ctx, opts) {
+  const protectedPaths = (ctx.protectedPaths ?? []).map(stripDot);
+  const guarded = [...HARNESS_PATHS, ...protectedPaths];
   const projectDir = ctx.projectDir ? trimSlash(ctx.projectDir) : null;
   const isGuarded = (arg) => {
-    let a = stripDot(arg.replace(/^of=/, ''));
+    let a = arg.replace(/^of=/, '');
     if (a.startsWith('/')) {
       if (!projectDir || !a.startsWith(`${projectDir}/`)) return false;
       a = a.slice(projectDir.length + 1);
     }
-    const asDir = a.endsWith('/') ? a : `${a}/`;
-    return guarded.some((p) => hitsEntry(a, p) || (!GLOB(p) && asDir.startsWith(p)));
+    // `.harness/work/../state.json` is `.harness/state.json`; a path that climbs out of the project is not guarded here.
+    a = stripDot(path.posix.normalize(a));
+    if (a === '.' || a === './' || a === '..' || a.startsWith('../')) return false;
+    return guardedRel(a, protectedPaths, projectDir, opts);
   };
   const mentions = (text) => guarded.some((p) => text.includes(GLOB(p) ? p.slice(0, p.indexOf('*')) : p));
   return { isGuarded, mentions };
@@ -300,7 +337,9 @@ function checkBash(command, ctx = {}) {
   if (ctx.active && hiddenViolation(command, ctx)) return deny(HIDDEN_MSG);
   if (ctx.active) {
     const matcher = guardedMatcher(ctx);
-    const cdsIntoGuarded = commands.some((c) => ['cd', 'pushd'].includes(c.argv[0]) && c.argv[1] && matcher.isGuarded(c.argv[1]));
+    // From inside the work folder `../state.json` is harness state, so cd counts the work folder as guarded too.
+    const strict = guardedMatcher(ctx, { workDirWritable: false });
+    const cdsIntoGuarded = commands.some((c) => ['cd', 'pushd'].includes(c.argv[0]) && c.argv[1] && strict.isGuarded(c.argv[1]));
     if (cdsIntoGuarded && commands.some(writesLike)) {
       return deny('Guardrail, state and acceptance files are read-only during a harness run.');
     }
@@ -368,8 +407,8 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   const input = event.tool_input ?? {};
   const file = input.file_path ?? input.notebook_path ?? '';
   if (ctx.active && file) {
-    const guarded = [...HARNESS_PATHS, ...(ctx.protectedPaths ?? []).map(stripDot)];
-    const hit = candidateRelPaths(file, projectDir).some((rel) => guarded.some((p) => hitsEntry(rel, p)));
+    const protectedPaths = (ctx.protectedPaths ?? []).map(stripDot);
+    const hit = candidateRelPaths(file, projectDir).some((rel) => guardedRel(rel, protectedPaths, projectDir));
     if (hit) return deny(`${file} is protected during a harness run (guardrails, state and acceptance tests are read-only).`);
   }
   if (TEMPLATE_ENV.test(path.basename(file))) return ok;
@@ -377,4 +416,4 @@ function checkWrite(event, ctx = {}, projectDir = process.cwd()) {
   return found.length > 0 ? deny(`Possible hardcoded secret (${found.join(', ')}). Use an environment variable.`) : ok;
 }
 
-module.exports = { checkBash, checkWrite, checkRead, isGitCommit, scanSecrets, isSecretPath, impliesBulkStaging, secretPathsInStatus };
+module.exports = { WORK_DIR, checkBash, checkWrite, checkRead, isGitCommit, scanSecrets, isSecretPath, impliesBulkStaging, secretPathsInStatus };
