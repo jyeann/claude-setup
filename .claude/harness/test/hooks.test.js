@@ -289,7 +289,21 @@ if (fs.existsSync('labelled')) { console.log('PIPELINE COMPLETE'); process.exit(
 console.log('[5/12] spec-approved: waiting\\nwaiting for owner: spec issue #37 needs label spec-approved');
 process.exit(3);
 `);
-  cli(dir, 'init', '--verify', 'node pipeline.js check', '--no-checkpoint', '--max', '3');
+  // A product run starts only in a set-up repository (#118): set it up offline, with a saved copy of the labels
+  // and a gh that always fails, so the start never reaches GitHub.
+  spawnSync('git', ['init', '-q', '-b', 'main'], { cwd: dir });
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/acme/split.git'], { cwd: dir });
+  const { setupRepo, LABELS } = require('../lib/repo-setup');
+  const names = LABELS.map((l) => l.name);
+  const github = { listLabels: () => ({ ok: true, names }), createLabel: () => ({ ok: true }) };
+  assert.equal(setupRepo({ sourceClaudeDir: path.join(__dirname, '..', '..'), targetDir: dir, github, environment: 'split' }).complete, true);
+  const offline = fs.mkdtempSync(path.join(os.tmpdir(), 'gh-stub-'));
+  fs.writeFileSync(path.join(offline, 'gh'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(offline, 'labels.json'), JSON.stringify(names));
+  const started = spawnSync('node', [CLI, 'init', '--verify', 'node pipeline.js check', '--no-checkpoint', '--max', '3', '--labels-json', path.join(offline, 'labels.json')], {
+    encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: dir, PATH: `${offline}${path.delimiter}${process.env.PATH}` },
+  });
+  assert.equal(started.status, 0, started.stderr);
   const stopIn = () => run(path.join(HOOKS, 'stop.js'), dir, { hook_event_name: 'Stop', session_id: 's1' });
   const prompt = (text) => run(path.join(HOOKS, 'user-prompt.js'), dir, { hook_event_name: 'UserPromptSubmit', session_id: 's1', prompt: text });
   prompt('build an expense splitter');

@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 'use strict';
-// Usage: setup-repo.js [targetDir] [--repo owner/name] [--environment <name>] [--check]
+// Usage: setup-repo.js [targetDir] [--repo owner/name] [--environment <name>] [--labels-json <file>] [--check]
 // Sets up a product repository in one go (spec #108) and prints one checklist: the harness, the
 // product-team and mattpocock-skills plugins, the labels (created through `gh`), the repository docs,
 // and the cloud environment (reported, never created). Re-running changes nothing that is right.
 // --check writes nothing and creates nothing. --repo defaults to the target's origin remote.
+// --labels-json: a saved copy of the repository's labels (JSON array), read only when gh cannot reach GitHub.
+// harness.js init runs the same check before a product run starts (#118).
 // Exit 0: checklist complete. Exit 1: a row needs the owner or is missing. Exit 2: refused.
 const path = require('node:path');
 const { setupRepo, formatChecklist } = require('../lib/repo-setup');
 
 // Strict parsing: a typo or a missing value must not turn a --check into a real setup.
-const VALUED = new Set(['--repo', '--environment']);
+const VALUED = new Set(['--repo', '--environment', '--labels-json']);
 const SWITCHES = new Set(['--check']);
 const opts = { positional: [] };
 const fail = (message) => { console.error(`setup-repo: ${message}`); process.exit(2); };
@@ -35,6 +37,7 @@ const res = setupRepo({
   repo: opts['--repo'],
   environment: opts['--environment'],
   check: opts['--check'] === true,
+  labelsJson: opts['--labels-json'],
 });
 if (!res.ok) fail(res.message);
 console.log(formatChecklist(res));
