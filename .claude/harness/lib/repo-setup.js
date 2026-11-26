@@ -210,11 +210,11 @@ function environmentRow(targetDir, repo, environment, check) {
   return { ...row, status: 'done', detail: `recorded ${environment} in ${ENV_FILE}` };
 }
 
-// claude-setup itself: its marketplace serves the product-team plugin from its own .claude folder.
+// claude-setup itself: its `jyeann` marketplace serves the product-team plugin from its own .claude folder.
 function isSetupSource(dir) {
   try {
     const m = JSON.parse(fs.readFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'), 'utf8'));
-    return (m.plugins || []).some((p) => p && p.name === 'product-team' && path.resolve(dir, String(p.source)) === path.resolve(dir, '.claude'));
+    return m.name === MARKETPLACE && (m.plugins || []).some((p) => p && p.name === 'product-team' && path.resolve(dir, String(p.source)) === path.resolve(dir, '.claude'));
   } catch { return false; }
 }
 
@@ -224,6 +224,8 @@ function setupRepo({ sourceClaudeDir, targetDir, repo, github = ghClient(), envi
   if (!exists(dir) || !fs.statSync(dir).isDirectory()) return { ok: false, message: `${dir} is not a directory`, rows: [] };
   if (isSetupSource(dir)) return { ok: false, message: 'the target is this repository (claude-setup); name the product repository', rows: [] };
   const self = real(path.join(dir, '.claude')) === real(src);
+  // A target whose .claude resolves into claude-setup (a symlink) would get claude-setup's files rewritten.
+  if (self && isSetupSource(path.dirname(real(src)))) return { ok: false, message: 'the target\'s .claude is this repository\'s (claude-setup); name the product repository', rows: [] };
   if (repo !== undefined && parseRepo(repo) !== repo) return { ok: false, message: `--repo must be owner/name, got "${repo}"`, rows: [] };
   const name = repo || repoFromGit(dir);
   const rows = [

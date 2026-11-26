@@ -212,3 +212,27 @@ test('setup-repo.js --check accepts --labels-json and reports the labels from th
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /\[already there\] +Labels.*saved copy/);
 });
+
+test('a product whose .claude links to claude-setup is refused, and nothing in claude-setup is written', () => {
+  const dir = productRepo();
+  fs.symlinkSync(CLAUDE_DIR, path.join(dir, '.claude'));
+  const settings = path.join(CLAUDE_DIR, 'settings.json');
+  const before = fs.readFileSync(settings, 'utf8');
+  const res = setupRepo({ sourceClaudeDir: path.join(dir, '.claude'), targetDir: dir, github: allLabels(), environment: 'x' });
+  assert.equal(res.ok, false);
+  assert.match(res.message, /claude-setup/);
+  assert.equal(fs.readFileSync(settings, 'utf8'), before);
+  assert.equal(fs.existsSync(path.join(dir, 'GLOSSARY.md')), false);
+  const r = productRunGate({ sourceClaudeDir: path.join(dir, '.claude'), projectDir: dir, verifyCommand: PIPELINE, github: allLabels() });
+  assert.equal(r.ok, false);
+});
+
+test('a product that copied a marketplace file of its own is still checked', () => {
+  const dir = productRepo();
+  fs.mkdirSync(path.join(dir, '.claude-plugin'));
+  fs.writeFileSync(path.join(dir, '.claude-plugin', 'marketplace.json'), JSON.stringify({ name: 'acme', plugins: [{ name: 'product-team', source: './.claude' }] }));
+  assert.equal(isSetupSource(dir), false);
+  const r = gate(dir, PIPELINE, { github: allLabels() });
+  assert.equal(r.ok, false);
+  assert.equal(r.checked, true);
+});
