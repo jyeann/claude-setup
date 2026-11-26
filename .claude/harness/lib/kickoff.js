@@ -53,7 +53,9 @@ const HARD_LIMITS = deepFreeze([
 
 const FIELDS = new Set(['version', 'prototype', 'choices', 'alsoSensitive']);
 // A field or choice id that reads like a way to loosen the hard limits gets its own message.
-const LIMIT_WORDS = /hard|limit|sensitiv|except|exempt|override|skip|allow|bypass/i;
+const LIMIT_WORDS = /hard|limit|sensitiv|except|exempt|override|skip|bypass/i;
+// Advisory only (for the message): the built-in limits never come from the file, so an entry it misses still
+// only adds an area.
 const NEGATED = /^\s*(?:[!~-]|not\b|no\b|except\b|without\b|exclud|remov|off\b|disabl|minus\b)/i;
 const LIMITS_FIXED = 'the hard limits cannot be switched off or narrowed from this file; "alsoSensitive" can only add areas';
 
@@ -99,9 +101,16 @@ function validate(raw) {
       for (const area of raw.alsoSensitive) {
         if (typeof area !== 'string' || !area.trim()) errors.push('"alsoSensitive" entries must be non-empty text');
         else if (NEGATED.test(area)) errors.push(`"alsoSensitive" entry "${area}": entries can only add an area, never remove one; ${LIMITS_FIXED}`);
-        else hardLimits.push({ id: area.trim(), label: area.trim(), added: true });
+        else if (!hardLimits.some((h) => [h.id, h.label].some((n) => n.toLowerCase() === area.trim().toLowerCase()))) {
+          hardLimits.push({ id: area.trim(), label: area.trim(), added: true });
+        }
       }
     }
+  }
+  // An invalid file applies nothing: every choice reads as its default, so no tool can act on half a file.
+  if (errors.length) {
+    Object.assign(choices, DEFAULTS);
+    for (const id of Object.keys(sources)) sources[id] = 'default';
   }
   return result(prototype);
 }
@@ -121,33 +130,36 @@ function readKickoff(file) {
 
 // Whether a check enforces a choice's current value today, and which; `choices` is the whole resolved set,
 // because some checks hold only while another choice keeps the owner at a gate.
-const LABEL_GATE = 'pipeline.js waits for the label on the spec issue, and a harness guard stops agents adding it';
+const LABEL_GATE = 'pipeline.js waits for the label on the spec issue, and a harness guard stops agents adding it with gh';
+// A known hole in an enforced choice: shown beside it until the ticket closes it.
+const LABEL_GAP = 'agents can still add the label through the GitHub MCP tools or curl; closing this is planned in #146';
+const TODAY = 'matches how a run works today, but no check holds it';
 const ENFORCEMENT = {
   gate_how: (v) => (v === 'label'
-    ? [true, LABEL_GATE]
+    ? [true, LABEL_GATE, LABEL_GAP]
     : [false, 'gates still pass only by the label today; approval by a typed word is planned in #131']),
   gate1: (v) => (v === 'me'
-    ? [true, `${LABEL_GATE} (spec-approved)`]
+    ? [true, `${LABEL_GATE} (spec-approved)`, LABEL_GAP]
     : [false, 'no agent judge exists; the owner still judges the spec. Planned after #131']),
   gate2: (v) => (v === 'me'
-    ? [true, `${LABEL_GATE} (accepted)`]
+    ? [true, `${LABEL_GATE} (accepted)`, LABEL_GAP]
     : [false, 'no agent judge exists; the owner still judges the result. Planned after #131']),
   merge: (v) => [false, v === 'me'
     ? 'only the rule in working.md says agents merge nothing; a guard that blocks agent merges is planned in #130'
     : 'agents may not merge yet; merging under this rule, with the sensitive-work check, is planned in #130 and #129'],
   absent: (v) => (v === 'reachable'
-    ? [true, 'this is how a run works today: it asks the owner when it needs something']
+    ? [false, `${TODAY}: the run asks the owner when it needs something`]
     : [false, 'keys and accounts are not yet collected at kickoff; planned in #132']),
   halt: (v) => (v === 'list'
-    ? [true, 'a halted run shows in the session today; nothing else is sent']
+    ? [false, `${TODAY}: a halted run shows in the session and nothing else is sent`]
     : [false, `a halted run does not yet send ${v === 'email' ? 'an email' : 'a phone notification'}; planned in #133`]),
   standards: () => [false, 'the build standards checklist does not exist yet; it is spec #127, and the run will read this choice in #134'],
   design: () => [false, 'nothing checks which screens are designed yet; planned in #134'],
   look: (v, c) => (v === 'me' && c.gate1 === 'me'
-    ? [true, 'pipeline.js needs a "Look:" line chosen from rendered variations, and the owner approves it at spec-approved']
+    ? [true, 'pipeline.js needs a "Look:" line in decisions.md, and the owner approves the look with the spec at spec-approved', LABEL_GAP]
     : [false, 'nothing yet lets an agent pick the look in the owner\'s place, or holds the owner\'s pick without the owner judging Gate 1; planned in #134']),
   staging: (v) => (v === 'no'
-    ? [true, 'this is how a run works today: there is no staging step']
+    ? [false, `${TODAY}: there is no staging step`]
     : [false, 'nothing checks for a staging site yet; planned in #134']),
   uat: (v, c) => (v === 'both' && c.gate2 === 'me'
     ? [true, 'pipeline.js needs an agent walkthrough (qa.md) and then the owner\'s accepted label']
@@ -158,8 +170,8 @@ const ENFORCEMENT = {
 function enforcement(id, choices) {
   const rule = ENFORCEMENT[id];
   if (!rule) throw new Error(`unknown choice "${id}"`);
-  const [enforced, by] = rule(choices[id], choices);
-  return { enforced, by };
+  const [enforced, by, gap] = rule(choices[id], choices);
+  return gap ? { enforced, by, gap } : { enforced, by };
 }
 
 const notEnforced = (choices) => CHOICES.filter((c) => !enforcement(c.id, choices).enforced).map((c) => c.id);
@@ -170,7 +182,7 @@ function describe(r) {
   if (r.missing) out.push('No kickoff file yet: these are the defaults (the owner\'s picks of 2026-11-26).', '');
   else if (r.file) out.push(`Kickoff choices from ${r.file}`, '');
   if (!r.ok) {
-    out.push('This kickoff file is not valid. Problems:', ...r.errors.map((e) => `  - ${e}`), '', 'Until it is fixed, a run cannot rely on it. The defaults would be:', '');
+    out.push('This kickoff file is not valid. Problems:', ...r.errors.map((e) => `  - ${e}`), '', 'Until it is fixed, a run cannot rely on it, and nothing in it applies. The defaults are:', '');
   }
   if (r.prototype) out.push('This product is marked as a prototype.', '');
   let group = '';
@@ -184,13 +196,14 @@ function describe(r) {
     const from = r.sources[c.id] === 'default' ? ' (default)' : '';
     out.push(`  ${c.question}: ${c.options[r.choices[c.id]]}${from}`);
     out.push(`    ${e.enforced ? 'enforced' : 'recorded only: nothing checks this yet'} - ${e.by}`);
+    if (e.gap) out.push(`    known gap: ${e.gap}`);
   }
   const missing = notEnforced(r.choices);
   out.push('', `Not enforced yet (${missing.length} of ${CHOICES.length}):`);
   out.push(...(missing.length ? missing.map((id) => `  - ${byId.get(id).question}`) : ['  - none']));
   out.push('', 'Always stops for the owner, whatever is chosen here:');
   out.push(...r.hardLimits.map((h) => `  - ${h.label}${h.added ? ' (added for this product)' : ''}`));
-  out.push('  Today this is a rule (working.md) that agents follow; the check that finds such work is planned in #129.');
+  out.push('  Today this is a rule agents follow (working.md and spec #126); the check that finds such work is planned in #129.');
   return out.join('\n');
 }
 

@@ -12,10 +12,10 @@ const args = process.argv.slice(2);
 const flags = { json: false };
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === '--json') flags.json = true;
-  else if (['--docs', '--file'].includes(args[i]) && args[i + 1] !== undefined) { flags[args[i].slice(2)] = args[i + 1]; i += 1; }
+  else if (['--docs', '--file'].includes(args[i]) && args[i + 1] !== undefined && flags[args[i].slice(2)] === undefined) { flags[args[i].slice(2)] = args[i + 1]; i += 1; }
   else { console.error(USAGE); process.exit(2); }
 }
-if (flags.docs && flags.file) { console.error(USAGE); process.exit(2); }
+if (flags.docs !== undefined && flags.file !== undefined) { console.error(USAGE); process.exit(2); }
 
 const base = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 const file = path.resolve(base, flags.file ?? path.join(flags.docs ?? '.', 'kickoff.json'));

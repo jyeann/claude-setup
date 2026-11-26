@@ -138,15 +138,51 @@ test('alsoSensitive adds an area to the hard limits', () => {
   assert.equal(r.hardLimits.length, k.HARD_LIMITS.length + 1);
 });
 
-test('alsoSensitive cannot remove an area: a negated entry or an empty list changes nothing or is refused', () => {
+test('refuses a negated alsoSensitive entry', () => {
   for (const entry of ['!payments', '-payments', 'not payments', 'no secrets', 'except legal', 'without deploy']) {
     const r = k.validate({ alsoSensitive: [entry] });
     assert.equal(r.ok, false, entry);
     assert.match(r.errors.join('\n'), /only add/, entry);
   }
-  const empty = k.validate({ alsoSensitive: [] });
-  assert.equal(empty.ok, true);
-  assert.equal(empty.hardLimits.length, k.HARD_LIMITS.length);
+});
+
+test('keeps all hard limits when alsoSensitive is empty', () => {
+  const r = k.validate({ alsoSensitive: [] });
+  assert.equal(r.ok, true);
+  assert.equal(r.hardLimits.length, k.HARD_LIMITS.length);
+});
+
+test('an alsoSensitive entry that repeats a hard limit is not listed twice', () => {
+  const r = k.validate({ alsoSensitive: ['login', ' Payments ', 'user data'] });
+  assert.equal(r.ok, true);
+  assert.equal(r.hardLimits.length, k.HARD_LIMITS.length);
+});
+
+test('__proto__ and constructor keys are refused and leave every hard limit in place', () => {
+  const raws = [
+    JSON.parse('{"__proto__": {"hardLimits": []}}'),
+    JSON.parse('{"choices": {"__proto__": "me"}}'),
+    { choices: { constructor: 'me' } },
+    { choices: { merge: 'constructor' } },
+    { choices: { merge: '__proto__' } },
+  ];
+  for (const raw of raws) {
+    const r = k.validate(raw);
+    assert.equal(r.ok, false, JSON.stringify(raw));
+    assert.deepEqual(r.hardLimits.map((h) => h.id), k.HARD_LIMITS.map((h) => h.id));
+    assert.deepEqual(r.choices, OWNER_PICKS);
+  }
+});
+
+test('an invalid file applies none of its choices', () => {
+  const r = k.validate({ choices: { gate_how: 'label', merge: 'x' } });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.choices, OWNER_PICKS);
+  assert.ok(Object.values(r.sources).every((x) => x === 'default'));
+});
+
+test('an ordinary unknown field gets the unknown-field message', () => {
+  assert.match(errorsOf({ allowedDomains: [] }), /unknown field "allowedDomains"/);
 });
 
 test('alsoSensitive must be a list of non-empty strings', () => {
@@ -188,6 +224,21 @@ test('the look is enforced only while the owner judges the spec gate', () => {
 
 test('user testing by both is enforced only while the owner judges the result', () => {
   assert.equal(k.enforcement('uat', { ...OWNER_PICKS, gate2: 'agent_fix' }).enforced, false);
+});
+
+test('the label gate shows its known gap until #146 closes it', () => {
+  for (const id of ['gate1', 'gate2']) assert.match(k.enforcement(id, OWNER_PICKS).gap, /MCP.*#146/);
+  assert.equal(k.enforcement('merge', OWNER_PICKS).gap, undefined);
+  assert.match(k.describe(k.validate({})), /known gap: .*#146/);
+});
+
+test('values that only match today\'s behaviour are recorded only, not enforced', () => {
+  const picks = { ...OWNER_PICKS, absent: 'reachable', halt: 'list', staging: 'no' };
+  for (const id of ['absent', 'halt', 'staging']) {
+    const e = k.enforcement(id, picks);
+    assert.equal(e.enforced, false, id);
+    assert.match(e.by, /no check holds it/, id);
+  }
 });
 
 test('a label gate is enforced today; a typed word is not yet', () => {
@@ -294,6 +345,11 @@ test('the command prints JSON with --json', () => {
   const out = JSON.parse(r.stdout);
   assert.deepEqual(out.choices, OWNER_PICKS);
   assert.deepEqual(out.notEnforced, ['gate_how', 'merge', 'absent', 'halt', 'standards', 'design', 'staging', 'security']);
+});
+
+test('the command refuses --docs with --file, even an empty one, and a repeated flag', () => {
+  assert.equal(run(['--docs', '', '--file', 'x.json']).status, 2);
+  assert.equal(run(['--docs', 'a', '--docs', 'b']).status, 2);
 });
 
 test('the command refuses an unknown argument', () => {
