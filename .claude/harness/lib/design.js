@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DESIGN_DIR = path.join('docs', 'design');
-const DIRECTION_SECTIONS = ['Look', 'Tool', 'Characters', 'Reference images', 'Changed'];
+const DIRECTION_SECTIONS = ['Look', 'Tool', 'Characters', 'Reference images', 'Checks', 'Changed'];
 // Sections a brief restates when it copies the direction instead of linking it ("Changed" is history, not direction).
 const RESTATED = DIRECTION_SECTIONS.filter((s) => s !== 'Changed');
 const BRIEF_SECTIONS = ['Task', 'Direction', 'Page and owner', 'Hand back', 'Done means'];
@@ -66,6 +66,10 @@ function checkBrief(text, { directionText = '', where = 'brief' } = {}) {
   const copied = directionText.split('\n').map((l) => l.replace(/^[-*#\s]+/, '').trim())
     .filter((l) => l.length >= MIN_COPIED && text.includes(l));
   for (const line of copied) problems.push(`${where}: copies a line of direction.md ("${line.slice(0, 60)}"); link it instead`);
+  // #111: the receiving session reports an asset done only with its check line, so the brief has to ask for it.
+  if (found.get('Done means') && !/checks\.json/.test(found.get('Done means'))) {
+    problems.push(`${where}: "## Done means" must ask for each asset's check line from docs/design/<product>/checks.json`);
+  }
   return problems;
 }
 
@@ -181,6 +185,6 @@ function claimPublish(event, projectDir, now = () => new Date().toISOString()) {
 }
 
 module.exports = {
-  DIRECTION_SECTIONS, BRIEF_SECTIONS, normalizeUrl, checkDirection, checkBrief, checkRegister,
+  DIRECTION_SECTIONS, BRIEF_SECTIONS, sections, normalizeUrl, checkDirection, checkBrief, checkRegister,
   readRegisters, productDirs, checkPublish, claimPublish,
 };

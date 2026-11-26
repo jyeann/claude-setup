@@ -17,3 +17,4 @@ Read docs/design/<product>/direction.md before starting; it is the current direc
 
 ## Done means
 <what the owner will see when this is done>
+Report each asset as done only by quoting its line from docs/design/<product>/checks.json (`node .claude/harness/bin/design-check.js run`); an asset with no line, or a failing or stale one, is not done.
