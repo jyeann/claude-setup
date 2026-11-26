@@ -88,6 +88,14 @@ function checkRegister(data, where = 'pages.json') {
   return problems;
 }
 
+// Temp file, then rename: readers in other sessions never see a half-written file.
+function writeJsonAtomic(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+}
+
 const productDirs = (projectDir) => {
   try {
     return fs.readdirSync(path.join(projectDir, DESIGN_DIR), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
@@ -176,15 +184,12 @@ function claimPublish(event, projectDir, now = () => new Date().toISOString()) {
   if (rel.startsWith(`${DESIGN_DIR.split(path.sep).join('/')}/`)) page.file = rel;
   Object.assign(page, { owner: event.session_id, claimedAt: now() });
   data.pages.push(page);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
   // Write whole or not at all: a half-written register would block every publish in other sessions.
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(file, data);
   return { claimed: true, product, page };
 }
 
 module.exports = {
   DIRECTION_SECTIONS, BRIEF_SECTIONS, sections, normalizeUrl, checkDirection, checkBrief, checkRegister,
-  readRegisters, productDirs, checkPublish, claimPublish,
+  readRegisters, productDirs, checkPublish, claimPublish, writeJsonAtomic,
 };

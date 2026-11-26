@@ -8,11 +8,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
-const { sections } = require('./design');
+const { sections, writeJsonAtomic } = require('./design');
 
 const DESIGN = 'docs/design';
-// Bookkeeping, not assets: editing them never makes a check stale.
-const BOOKKEEPING = new Set(['checks.json', 'pages.json', 'direction.md']);
 const CHECK_LINE = /^[-*]\s+([A-Za-z0-9][A-Za-z0-9 ._-]*?)\s*:\s*(.*)$/;
 const COMMAND = /^`([^`]+)`\s*(?:files:\s*(.+))?$/;
 const DEFAULT_TIMEOUT_S = 1800;
@@ -74,8 +72,15 @@ const gitOut = (root, args) => {
   const r = spawnSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   return r.status === 0 ? r.stdout : null;
 };
-const isGit = (root) => gitOut(root, ['rev-parse', '--show-toplevel']) !== null
-  && path.resolve(gitOut(root, ['rev-parse', '--show-toplevel']).trim()) === fs.realpathSync(root);
+// Whether root is the top of a git work tree, asked once per root per process (the Stop hook needs it twice).
+const gitRoots = new Map();
+function isGit(root) {
+  if (!gitRoots.has(root)) {
+    const top = gitOut(root, ['rev-parse', '--show-toplevel']);
+    gitRoots.set(root, top !== null && path.resolve(top.trim()) === fs.realpathSync(root));
+  }
+  return gitRoots.get(root);
+}
 
 function walk(root, rel = '') {
   const out = [];
@@ -88,28 +93,26 @@ function walk(root, rel = '') {
   return out;
 }
 
-// Every file in the project (tracked and untracked, ignored files left out when it is a git repository).
+// Every file in the project (tracked and untracked, ignored files left out when it is a git repository). A listed
+// file may since have been deleted; fingerprint skips those.
 function projectFiles(root) {
-  if (isGit(root)) {
-    const listed = gitOut(root, ['ls-files', '-z', '-co', '--exclude-standard']);
-    if (listed === null) return walk(root);
-    return listed.split('\0').filter((f) => f && fs.existsSync(path.join(root, f)));
-  }
-  return walk(root);
+  const listed = isGit(root) ? gitOut(root, ['ls-files', '-z', '-co', '--exclude-standard']) : null;
+  return listed === null ? walk(root) : listed.split('\0').filter(Boolean);
 }
 
-const isBookkeeping = (file) => {
-  const parts = file.split('/');
-  return parts.length === 4 && `${parts[0]}/${parts[1]}` === DESIGN && BOOKKEEPING.has(parts[3]);
+// Bookkeeping, not assets: editing them never makes a check stale.
+const BOOKKEEPING_FILE = /^docs\/design\/[^/]+\/(?:checks\.json|pages\.json|direction\.md)$/;
+const covers = (globs) => {
+  const res = globs.map(globToRegExp);
+  return (file) => !BOOKKEEPING_FILE.test(file) && res.some((re) => re.test(file));
 };
 
 // path -> sha1 of each file the asset's globs cover. `cache` shares hashes between assets in one pass.
-function fingerprint(root, globs, files = projectFiles(root), cache = new Map()) {
-  const res = globs.map(globToRegExp);
+function fingerprint(root, globs, { files = projectFiles(root), cache = new Map() } = {}) {
   const out = {};
-  for (const f of files.filter((x) => !isBookkeeping(x) && res.some((re) => re.test(x))).sort()) {
+  for (const f of files.filter(covers(globs)).sort()) {
     const abs = path.join(root, f);
-    if (!fs.existsSync(abs)) continue; // removed since the list was taken (e.g. by the check itself)
+    if (!fs.existsSync(abs)) continue; // deleted, or removed by the check itself
     if (!cache.has(f)) cache.set(f, crypto.createHash('sha1').update(fs.readFileSync(abs)).digest('hex'));
     out[f] = cache.get(f);
   }
@@ -137,6 +140,7 @@ function runOne(root, check, { now = () => new Date().toISOString(), timeoutS = 
   const ok = exit === 0 && (!count || (count.total > 0 && count.passed === count.total));
   const at = now();
   const how = exit === null ? `stopped (${r.signal || r.error?.code || 'no exit code'})` : `exit ${exit}`;
+  // `line` is stored, not rebuilt: it is the exact text a session quotes as proof (design-sessions skill).
   const line = `${check.asset}: ${ok ? 'pass' : 'fail'} - ${describeCount(count)}, ${how}, ${at}, \`${check.command}\``;
   return {
     record: {
@@ -174,51 +178,52 @@ function writeRecords(root, product, fresh) {
   const { records, error } = readRecords(root, product);
   const kept = error ? [] : records.filter((r) => !fresh.some((f) => f.asset === r.asset));
   const data = { product, records: [...kept, ...fresh].sort((a, b) => a.asset.localeCompare(b.asset)) };
-  const file = path.join(root, checksFile(product));
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
-  fs.renameSync(tmp, file);
+  writeJsonAtomic(path.join(root, checksFile(product)), data);
   return data;
 }
 
-// One entry per asset kind: done (with its check line), or not done with why.
-// state: done | failing | missing | stale.
-function assetStatus(root, product, checkList, records, files = projectFiles(root), cache = new Map()) {
-  const fingerprint_ = (globs) => fingerprint(root, globs, files, cache);
+// One entry per asset kind: done (with its check line), or not done with why. state: done | failing | missing |
+// stale. `paths` are the files whose uncommitted change means the asset is being worked on now (for the Stop hook).
+function assetStatus(root, product, checkList, records, { files, cache }) {
   return checkList.map((check) => {
+    const base = { product, asset: check.asset };
     const rec = records.find((r) => r.asset === check.asset);
-    if (!rec) return { product, asset: check.asset, state: 'missing', why: 'no check record', files: Object.keys(fingerprint_(check.files)) };
-    if (rec.command !== check.command) return { product, asset: check.asset, state: 'stale', why: `stale: the check command changed since ${rec.at}`, line: rec.line, changed: [`${DESIGN}/${product}/direction.md`] };
-    const changed = changedFiles(rec.files, fingerprint_(check.files));
-    if (changed.length) return { product, asset: check.asset, state: 'stale', why: `stale: changed since the check (${rec.at}): ${changed.join(', ')}`, line: rec.line, changed };
-    if (!rec.ok) return { product, asset: check.asset, state: 'failing', why: `check failed: ${rec.line}`, line: rec.line };
-    return { product, asset: check.asset, state: 'done', line: rec.line };
+    if (!rec) return { ...base, state: 'missing', why: 'no check record', paths: Object.keys(fingerprint(root, check.files, { files, cache })) };
+    const item = { ...base, line: rec.line };
+    if (rec.command !== check.command) return { ...item, state: 'stale', why: `stale: the check command changed since ${rec.at}`, paths: [`${DESIGN}/${product}/direction.md`] };
+    const changed = changedFiles(rec.files, fingerprint(root, check.files, { files, cache }));
+    if (changed.length) return { ...item, state: 'stale', why: `stale: changed since the check (${rec.at}): ${changed.join(', ')}`, paths: changed };
+    if (!rec.ok) return { ...item, state: 'failing', why: `check failed: ${rec.line}` };
+    return { ...item, state: 'done' };
   });
+}
+
+// A product's Checks lines and records, as statusAll and the Stop hook read them; null without a direction file.
+function loadProduct(root, product) {
+  const dirFile = path.join(root, DESIGN, product, 'direction.md');
+  if (!fs.existsSync(dirFile)) return null;
+  const parsed = parseChecks(sections(fs.readFileSync(dirFile, 'utf8')).get('Checks') || '', product);
+  return { product, ...parsed, ...readRecords(root, product) };
 }
 
 // Every product's check status, plus problems that stop the status being known.
 function statusAll(root, productDirs, { product } = {}) {
   const items = [];
   const problems = [];
-  const files = productDirs.length ? projectFiles(root) : [];
-  const cache = new Map();
+  const ctx = { files: productDirs.length ? projectFiles(root) : [], cache: new Map() };
   for (const p of productDirs.filter((x) => !product || x === product)) {
-    const dirFile = path.join(root, DESIGN, p, 'direction.md');
-    if (!fs.existsSync(dirFile)) continue;
-    const parsed = parseChecks(sections(fs.readFileSync(dirFile, 'utf8')).get('Checks') || '', p);
-    problems.push(...parsed.problems.map((x) => `${DESIGN}/${p}/direction.md: ${x}`));
-    const { records, error } = readRecords(root, p);
-    if (error) { problems.push(error); continue; }
-    items.push(...assetStatus(root, p, parsed.checks, records, files, cache));
+    const loaded = loadProduct(root, p);
+    if (!loaded) continue;
+    problems.push(...loaded.problems.map((x) => `${DESIGN}/${p}/direction.md: ${x}`));
+    if (loaded.error) { problems.push(loaded.error); continue; }
+    items.push(...assetStatus(root, p, loaded.checks, loaded.records, ctx));
   }
   return { items, problems };
 }
 
 // Uncommitted files, for the Stop hook; null when this is not a git repository.
 function dirtyFiles(root) {
-  if (!isGit(root)) return null;
-  const out = gitOut(root, ['status', '--porcelain', '-z', '-uall']);
+  const out = isGit(root) ? gitOut(root, ['status', '--porcelain', '-z', '-uall']) : null;
   if (out === null) return null;
   const entries = out.split('\0').filter(Boolean);
   const files = new Set();
@@ -230,19 +235,21 @@ function dirtyFiles(root) {
   return files;
 }
 
-// Stop hook: assets being worked on now (uncommitted changes to their files, or to direction.md for a changed
-// command) whose record is stale or missing. A stale record that arrived committed (a merge, a pull) does not hold
-// unrelated sessions; `status` still lists it as not done. Outside git every stale or missing asset counts.
+// Stop hook: stale or missing assets that are being worked on now (an uncommitted change to one of their `paths`).
+// A stale record that arrived committed (a merge, a pull) does not hold unrelated sessions; `status` still lists it
+// as not done. Outside git every stale or missing asset counts.
 function staleForStop(root, productDirs) {
   const dirty = dirtyFiles(root);
-  if (dirty && dirty.size === 0) return []; // nothing being worked on: skip hashing entirely
-  const { items } = statusAll(root, productDirs);
-  const touched = (list) => !dirty || list.some((f) => dirty.has(f));
-  return items.filter((i) => (i.state === 'stale' && touched(i.changed || []))
-    || (i.state === 'missing' && i.files.length && touched(i.files)));
+  if (dirty) {
+    // Skip listing and hashing unless an uncommitted file is design work: a covered file or a direction file.
+    const products = productDirs.map((p) => loadProduct(root, p)).filter(Boolean);
+    const isDesign = (f) => products.some((p) => f === `${DESIGN}/${p.product}/direction.md` || p.checks.some((c) => covers(c.files)(f)));
+    if (![...dirty].some(isDesign)) return [];
+  }
+  const touched = (paths) => paths.length > 0 && (!dirty || paths.some((f) => dirty.has(f)));
+  return statusAll(root, productDirs).items.filter((i) => (i.state === 'stale' || i.state === 'missing') && touched(i.paths));
 }
 
 module.exports = {
-  parseChecks, countFrom, globToRegExp, fingerprint, projectFiles, runOne, readRecords, writeRecords,
-  assetStatus, statusAll, staleForStop, checksFile,
+  parseChecks, countFrom, runOne, readRecords, writeRecords, statusAll, staleForStop,
 };

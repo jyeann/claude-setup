@@ -390,3 +390,12 @@ test('a check that ran no tests is a fail', () => {
   assert.equal(runBin(dir, 'run').status, 1);
   assert.match(read(dir, 'docs/design/gachi/checks.json'), /0\/0 passed/);
 });
+
+test('an uncommitted file outside the design work does not hold the turn', () => {
+  const dir = project();
+  gitRepo(dir);
+  setup(dir);
+  commitAll(dir);
+  write(dir, 'README.md', 'notes');
+  assert.equal(stopHook(dir).stdout, '');
+});

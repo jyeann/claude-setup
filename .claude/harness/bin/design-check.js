@@ -18,7 +18,7 @@ const checks = require('../lib/design-checks');
 
 const args = process.argv.slice(2);
 const valuesOf = (flag) => args.flatMap((a, i) => (a === flag && args[i + 1] ? [args[i + 1]] : []));
-const sub = args.find((a, i) => (a === 'run' || a === 'status') && !String(args[i - 1] || '').startsWith('--'));
+const sub = ['run', 'status'].find((s) => args.includes(s));
 const root = path.resolve(valuesOf('--root')[0] || process.cwd());
 const only = { product: valuesOf('--product')[0], asset: valuesOf('--asset')[0] };
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
