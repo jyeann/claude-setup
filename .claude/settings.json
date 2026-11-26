@@ -97,6 +97,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/pre-publish.js\"",
+            "timeout": 30
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -107,6 +117,16 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/post-edit.js\"",
             "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/post-publish.js\"",
+            "timeout": 30
           }
         ]
       },

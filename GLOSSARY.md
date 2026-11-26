@@ -145,3 +145,29 @@ _Avoid_: example, sample app, demo
 **Product repository**:
 The repository (or owner-given path) where `orch-product-team` builds one new product, with the harness installed and the run records in `<product-repo>/docs/product/<slug>/`. Never this repo.
 _Avoid_: example folder, product folder
+
+## Design
+
+**Design run**:
+Design work (looks, brand kits, concept art, animation) carried out across one or more sessions under the `design-sessions` rules. It is its own kind of run, not a phase of the product pipeline, and has no owner gates of its own (spec #109).
+_Avoid_: design phase
+
+**Owning session**:
+The one session that may publish to a given published page. The first session to publish the page becomes its owner, and the owner is recorded in the page register. Other sessions hand their content back to it.
+_Avoid_: page author, writer session
+
+**Page register**:
+`docs/design/<product>/pages.json`: each published design page's URL, its file and its owning session. The publish guard reads it, and the post-publish hook adds a page that has no owner yet.
+_Avoid_: page list, artifact log
+
+**Current-direction file**:
+`docs/design/<product>/direction.md`: the chosen look, the tool, the characters, the reference images, and a dated log of changes. When the owner changes direction, this file changes first. Briefs link it and never copy it.
+_Avoid_: design notes, style guide, mood board
+
+**Design brief**:
+A hand-off to another session or agent, made from `templates/design-brief.md`. It has five sections: Task, Direction (a link to the current-direction file), Page and owner, Hand back, Done means. `design-check.js --brief` checks it.
+_Avoid_: prompt, handover note
+
+**Hand back**:
+How a session that does not own a page gets its content published: it delivers the files to the owning session, and the owning session publishes them.
+_Avoid_: republish, sync
