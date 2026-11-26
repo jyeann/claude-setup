@@ -46,6 +46,9 @@ function logToolEvent(projectDir, event, now = Date.now()) {
   const failed = event.hook_event_name === 'PostToolUseFailure' || Boolean(event.tool_response?.is_error || event.tool_response?.interrupted);
   append(projectDir, event.session_id, { type: 'tool', ts: now, tool, ok: !failed, summary, sig: signature(tool, summary) });
   if (AGENT_TOOLS.has(tool)) logAgentRun(projectDir, event, failed, now);
+  // A stopped background task ends its helper even if no SubagentStop arrives for it (#86).
+  const stopped = event.tool_input?.task_id ?? event.tool_input?.shell_id;
+  if (tool === 'TaskStop' && !failed && stopped) logAgentEnd(projectDir, event.session_id, stopped, 'TaskStop', now);
 }
 
 // One record per delegated agent run, for the KPI view: who ran, on which model and effort, what it cost.
@@ -66,7 +69,15 @@ function logAgentRun(projectDir, event, failed, now) {
     model: input.model ? redact(input.model) : null,
     effort: redact(input.effort ?? process.env.CLAUDE_CODE_EFFORT_LEVEL ?? '') || null,
     tokens, durationMs: num(out.totalDurationMs), toolUses: num(out.totalToolUseCount),
+    // A background run returns at once with status async_launched; its end arrives later as an agent-end record.
+    id: typeof out.agentId === 'string' ? safeId(out.agentId) : null,
+    background: out.status === 'async_launched',
   });
+}
+
+// The end of a helper agent: from the SubagentStop hook, or a successful TaskStop on it (#86).
+function logAgentEnd(projectDir, sessionId, agentId, via, now = Date.now()) {
+  append(projectDir, sessionId, { type: 'agent-end', ts: now, id: safeId(agentId), via });
 }
 
 function logBlocked(projectDir, event, reason, now = Date.now()) {
@@ -110,6 +121,9 @@ function readJsonl(file) {
   try { return parseLines(fs.readFileSync(file, 'utf8')); } catch { return []; }
 }
 
+// One session's records, oldest first; empty when the session has no trace yet.
+const readSession = (projectDir, sessionId) => readJsonl(path.join(tracesDir(projectDir), `${safeId(sessionId)}.jsonl`));
+
 function readSessions(projectDir) {
   let files = [];
   try { files = fs.readdirSync(tracesDir(projectDir)).filter((f) => f.endsWith('.jsonl')); } catch { return []; }
@@ -121,5 +135,5 @@ function readSessions(projectDir) {
 }
 
 module.exports = {
-  logToolEvent, logBlocked, logHuman, promptKind, logStop, logGateWait, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
+  logToolEvent, logAgentEnd, readSession, logBlocked, logHuman, promptKind, logStop, logGateWait, recordHookError, readSessions, readJsonl, harnessDir, redact, signature, EDIT_TOOLS,
 };

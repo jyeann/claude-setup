@@ -99,7 +99,7 @@ It cannot be changed or turned off from here, and must not be (`security.md`). S
   rest of `.harness/` is read-only. Say in a brief's "Hand back" section where the drafts go.
 - **Move it in only when it is finished**, then commit and push in one step. Commit at each finished step, so a
   stop finds little open work.
-- **Do not end a turn while your helpers are still running** (`agents.md`; a Stop-hook check for it is #86).
+- **Do not end a turn while your helpers are still running** (`agents.md`). The harness Stop hook holds a stop once while a background helper you started is still running (#86).
 
 ## Not covered here
 
