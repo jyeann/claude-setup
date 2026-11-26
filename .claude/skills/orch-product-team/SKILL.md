@@ -92,11 +92,11 @@ Once the owner has added `accepted` to the first run's spec issue, every request
 
 ### Size the request first
 
-An agent sizes each request before any other work, writes the size and the reason as a comment on the request's issue, and logs it as a line `Size: <size> - <reason>` in `<product-repo>/docs/product/<slug>/changes/<N>/decisions.md`. `pipeline.js` reads the last `Size:` line and stops at its `size` phase until there is one.
+An agent sizes each request before any other work, writes the size and the reason as a comment on the request's issue, and logs it as a line `Size: <size> - <reason>` in `<product-repo>/docs/product/<slug>/changes/<N>/decisions.md`. `pipeline.js` reads the last `Size:` line outside code and quotes, and stops at its `size` phase until there is one naming exactly one size. When in doubt between two sizes, take the larger: the first size is the agent's call, and for a fix the owner's only check on it is `accepted`.
 
 | Size | When | Issue #N | Walk |
 |---|---|---|---|
-| **fix** | no new behaviour | the owner's own issue is the request | `size`, `plan`, `build`, `review`, `release`, gate `accepted` on #N |
+| **fix** | no new behaviour | the owner's own issue is the request | `size`, `plan`, `build`, `review`, `qa`, `release`, gate `accepted` on #N |
 | **change** | new behaviour inside the approved product | the change's own spec issue | `size`, `spec`, gate `spec-approved`, `plan`, `build`, `review`, `qa`, `release`, gate `accepted` |
 | **new direction** | changes what the product is | the change's own spec issue | `size`, `discover`, `ux`, `design`, `spec` (full phases 1 to 4a), gate `spec-approved`, then as a change |
 

@@ -591,14 +591,23 @@ const PHASES = [
 // ---- Sizing a change request (#90). The change's decisions.md carries a line "Size: fix", "Size: change" or
 // "Size: new direction" (a reason may follow); the last such line is the size. A re-size adds a new line.
 const SIZES = Object.freeze(['fix', 'change', 'new direction']);
-const SIZE_LINE = /^\s*(?:[-*]\s*)?Size:[ \t]*(.*?)\s*$/gmi;
-const SIZE_VALUE = /^(fix|change|new direction)(?=$|[\s,;.:(\u2013\u2014-])/i;
+// Lines in fenced or indented code and blockquotes are quotes, never the size (as for verdicts). The value is
+// exactly one size, alone or followed by " - <reason>", so "fix or change" is refused rather than read as fix.
+const SIZE_LINE = /^ {0,3}(?:[-*]\s+)?Size:[ \t]*(.*?)\s*$/i;
+const SIZE_VALUE = /^(fix|change|new direction)(?:\s+[-\u2013\u2014]\s.*)?$/i;
 function readSize(records) {
-  const lines = [...(read(path.join(records, 'decisions.md')) ?? '').matchAll(SIZE_LINE)];
-  if (lines.length === 0) return { size: null };
-  const raw = lines.at(-1)[1];
+  let raw = null;
+  let fence = null;
+  for (const line of (read(path.join(records, 'decisions.md')) ?? '').split(/\r?\n/)) {
+    const f = FENCE.exec(line);
+    if (f) { if (fence === null) fence = f[1]; else if (f[1] === fence) fence = null; continue; }
+    if (fence !== null || /^\s*>/.test(line) || /^(?: {4}|\t)/.test(line)) continue;
+    const m = SIZE_LINE.exec(line);
+    if (m) raw = m[1];
+  }
+  if (raw === null) return { size: null };
   const m = SIZE_VALUE.exec(raw);
-  return m ? { size: m[1].toLowerCase() } : { size: null, invalid: raw };
+  return m ? { size: m[1].toLowerCase().replace(/\s+/, ' ') } : { size: null, invalid: raw };
 }
 
 // The size phase: a size is written, and it is not smaller than one this request was already checked at, so
@@ -641,10 +650,10 @@ async function fixPlanPhase(ctx) {
   return p.length ? p : freezeProblems(ctx);
 }
 
-const changeTail = (withQa) => [
+const CHANGE_TAIL = [
   ['build', buildPhase],
   ['review', (ctx) => reviewProblems(ctx.records, rel(ctx.root, path.join(ctx.records, 'reviews.md')))],
-  ...(withQa ? [['qa', ({ records }) => doc(records, 'qa.md', 'independent browser walkthrough record of the change')]] : []),
+  ['qa', ({ records }) => doc(records, 'qa.md', 'independent browser walkthrough record of the change')],
   // Released means the product's README still runs it and its CHANGELOG names the change.
   ['release', (ctx) => [
     ...releaseProblems(ctx),
@@ -657,13 +666,13 @@ const CHANGE_PHASES = [
   ['spec', changeSpecProblems],
   ['spec-approved', ownerGate('spec-approved')],
   ['plan', planPhase],
-  ...changeTail(true),
+  ...CHANGE_TAIL,
 ];
 // A fix (#90): no spec and no spec-approved gate; the owner's own issue is the request, and accepted on it ends it.
 const FIX_PHASES = [
   ['size', sizeProblems],
   ['plan', fixPlanPhase],
-  ...changeTail(false),
+  ...CHANGE_TAIL,
 ];
 const NEW_DIRECTION_PHASES = [
   ['size', sizeProblems],
@@ -671,7 +680,7 @@ const NEW_DIRECTION_PHASES = [
   ['spec', newDirectionSpecProblems],
   ['spec-approved', ownerGate('spec-approved')],
   ['plan', planPhase],
-  ...changeTail(true),
+  ...CHANGE_TAIL,
 ];
 const WALKS = { fix: [FIX_PHASES, FIX_LAYERS], change: [CHANGE_PHASES, CHANGE_LAYERS], 'new direction': [NEW_DIRECTION_PHASES, NEW_DIRECTION_LAYERS] };
 
@@ -814,4 +823,4 @@ function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, war
   ].join('\n');
 }
 
-module.exports = { PAGE_SECTIONS, LAYERS, CHANGE_LAYERS, NEW_DIRECTION_LAYERS, FIX_LAYERS, SIZES, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
+module.exports = { PAGE_SECTIONS, LAYERS, CHANGE_LAYERS, NEW_DIRECTION_LAYERS, FIX_LAYERS, SIZES, readSize, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };

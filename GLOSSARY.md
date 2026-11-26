@@ -70,7 +70,7 @@ A change request that changes what the product is: phases 1 to 4a in full, in th
 _Avoid_: pivot, v2
 
 **Change run**:
-The harness run for one change request (`pipeline.js check ... --change <N>`), walked by its size: a fix walks size, plan, build, review, release and accepted; a change size, spec, spec-approved, plan, build, review, qa, release and accepted; a new direction adds discover, ux and design before its spec. Gates are on issue #N, records in `changes/<N>/` beside the first run's.
+The harness run for one change request (`pipeline.js check ... --change <N>`), walked by its size: a fix walks size, plan, build, review, qa, release and accepted; a change size, spec, spec-approved, plan, build, review, qa, release and accepted; a new direction adds discover, ux and design before its spec. Gates are on issue #N, records in `changes/<N>/` beside the first run's.
 _Avoid_: rerun, second run
 
 **Gate response**:

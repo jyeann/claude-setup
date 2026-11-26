@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { PAGE_SECTIONS, checkPipeline, formatReport, defaultReadIssue, parseVerdict, SIZES } = require('../lib/pipeline');
+const { PAGE_SECTIONS, checkPipeline, formatReport, defaultReadIssue, parseVerdict, SIZES, readSize } = require('../lib/pipeline');
 
 const LONG = 'x'.repeat(320);
 const passGate = async () => ({ pass: true, output: 'VERIFY PASSED' });
@@ -76,6 +76,25 @@ test('the three sizes are fix, change and new direction, smallest first', () => 
   assert.deepEqual(SIZES, ['fix', 'change', 'new direction']);
 });
 
+test('the size is the last Size: line outside quotes, and must be exactly one size', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'size-read-'));
+  const sizeOf = (text) => { fs.writeFileSync(path.join(dir, 'decisions.md'), text); return readSize(dir); };
+  const cases = [
+    ['Size: fix\n', { size: 'fix' }],
+    ['Size: fix - one rounding bug\nSize: change - needs a new setting\n', { size: 'change' }],
+    ['- size: New Direction \u2014 a different product\n', { size: 'new direction' }],
+    ['* Size: change\n', { size: 'change' }],
+    ['Size: change\n```\nSize: fix\n```\n> Size: fix\n    Size: fix\n', { size: 'change' }],
+    ['Size: fix or change\n', { size: null, invalid: 'fix or change' }],
+    ['Size: fix, maybe a new direction\n', { size: null, invalid: 'fix, maybe a new direction' }],
+    ['Size: fix-up\n', { size: null, invalid: 'fix-up' }],
+    ['Size:\n', { size: null, invalid: '' }],
+    ['# Decisions\n', { size: null }],
+  ];
+  for (const [text, want] of cases) assert.deepEqual(sizeOf(text), want, text);
+  assert.deepEqual(readSize(path.join(dir, 'missing')), { size: null });
+});
+
 test('a change request with no size line stops at the size phase', async () => {
   const root = await accepted(null);
   const r = await run(root, issues({ [N]: ['spec-approved'] }));
@@ -92,11 +111,11 @@ test('a size that is not one of the three is refused', async () => {
   assert.match(problemsOf(r, 'size')[0], /"Size: small - sized from the owner's issue" is not a size: write fix, change or new direction/);
 });
 
-test('a fix run skips the spec and spec-approved and waits only at accepted', async () => {
+test('a fix run skips the spec and spec-approved, keeps qa, and waits only at accepted', async () => {
   const root = await accepted('fix');
   const asked = [];
   const r = await run(root, async (q) => { asked.push(q.spec); return issues({ [N]: ['afk'] })(q); });
-  assert.deepEqual(names(r), ['size', 'plan', 'build', 'review', 'release', 'accepted']);
+  assert.deepEqual(names(r), ['size', 'plan', 'build', 'review', 'qa', 'release', 'accepted']);
   assert.deepEqual(r.waiting, { gate: 'accepted', spec: N });
   assert.deepEqual([...new Set(asked)], [N]);
   assert.equal(formatReport(r).split('\n').at(-1), 'waiting for owner: spec issue #40 needs label accepted');
