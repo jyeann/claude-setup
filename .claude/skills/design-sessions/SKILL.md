@@ -101,7 +101,31 @@ It cannot be changed or turned off from here, and must not be (`security.md`). S
   stop finds little open work.
 - **Do not end a turn while your helpers are still running** (`agents.md`; a Stop-hook check for it is #86).
 
+## "Stop" stops; "run without me" is said once
+
+The owner sets two states in their own words, or with an explicit first line `harness: <state>` (#113):
+
+| Owner says | State | Cleared by |
+|---|---|---|
+| "stop", "stop it", "pause", "halt", or `harness: stop` | **stopped** | "continue", "resume", "go ahead", "carry on", or `harness: continue` |
+| "run without me", "go ahead without me", "don't ask", "without asking", or `harness: unattended` | **run-unattended** | "ask me first", "check with me first", or `harness: attended` |
+
+A stop or continue phrase counts only as the first clause of the prompt ("Stop it, you published again" stops;
+"please stop the dev server" does not). The list is English only and kept short on purpose; the `harness:` line
+works whatever language the owner writes in. A terminal owner can also run
+`node .claude/harness/bin/owner-mode.js status|stop|continue|unattended|attended`.
+
+- **Stopped.** The `owner-hold.js` hook blocks every Artifact publish, `git push`, GitHub write (`gh`, GitHub MCP)
+  and MCP publish/deploy/push tool until the owner says to continue. It holds in turns the owner did not start: a
+  finished background render, a message from another session. Those turns are also told to end without new work.
+  Local work (edits, tests, commits) stays allowed, so nothing is lost.
+- **Run-unattended.** Do not end a turn to ask permission for a step inside the agreed work. The `stop-owner.js`
+  hook sends a closing permission question ("Want me to start X now?") back once. It never lifts an owner gate,
+  an owner-only decision (spend, secrets, legal, scope) or a hard-to-reverse action that needs confirmation: end
+  the turn with a line starting `Owner decision:` that says exactly what is needed.
+- **Only the owner clears a state.** The agent may not edit `.harness/owner-mode.json` or run the clearing
+  commands. The state is per checkout: sessions sharing one checkout share it.
+
 ## Not covered here
 
-"Run without me" and "stop" (#113), and the list of owner requests at the end (#114) are separate tickets
-under #109.
+The list of owner requests at the end (#114) is a separate ticket under #109.

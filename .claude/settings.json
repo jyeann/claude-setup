@@ -107,6 +107,16 @@
             "timeout": 30
           }
         ]
+      },
+      {
+        "matcher": "Artifact|Bash|Write|Edit|MultiEdit|NotebookEdit|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/owner-hold.js\"",
+            "timeout": 30
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -152,6 +162,11 @@
             "type": "command",
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/stop-design.js\"",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/stop-owner.js\"",
+            "timeout": 30
           }
         ]
       }
