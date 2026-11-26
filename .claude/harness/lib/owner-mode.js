@@ -20,9 +20,12 @@ const STOP = new Set(['stop', 'stop it', 'stop now', 'stop here', 'stop that', '
 const CONTINUE = new Set(['continue', 'resume', 'carry on', 'go on', 'keep going', 'go ahead', 'unpause',
   'continue without me', 'go ahead without me', 'carry on without me', 'keep going without me']);
 const ATTENDED = new Set(['ask me first', 'check with me first']);
-// Matched anywhere in the prompt, as whole words.
+// Matched anywhere in the prompt, as whole words; each names "me", so "don't ask the user" or a "Don't ask again"
+// checkbox set nothing.
 const UNATTENDED = ['run without me', 'go ahead without me', 'carry on without me', 'keep going without me', 'continue without me',
-  'work without me', 'without asking', "don't ask", 'do not ask', 'no need to ask'];
+  'work without me', 'without asking me', "don't ask me", 'do not ask me', 'no need to ask me'];
+// Matched as the whole first clause only ("Don't ask, just do it").
+const UNATTENDED_CLAUSE = new Set(["don't ask", 'do not ask', 'no need to ask', 'without asking', 'just do it']);
 const COMMAND = /^harness:\s*(stop|continue|unattended|attended)\s*$/i;
 
 const normal = (text) => String(text ?? '').replace(/[‘’]/g, "'").toLowerCase();
@@ -43,7 +46,7 @@ function classifyPrompt(prompt) {
   if (STOP.has(clause)) actions.push('stop');
   if (CONTINUE.has(clause)) actions.push('continue');
   if (ATTENDED.has(clause)) actions.push('attended');
-  else if (UNATTENDED.some((p) => hasPhrase(text, p))) actions.push('unattended');
+  else if (UNATTENDED_CLAUSE.has(clause) || UNATTENDED.some((p) => hasPhrase(text, p))) actions.push('unattended');
   return actions;
 }
 
@@ -51,12 +54,10 @@ function classifyPrompt(prompt) {
 function readMode(projectDir) {
   let raw;
   try { raw = fs.readFileSync(modePath(projectDir), 'utf8'); } catch { return { stopped: false, unattended: false }; }
-  try {
-    const m = JSON.parse(raw);
-    return { ...m, stopped: m.stopped === true, unattended: m.unattended === true };
-  } catch {
-    return { stopped: true, unattended: false, corrupt: true };
-  }
+  let m;
+  try { m = JSON.parse(raw); } catch { m = null; }
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return { stopped: true, unattended: false, corrupt: true };
+  return { ...m, stopped: m.stopped === true, unattended: m.unattended === true };
 }
 
 function writeMode(projectDir, mode) {
@@ -126,36 +127,74 @@ const EDIT_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 const WRITE_VERBS = new Set(['rm', 'mv', 'cp', 'tee', 'truncate', 'ln', 'dd', 'install', 'touch', 'chmod', 'chown', 'rsync', 'sed', 'perl', 'unlink']);
 const INTERPRETERS = new Set(['node', 'python', 'python3', 'ruby', 'deno', 'bun', 'bash', 'sh', 'zsh']);
 const OWNER_SET = new Set(['continue', 'attended', 'unattended']);
-const GH_READ = new Set(['view', 'list', 'status', 'diff', 'checks', 'watch', 'download']);
+const GH_READ = new Set(['view', 'list', 'status', 'diff', 'checks', 'watch', 'download', 'checkout', 'clone']);
+const GH_VALUE_FLAGS = new Set(['-R', '--repo', '--hostname']);
 const GH_AREAS = new Set(['pr', 'issue', 'release', 'repo', 'label', 'workflow', 'run', 'gist', 'secret', 'variable', 'project', 'cache']);
-const GH_FIELDS = new Set(['-f', '-F', '--field', '--raw-field', '--input']);
+const GH_FIELD = /^(?:-[fF]|--field|--raw-field|--input)(?:$|=|(?<=^-[fF]).)/;
 
-const mentionsMode = (s) => String(s).includes('owner-mode.json');
-
+// The mode file's folder counts too: deleting .harness/ (or the file by a glob) would lift a stop. Its work folder
+// (#112) stays writable.
+const HARNESS_ARG = /(?:^|[\s/=('"])\.harness(?:$|[/\s*'")])/;
+const mentionsMode = (s) => {
+  const t = String(s);
+  return t.includes('owner-mode.json') || (HARNESS_ARG.test(t) && !/\.harness\/work\//.test(t));
+};
+// Writing commands that take the guarded path as an argument; interpreters only when they name the module.
 function touchesModeFile(commands) {
+  const cdsIn = commands.some(({ argv }) => ['cd', 'pushd'].includes(argv[0]) && mentionsMode(argv[1] ?? ''));
   return commands.some(({ argv, redirects }) => {
-    if (redirects.some(mentionsMode)) return true;
-    if (!argv.slice(1).some(mentionsMode)) return false;
     const cmd = path.basename(argv[0] ?? '');
-    return WRITE_VERBS.has(cmd) || INTERPRETERS.has(cmd) || (cmd === 'git' && ['rm', 'mv', 'restore', 'checkout'].includes(argv[1]));
+    const writes = WRITE_VERBS.has(cmd) || (cmd === 'git' && ['rm', 'mv', 'restore', 'checkout', 'clean'].includes(argv[1]));
+    if (redirects.some(mentionsMode) || (cdsIn && (writes || redirects.length > 0))) return true;
+    if (INTERPRETERS.has(cmd)) return argv.slice(1).some((a) => a.includes('owner-mode') && !a.endsWith('owner-mode.js'));
+    return writes && argv.slice(1).some(mentionsMode);
   });
 }
 
+// `owner-mode.js <anything> continue`: any clearing word after the script name counts, whatever comes between.
 const runsOwnerSet = (commands) => commands.some(({ argv }) => {
   const i = argv.findIndex((a) => a.endsWith('owner-mode.js'));
-  return i >= 0 && OWNER_SET.has(argv[i + 1]);
+  return i >= 0 && argv.slice(i + 1).some((a) => OWNER_SET.has(a));
 });
 
-function ghWrites([cmd, sub, verb, ...rest]) {
-  if (cmd !== 'gh') return false;
-  if (sub === 'api') {
-    const args = [verb, ...rest];
-    const i = args.findIndex((a) => a === '-X' || a === '--method');
-    const inline = args.find((a) => /^(?:-X|--method=)./.test(a ?? ''));
-    const method = i >= 0 ? args[i + 1] : inline?.replace(/^(?:-X|--method=)/, '');
-    return method ? method.toUpperCase() !== 'GET' : args.some((a) => GH_FIELDS.has(a));
+// gh's own flags (-R o/r, --repo=o/r) may come before the area; drop them first.
+function ghArgs(args) {
+  const out = [];
+  for (let i = 0; i < args.length; i += 1) {
+    if (out.length === 0 && GH_VALUE_FLAGS.has(args[i])) i += 1;
+    else if (!(out.length === 0 && /^-/.test(args[i]))) out.push(args[i]);
   }
+  return out;
+}
+
+function ghWrites([cmd, ...args]) {
+  if (cmd !== 'gh') return false;
+  const [sub, ...rest] = ghArgs(args);
+  if (sub === 'api') {
+    const i = rest.findIndex((a) => a === '-X' || a === '--method');
+    const inline = rest.find((a) => /^(?:-X|--method=)./.test(a ?? ''));
+    const method = i >= 0 ? rest[i + 1] : inline?.replace(/^(?:-X|--method=)/, '');
+    return method ? method.toUpperCase() !== 'GET' : rest.some((a) => GH_FIELD.test(a ?? ''));
+  }
+  const verb = rest.filter((a, i) => !/^-/.test(a) && !GH_VALUE_FLAGS.has(rest[i - 1]))[0];
   return GH_AREAS.has(sub) && Boolean(verb) && !GH_READ.has(verb);
+}
+
+// curl or wget to the GitHub API with a method other than GET, or with a body.
+function curlWritesGitHub([cmd, ...args]) {
+  if (!['curl', 'wget'].includes(cmd) || !args.some((a) => /api\.github\.com|uploads\.github\.com/.test(a))) return false;
+  const i = args.findIndex((a) => a === '-X' || a === '--request' || a === '--method');
+  const inline = args.find((a) => /^(?:-X.|--request=|--method=)/.test(a));
+  const method = i >= 0 ? args[i + 1] : inline?.replace(/^(?:-X|--request=|--method=)/, '');
+  if (method) return method.toUpperCase() !== 'GET';
+  return args.some((a) => /^(?:-d|--data|--data-\w+|--json|-F|--form|-T|--upload-file|--post-data|--post-file)(?:$|=)/.test(a) || /^-d./.test(a));
+}
+
+// `xargs [flags] git push`: look at the command xargs runs.
+function unwrapXargs(argv) {
+  if (argv[0] !== 'xargs') return argv;
+  const i = argv.findIndex((a, j) => j > 0 && !a.startsWith('-') && !/^-[nLPIEdsa]$/.test(argv[j - 1]));
+  return i > 0 ? argv.slice(i) : [];
 }
 
 const GITHUB_READ = (name) => /^(?:get|list|search)_/.test(name) || /_read$/.test(name) || /^actions_(?:get|list)$/.test(name);
@@ -167,13 +206,14 @@ function stoppedVerdict(event) {
   if (name === 'Artifact') return ['publish', 'delete'].includes(input.action ?? 'publish') ? deny(STOP_REASON) : ok;
   if (name === 'Bash') {
     const commands = parseCommands(String(input.command ?? ''));
-    const pushes = commands.some(({ argv }) => argv[0] === 'git' && argv[1] === 'push');
-    return pushes || commands.some(({ argv }) => ghWrites(argv)) ? deny(STOP_REASON) : ok;
+    const writes = commands.map(({ argv }) => unwrapXargs(argv))
+      .some((argv) => (argv[0] === 'git' && argv.includes('push')) || ghWrites(argv) || curlWritesGitHub(argv));
+    return writes ? deny(STOP_REASON) : ok;
   }
   const [prefix, server, ...rest] = name.split('__');
   if (prefix !== 'mcp' || !server) return ok;
   const toolName = rest.join('__');
-  if (server === 'github') return GITHUB_READ(toolName) ? ok : deny(STOP_REASON);
+  if (/github/i.test(server)) return GITHUB_READ(toolName) ? ok : deny(STOP_REASON);
   return PUBLISHES(toolName) ? deny(STOP_REASON) : ok;
 }
 

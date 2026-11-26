@@ -108,7 +108,7 @@ The owner sets two states in their own words, or with an explicit first line `ha
 | Owner says | State | Cleared by |
 |---|---|---|
 | "stop", "stop it", "pause", "halt", or `harness: stop` | **stopped** | "continue", "resume", "go ahead", "carry on", or `harness: continue` |
-| "run without me", "go ahead without me", "don't ask", "without asking", or `harness: unattended` | **run-unattended** | "ask me first", "check with me first", or `harness: attended` |
+| "run without me", "go ahead without me", "don't ask me", "without asking me", "don't ask" or "just do it" as the first clause, or `harness: unattended` | **run-unattended** | "ask me first", "check with me first", or `harness: attended` |
 
 A stop or continue phrase counts only as the first clause of the prompt ("Stop it, you published again" stops;
 "please stop the dev server" does not). The list is English only and kept short on purpose; the `harness:` line
@@ -123,6 +123,10 @@ works whatever language the owner writes in. A terminal owner can also run
   hook sends a closing permission question ("Want me to start X now?") back once. It never lifts an owner gate,
   an owner-only decision (spend, secrets, legal, scope) or a hard-to-reverse action that needs confirmation: end
   the turn with a line starting `Owner decision:` that says exactly what is needed.
+- **Limits.** "Continue, but only for tests" lifts the stop (the first clause decides; the rest is an
+  instruction). A turn counts as the owner's unless it carries a known harness or notification marker or starts
+  with `<`; a peer message worded as a bare "continue" with neither would lift a stop. The hold reads shell
+  commands best-effort: a script written to a file and then run is not inspected.
 - **Only the owner clears a state.** The agent may not edit `.harness/owner-mode.json` or run the clearing
   commands. The state is per checkout: sessions sharing one checkout share it.
 

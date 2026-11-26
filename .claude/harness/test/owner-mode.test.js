@@ -35,7 +35,7 @@ test('each continue phrase clears stopped', () => {
 });
 
 test('each run-without-me phrase sets run-unattended', () => {
-  for (const p of ['Run without me.', 'Build the footer, then run without me', "don't ask, just do it", 'Do not ask me again', 'please work without asking', 'no need to ask', 'harness: unattended']) {
+  for (const p of ['Run without me.', 'Build the footer, then run without me', "don't ask, just do it", 'Do not ask me again', 'please work without asking me', 'no need to ask', 'harness: unattended']) {
     assert.deepEqual(om.classifyPrompt(p), ['unattended'], p);
   }
 });
@@ -50,7 +50,9 @@ test('ask-me-first phrases and the explicit command clear run-unattended', () =>
 
 test('normal prompts set nothing', () => {
   for (const p of ['', 'Build the footer in blue', 'please stop the dev server', 'stop asking me about colours', 'continue with the hero section',
-    "don't continue", 'Why did it stop?', 'Should we pause the animation on hover?', 'harness: status', 'I said harness: stop yesterday']) {
+    "don't continue", 'Why did it stop?', 'Should we pause the animation on hover?', 'harness: status', 'I said harness: stop yesterday',
+    'please fix this without asking the reviewer', "I don't ask much; stop pestering",
+    'Do not ask the user for their email on signup', 'Add a "Don\'t ask again" checkbox']) {
     assert.deepEqual(om.classifyPrompt(p), [], p);
   }
 });
@@ -93,6 +95,10 @@ test('a missing mode file reads as neither state; a corrupt one reads as stopped
   fs.writeFileSync(modeFile(dir), '{bad');
   assert.equal(om.readMode(dir).stopped, true);
   assert.equal(om.readMode(dir).corrupt, true);
+  for (const bad of ['[]', '5', 'null']) {
+    fs.writeFileSync(modeFile(dir), bad);
+    assert.equal(om.readMode(dir).stopped, true, bad);
+  }
 });
 
 // --- holds while stopped ---
@@ -116,6 +122,17 @@ test('while stopped a publish, a push and GitHub writes are blocked', () => {
   assert.ok(blocked({ tool_name: 'mcp__github__add_issue_comment', tool_input: {} }));
   assert.ok(blocked({ tool_name: 'mcp__abc123__publish_project', tool_input: {} }));
   assert.ok(blocked({ tool_name: 'mcp__abc123__deploy_website', tool_input: {} }));
+  // review fixes: gh global flags, attached field forms, plugin-named GitHub servers, curl, xargs
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'gh -R o/r pr merge 5' } }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'gh --repo o/r issue comment 1 -b x' } }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'gh --repo=o/r pr close 1' } }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'gh api repos/o/r/issues -fbody=x' } }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'gh api repos/o/r/issues --field=a=b' } }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'gh api --method=PATCH repos/o/r' } }));
+  assert.ok(blocked({ tool_name: 'mcp__plugin_github_github__create_issue', tool_input: {} }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'curl -X POST -H "Authorization: token $T" https://api.github.com/repos/o/r/issues' } }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'curl -d @x.json https://api.github.com/repos/o/r/issues' } }));
+  assert.ok(blocked({ tool_name: 'Bash', tool_input: { command: 'echo x | xargs -n1 git push origin' } }));
 });
 
 test('while stopped, reading and local work stay allowed', () => {
@@ -130,6 +147,10 @@ test('while stopped, reading and local work stay allowed', () => {
   assert.ok(!blocked({ tool_name: 'mcp__github__pull_request_read', tool_input: {} }));
   assert.ok(!blocked({ tool_name: 'mcp__github__actions_list', tool_input: {} }));
   assert.ok(!blocked({ tool_name: 'mcp__abc123__get_project', tool_input: {} }));
+  assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'gh issue -R a/b view 3' } }));
+  assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'gh pr checkout 5 && gh repo clone a/b' } }));
+  assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'curl -s https://api.github.com/repos/o/r' } }));
+  assert.ok(!blocked({ tool_name: 'mcp__plugin_github_github__issue_read', tool_input: {} }));
   assert.ok(!blocked({ tool_name: 'Write', tool_input: { file_path: 'src/a.js', content: 'x' } }));
 });
 
@@ -152,7 +173,11 @@ test('the agent cannot change the mode file or run the clearing commands', () =>
   const free = { stopped: false, unattended: false };
   for (const command of ['node .claude/harness/bin/owner-mode.js continue', 'node .claude/harness/bin/owner-mode.js attended',
     'node .claude/harness/bin/owner-mode.js unattended', 'echo {} > .harness/owner-mode.json', 'rm .harness/owner-mode.json',
-    "node -e \"require('fs').unlinkSync('.harness/owner-mode.json')\""]) {
+    "node -e \"require('fs').unlinkSync('.harness/owner-mode.json')\"",
+    // review fixes: deleting the folder, globs, cd then delete, the library called directly, flags before the verb
+    'rm -rf .harness', 'mv .harness /tmp/x', 'rm .harness/owner-m*', 'cd .harness && rm owner*',
+    "node -e \"require('./.claude/harness/lib/owner-mode').setMode('.',['continue'])\"",
+    'node .claude/harness/bin/owner-mode.js --x continue']) {
     assert.ok(blocked({ tool_name: 'Bash', tool_input: { command } }, free), command);
   }
   assert.ok(blocked({ tool_name: 'Write', tool_input: { file_path: '/p/.harness/owner-mode.json', content: '{}' } }, free));
@@ -160,6 +185,11 @@ test('the agent cannot change the mode file or run the clearing commands', () =>
   assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'node .claude/harness/bin/owner-mode.js status' } }, free));
   assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'node .claude/harness/bin/owner-mode.js stop' } }, free));
   assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'cat .harness/owner-mode.json' } }, free));
+  assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'mkdir -p .harness/work/r1 && cp a.txt .harness/work/r1/' } }, free));
+  assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: 'rm -rf .harness/work/r1' } }, free));
+  // The module's source stays editable; only the state file and its folder are the owner's.
+  assert.ok(!blocked({ tool_name: 'Edit', tool_input: { file_path: '.claude/harness/lib/owner-mode.js', new_string: 'x' } }, free));
+  assert.ok(!blocked({ tool_name: 'Bash', tool_input: { command: "sed -i 's/a/b/' .claude/harness/lib/owner-mode.js" } }, free));
 });
 
 // --- closing permission questions while run-unattended ---
