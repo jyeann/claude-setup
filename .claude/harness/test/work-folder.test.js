@@ -118,7 +118,20 @@ test('links cannot be made into the work folder during a run (review #120)', () 
     'ln -s ../state.json .harness/work/l',
     'ln .harness/state.json .harness/work/h',
     'ln -s ../acceptance .harness/work',
+    'cp -l .harness/state.json .harness/work/h',
+    'cp -al .harness .harness/work/copy',
+    'cp --symbolic-link .harness/state.json .harness/work/s',
+    'link .harness/state.json .harness/work/h',
   ]) assert.equal(checkBash(cmd, live(dir)).block, true, `should block: ${cmd}`);
+});
+
+test('recursively deleting the project or above is blocked during a run (review #120)', () => {
+  const dir = tmp();
+  for (const cmd of ['rm -r .claude/../..', 'rm -r .', 'rm -R .harness/work/../../']) {
+    assert.equal(checkBash(cmd, live(dir)).block, true, `should block: ${cmd}`);
+  }
+  assert.equal(checkBash('rm -r .harness/work/run-1', live(dir)).block, false);
+  assert.equal(checkBash('cp -a notes .harness/work/run-1/', live(dir)).block, false);
 });
 
 test('without a project dir the work folder is not writable', () => {

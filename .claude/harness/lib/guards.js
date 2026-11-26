@@ -273,6 +273,22 @@ function guardedMatcher(ctx, opts) {
   return { isGuarded, mentions };
 }
 
+// `ln`, `link`, and `cp` in link mode (-l, -s, --link, --symbolic-link, bundled as in -al).
+function makesLink([cmd, ...args]) {
+  if (cmd === 'ln' || cmd === 'link') return true;
+  return cmd === 'cp' && args.some((a) => a === '--link' || a === '--symbolic-link' || /^-[a-zA-Z]*[ls]/.test(a));
+}
+
+// `rm -r .claude/../..` resolves to above the project; the raw-text check in rmViolation cannot see that.
+function recursiveRmAtOrAbove([cmd, ...args], projectDir) {
+  if (cmd !== 'rm' || !projectDir || !args.some((a) => a === '--recursive' || /^-[a-zA-Z]*[rR]/.test(a))) return false;
+  const root = trimSlash(projectDir);
+  return args.filter((a) => !a.startsWith('-')).some((a) => {
+    const abs = path.posix.resolve(root, a);
+    return abs === root || abs === '/' || root.startsWith(`${abs}/`);
+  });
+}
+
 function activeViolation({ argv, redirects }, matcher) {
   const [cmd, sub] = argv;
   const tail = argv.slice(1);
@@ -341,8 +357,11 @@ function checkBash(command, ctx = {}) {
     }
     // A link made now is not resolved by the checks above (they run before it exists), and a hard link never is:
     // no link may name a guarded path or the work folder during a run.
-    if (commands.some((c) => c.argv[0] === 'ln' && c.argv.slice(1).some((a) => !a.startsWith('-') && strict.isGuarded(a)))) {
+    if (commands.some((c) => makesLink(c.argv) && c.argv.slice(1).some((a) => !a.startsWith('-') && strict.isGuarded(a)))) {
       return deny('Making links to or inside guarded paths (the work folder included) is blocked during a harness run.');
+    }
+    if (commands.some((c) => recursiveRmAtOrAbove(c.argv, ctx.projectDir))) {
+      return deny('Recursively deleting the project folder or anything above it is blocked during a harness run.');
     }
     for (const c of commands) {
       const reason = activeViolation(c, matcher);
