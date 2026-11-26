@@ -20,6 +20,7 @@ The agent decides *how*; the harness decides *when it is done* and *what it may 
 | CI + branch protection | `ci/` (`README.md`) | Server-side backstop: required PR + checks, protected-files check, secret scan, ruleset script. |
 | Dangerous commands | `lib/guards.js` | Force/mirror push, push to main/master (including a bare `git push` while on main), `rm -rf /`, `curl \| sh`, `--no-verify`, `reset --hard`, reading/staging `.env`/keys. `lib/shell.js` understands quotes, env prefixes, wrappers, `git -C`, subshells, `$(...)`, `bash -c` and heredocs. |
 | Secret scan | `hooks/pre-write.js` | Blocks writes containing high-confidence secrets. |
+| One writer per page | `hooks/pre-publish.js` + `hooks/post-publish.js` + `lib/design.js` | An Artifact publish to a page that `docs/design/<product>/pages.json` gives to another session is blocked. The first publish of an unregistered page records its session as owner. `bin/design-check.js` checks the current-direction file and design briefs. See the `design-sessions` skill. |
 | Self-protection | `lib/guards.js` | While a run is active, settings, harness files, `.harness/` and `--protect` paths are read-only, and the agent cannot run `harness off/init`. |
 
 | Session trace | `hooks/post-tool.js` + `lib/trace.js` | Records every tool call (ok or failed), guard block and stop to `.harness/traces/<session>.jsonl`. Redacted, truncated summaries only; never blocks. |

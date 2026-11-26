@@ -190,6 +190,10 @@ function pinnedSpec(ctx) {
 const LAYERS = Object.freeze({ problem: 'discover', impression: 'ux', approach: 'design', correctness: 'build', craft: 'build' });
 // A change run (#89) has no discover, ux or design of its own: its short phases 1 to 4a are its spec phase.
 const CHANGE_LAYERS = Object.freeze({ problem: 'spec', impression: 'spec', approach: 'spec', correctness: 'build', craft: 'build' });
+// A new direction (#90) runs phases 1 to 4a in full, in the change records; a fix has only build to send back
+// to (a fix judged wrong on problem, impression or approach is usually a change: re-size it).
+const NEW_DIRECTION_LAYERS = LAYERS;
+const FIX_LAYERS = Object.freeze({ problem: 'build', impression: 'build', approach: 'build', correctness: 'build', craft: 'build' });
 const MAX_ROUNDS = 3;
 // A verdict line starts the line (up to 3 spaces). Lines inside fenced or indented code and blockquotes
 // are quotes, never verdicts, so an agent quoting the expected form does not post one.
@@ -279,9 +283,16 @@ const inside = (dir, abs) => { const r = path.relative(dir, abs); return !r.star
 // In a change run, the change's records folder holds its spec outputs (all but the logs of later phases),
 // and the first run's documents belong to no phase of the change: ux.md is still frozen (AMEND).
 const CHANGE_LOGS = new Set(['decisions.md', 'reviews.md', 'qa.md', 'TASKS.md']);
+// A new direction's brief, ux and design (with adr/) there belong to its discover, ux and design phases; a fix has
+// no spec phase, so its records are logs only.
 function phaseOf(ctx, file) {
   const abs = path.join(ctx.root, file);
-  if (ctx.change && inside(ctx.records, abs)) return CHANGE_LOGS.has(rel(ctx.records, abs)) ? null : 'spec';
+  if (ctx.change && inside(ctx.records, abs)) {
+    const r = rel(ctx.records, abs);
+    if (CHANGE_LOGS.has(r) || ctx.size === 'fix') return null;
+    if (ctx.size === 'new direction') return { 'brief.md': 'discover', 'ux.md': 'ux', 'design.md': 'design' }[r] ?? (r.startsWith('adr/') ? 'design' : 'spec');
+    return 'spec';
+  }
   if (ctx.change && inside(ctx.docs, abs)) return null;
   if (inside(ctx.docs, abs)) {
     const d = rel(ctx.docs, abs);
@@ -323,7 +334,7 @@ const phaseOutputs = (ctx, phase) => hashed(ctx, (f) => phaseOf(ctx, f) === phas
 // spec-approved approves the brief, ux, design and the page (a change: its spec outputs); accepted approves the product.
 function approvedFiles(ctx, gate) {
   const page = ctx.change ? null : rel(ctx.root, path.join(ctx.docs, PAGE));
-  const phases = gate === 'accepted' ? ['plan', 'build'] : (ctx.change ? ['spec'] : ['discover', 'ux', 'design']);
+  const phases = gate === 'accepted' ? ['plan', 'build'] : (ctx.change ? ['discover', 'ux', 'design', 'spec'] : ['discover', 'ux', 'design']);
   return hashed(ctx, (f) => f === page || phases.includes(phaseOf(ctx, f)));
 }
 const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((f) => a[f] !== b[f]);
@@ -577,6 +588,41 @@ const PHASES = [
   ['retro', ({ docs }) => doc(docs, 'retro.md', 'retro')],
 ];
 
+// ---- Sizing a change request (#90). The change's decisions.md carries a line "Size: fix", "Size: change" or
+// "Size: new direction" (a reason may follow); the last such line is the size. A re-size adds a new line.
+const SIZES = Object.freeze(['fix', 'change', 'new direction']);
+// Lines in fenced or indented code and blockquotes are quotes, never the size (as for verdicts). The value is
+// exactly one size, alone or followed by " - <reason>", so "fix or change" is refused rather than read as fix.
+const SIZE_LINE = /^ {0,3}(?:[-*]\s+)?Size:[ \t]*(.*?)\s*$/i;
+const SIZE_VALUE = /^(fix|change|new direction)(?:\s+[-\u2013\u2014]\s.*)?$/i;
+function readSize(records) {
+  let raw = null;
+  let fence = null;
+  for (const line of (read(path.join(records, 'decisions.md')) ?? '').split(/\r?\n/)) {
+    const f = FENCE.exec(line);
+    if (f) { if (fence === null) fence = f[1]; else if (f[1] === fence) fence = null; continue; }
+    if (fence !== null || /^\s*>/.test(line) || /^(?: {4}|\t)/.test(line)) continue;
+    const m = SIZE_LINE.exec(line);
+    if (m) raw = m[1];
+  }
+  if (raw === null) return { size: null };
+  const m = SIZE_VALUE.exec(raw);
+  return m ? { size: m[1].toLowerCase().replace(/\s+/, ' ') } : { size: null, invalid: raw };
+}
+
+// The size phase: a size is written, and it is not smaller than one this request was already checked at, so
+// sizing down cannot skip a gate the larger size has. The largest size seen is kept in the change's gate state.
+function sizeProblems(ctx) {
+  const log = rel(ctx.root, path.join(ctx.records, 'decisions.md'));
+  const choose = 'fix (no new behaviour), change (new behaviour inside the approved product) or new direction (changes what the product is)';
+  if (ctx.sizeInvalid !== undefined) return [`"Size: ${ctx.sizeInvalid}" is not a size: write fix, change or new direction on the last "Size:" line of ${log}`];
+  if (!ctx.size) return [`${log} has no "Size:" line: size the request as ${choose}, write it on the request's issue and as a line "Size: <size> - <reason>" in ${log}`];
+  const seen = ctx.gates.size;
+  if (seen && SIZES.indexOf(ctx.size) < SIZES.indexOf(seen)) return [`#${ctx.change} was sized ${seen}; a size only goes up, so it cannot become ${ctx.size} and skip that size's gates. Add the line "Size: ${seen}" to ${log}, or open a new issue for a smaller request`];
+  if (seen !== ctx.size) { ctx.gates.size = ctx.size; saveGates(ctx); }
+  return [];
+}
+
 // ---- Change-request runs (#89, spec #88). One change of an accepted product, on its own spec issue (named by
 // --change), walks the phases below; the first run's records and state are only read. Records go in
 // <docs>/changes/<N>/ (decisions.md with its AMEND lines, TASKS.md, reviews.md, qa.md, spec outputs).
@@ -586,10 +632,25 @@ async function changeSpecProblems(ctx) {
   return r.error ? [cannotRead(ctx, ctx.change, r.error)] : [];
 }
 
-const CHANGE_PHASES = [
-  ['spec', changeSpecProblems],
-  ['spec-approved', ownerGate('spec-approved')],
-  ['plan', planPhase],
+// A new direction's full phase 4a: the change issue, a chosen look and the spec-approved page, in the change records.
+async function newDirectionSpecProblems(ctx) {
+  const issue = await changeSpecProblems(ctx);
+  if (issue.length) return issue;
+  const log = rel(ctx.root, path.join(ctx.records, 'decisions.md'));
+  const look = LOOK.test(read(path.join(ctx.records, 'decisions.md')) ?? '') ? [] : [`${log} has no "Look:" line: render variations (prototype), choose one, put it in the change issue and record it as "Look: <choice and where it is rendered>" ("Look: none" when no screen changes)`];
+  return [...look, ...pageProblems(ctx.records)];
+}
+// The first run's discover, ux and design checks, on the change records.
+const inRecords = (check) => (ctx) => check({ ...ctx, docs: ctx.records });
+const phaseCheck = (name) => PHASES.find(([n]) => n === name)[1];
+
+// A fix's plan: the owner's issue is its one ticket, so there is no task list; the frozen files still hold.
+async function fixPlanPhase(ctx) {
+  const p = planProblems(ctx);
+  return p.length ? p : freezeProblems(ctx);
+}
+
+const CHANGE_TAIL = [
   ['build', buildPhase],
   ['review', (ctx) => reviewProblems(ctx.records, rel(ctx.root, path.join(ctx.records, 'reviews.md')))],
   ['qa', ({ records }) => doc(records, 'qa.md', 'independent browser walkthrough record of the change')],
@@ -600,6 +661,28 @@ const CHANGE_PHASES = [
   ]],
   ['accepted', ownerGate('accepted')],
 ];
+const CHANGE_PHASES = [
+  ['size', sizeProblems],
+  ['spec', changeSpecProblems],
+  ['spec-approved', ownerGate('spec-approved')],
+  ['plan', planPhase],
+  ...CHANGE_TAIL,
+];
+// A fix (#90): no spec and no spec-approved gate; the owner's own issue is the request, and accepted on it ends it.
+const FIX_PHASES = [
+  ['size', sizeProblems],
+  ['plan', fixPlanPhase],
+  ...CHANGE_TAIL,
+];
+const NEW_DIRECTION_PHASES = [
+  ['size', sizeProblems],
+  ...['discover', 'ux', 'design'].map((name) => [name, inRecords(phaseCheck(name))]),
+  ['spec', newDirectionSpecProblems],
+  ['spec-approved', ownerGate('spec-approved')],
+  ['plan', planPhase],
+  ...CHANGE_TAIL,
+];
+const WALKS = { fix: [FIX_PHASES, FIX_LAYERS], change: [CHANGE_PHASES, CHANGE_LAYERS], 'new direction': [NEW_DIRECTION_PHASES, NEW_DIRECTION_LAYERS] };
 
 // A change is for a product the owner has accepted: the first run's accepted approval must be on record.
 // Read only, without re-hashing: the change itself changes the product that approval covered.
@@ -650,7 +733,11 @@ async function checkPipeline({ root, product, docs, change, runGate = defaultGat
   Object.assign(ctx, { change: null, records: ctx.docs, layers: LAYERS, phases: PHASES });
   if (change !== undefined && change !== null) {
     if (!Number.isSafeInteger(change) || change < 1) throw new Error(`--change needs an issue number (the change's spec issue), not ${change}`);
-    Object.assign(ctx, { change, records: path.join(ctx.docs, 'changes', String(change)), layers: CHANGE_LAYERS, phases: CHANGE_PHASES });
+    const records = path.join(ctx.docs, 'changes', String(change));
+    const { size, invalid } = readSize(records);
+    // Unsized, the walk is a change's, and it stops at the size phase.
+    const [phases, layers] = WALKS[size ?? 'change'];
+    Object.assign(ctx, { change, records, size, phases, layers, ...(invalid === undefined ? {} : { sizeInvalid: invalid }) });
     const refused = changeStartProblem(ctx);
     if (refused) throw new Error(refused);
   }
@@ -736,4 +823,4 @@ function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, war
   ].join('\n');
 }
 
-module.exports = { PAGE_SECTIONS, LAYERS, CHANGE_LAYERS, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
+module.exports = { PAGE_SECTIONS, LAYERS, CHANGE_LAYERS, NEW_DIRECTION_LAYERS, FIX_LAYERS, SIZES, readSize, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };

@@ -73,18 +73,28 @@ async function accepted(overrides) {
   assert.equal(r.pass, true, formatReport(r));
   return root;
 }
-const change = (root, readIssue, { runGate = passGate, runTasksCheck = tasksMatch, number = CHANGE } = {}) => checkPipeline({ root, product: 'app', docs: 'docs', change: number, runGate, runTasksCheck, readIssue });
+// Every change is sized (#90) in its decisions.md; these tests are about a change, so they size it one unless told.
+const SIZE_LINE = /^\s*(?:[-*]\s*)?Size:/mi;
+function sized(root, number, size) {
+  const file = path.join(root, 'docs/changes', String(number), 'decisions.md');
+  const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : `# Decisions for change #${number}\n`;
+  if (!SIZE_LINE.test(text)) write(root, { [`docs/changes/${number}/decisions.md`]: `${text}${text.endsWith('\n') ? '' : '\n'}Size: ${size}\n` });
+}
+const change = (root, readIssue, { runGate = passGate, runTasksCheck = tasksMatch, number = CHANGE, size = 'change' } = {}) => {
+  if (size && Number.isSafeInteger(number) && number > 0) sized(root, number, size);
+  return checkPipeline({ root, product: 'app', docs: 'docs', change: number, runGate, runTasksCheck, readIssue });
+};
 const statusOf = (r) => Object.fromEntries(r.phases.map((p) => [p.name, p.status]));
 const problemsOf = (r, name) => r.phases.find((p) => p.name === name).problems;
 const lastLine = (r) => formatReport(r).split('\n').at(-1);
 const stateFiles = (root) => Object.fromEntries(fs.readdirSync(path.join(root, '.harness/pipeline')).sort().map((f) => [f, fs.readFileSync(path.join(root, '.harness/pipeline', f), 'utf8')]));
 
-test('a change run walks spec, spec-approved, plan, build, review, qa, release and accepted', async () => {
+test('a change run walks size, spec, spec-approved, plan, build, review, qa, release and accepted', async () => {
   const root = await accepted(CHANGE_RECORDS);
   // First seen before the owner accepted it: an issue that already carries accepted cannot start a run.
   assert.deepEqual((await change(root, issues({ [CHANGE]: ['spec-approved'] }))).waiting, { gate: 'accepted', spec: CHANGE });
   const r = await change(root, issues({ [CHANGE]: ['spec-approved', 'accepted'] }));
-  assert.deepEqual(r.phases.map((p) => p.name), ['spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted']);
+  assert.deepEqual(r.phases.map((p) => p.name), ['size', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted']);
   assert.equal(r.pass, true, formatReport(r));
   assert.match(formatReport(r), /PIPELINE COMPLETE$/);
 });
@@ -113,7 +123,7 @@ test('without spec-approved on the change issue the change waits at its first ga
   assert.equal(statusOf(r).plan, 'pending');
   assert.deepEqual([...new Set(asked)], [CHANGE]);
   assert.equal(lastLine(r), 'waiting for owner: spec issue #30 needs label spec-approved');
-  assert.match(formatReport(r), /\[2\/8\] spec-approved: waiting/);
+  assert.match(formatReport(r), /\[3\/9\] spec-approved: waiting/);
 });
 
 test('once spec-approved is on the change issue the change moves on to its plan', async () => {
@@ -486,6 +496,7 @@ const cli = (root, bin, args) => spawnSync(process.execPath, [PIPELINE, 'check',
 
 test('CLI: --change exits 3 with the waiting line on the change issue, and the Stop hook lets the turn end', async () => {
   const root = await accepted();
+  sized(root, CHANGE, 'change');
   const gh = fakeGh({ 19: ['spec-approved', 'accepted'], [CHANGE]: ['afk'] });
   const waiting = cli(root, gh.bin, ['--change', String(CHANGE)]);
   assert.equal(waiting.status, 3, waiting.stdout + waiting.stderr);
@@ -501,7 +512,7 @@ test('CLI: --change exits 3 with the waiting line on the change issue, and the S
   gh.set({ 19: ['spec-approved', 'accepted'], [CHANGE]: ['spec-approved'] });
   const next = cli(root, gh.bin, ['--change', String(CHANGE)]);
   assert.equal(next.status, 1, next.stdout + next.stderr);
-  assert.match(next.stdout, /\[2\/8\] spec-approved: done[\s\S]*INCOMPLETE at phase "plan"/);
+  assert.match(next.stdout, /\[3\/9\] spec-approved: done[\s\S]*INCOMPLETE at phase "plan"/);
 });
 
 test('CLI: --change refuses a product whose first run is not accepted, and a bad number', () => {

@@ -58,11 +58,27 @@ The owner gate on a spec issue, including the chosen look, passed before tickets
 The owner gate where the owner accepts the finished result against its spec issue.
 
 **Change request**:
-A request to change a product the owner has already accepted, written as its own spec issue and gated like a first run.
+A request to change a product the owner has already accepted, on its own issue, sized as a fix, a change or a new direction; the size decides its phases and gates.
 _Avoid_: follow-up, v2, enhancement
 
+**Size**:
+How much weight a change request gets: fix, change or new direction, written on the request's issue and as a `Size:` line in its `decisions.md`. A size only goes up.
+_Avoid_: priority, estimate
+
+**Fix**:
+A change request that adds no new behaviour. The owner's issue is the request: no spec issue and no spec-approved gate, one ticket, the build gate, and the owner's accepted on that issue. A fix found to need new behaviour is re-sized as a change.
+_Avoid_: hotfix, patch, bug (for the size)
+
+**Change**:
+A change request that adds new behaviour inside the approved product: its own spec issue, a short spec phase and both owner gates.
+_Avoid_: feature, enhancement (for the size)
+
+**New direction**:
+A change request that changes what the product is: phases 1 to 4a in full, in the change's records, and both owner gates.
+_Avoid_: pivot, v2
+
 **Change run**:
-The harness run for one change request (`pipeline.js check ... --change <N>`): spec, spec-approved, plan, build, review, qa, release and accepted on the change's spec issue, with its records in `changes/<N>/` beside the first run's.
+The harness run for one change request (`pipeline.js check ... --change <N>`), walked by its size: a fix walks size, plan, build, review, qa, release and accepted; a change size, spec, spec-approved, plan, build, review, qa, release and accepted; a new direction adds discover, ux and design before its spec. Gates are on issue #N, records in `changes/<N>/` beside the first run's.
 _Avoid_: rerun, second run
 
 **Gate response**:
@@ -137,3 +153,29 @@ _Avoid_: example, sample app, demo
 **Product repository**:
 The repository (or owner-given path) where `orch-product-team` builds one new product, with the harness installed and the run records in `<product-repo>/docs/product/<slug>/`. Never this repo.
 _Avoid_: example folder, product folder
+
+## Design
+
+**Design run**:
+Design work (looks, brand kits, concept art, animation) carried out across one or more sessions under the `design-sessions` rules. It is its own kind of run, not a phase of the product pipeline, and has no owner gates of its own (spec #109).
+_Avoid_: design phase
+
+**Owning session**:
+The one session that may publish to a given published page. The first session to publish the page becomes its owner, and the owner is recorded in the page register. Other sessions hand their content back to it.
+_Avoid_: page author, writer session
+
+**Page register**:
+`docs/design/<product>/pages.json`: each published design page's URL, its file and its owning session. The publish guard reads it, and the post-publish hook adds a page that has no owner yet.
+_Avoid_: page list, artifact log
+
+**Current-direction file**:
+`docs/design/<product>/direction.md`: the chosen look, the tool, the characters, the reference images, and a dated log of changes. When the owner changes direction, this file changes first. Briefs link it and never copy it.
+_Avoid_: design notes, style guide, mood board
+
+**Design brief**:
+A hand-off to another session or agent, made from `templates/design-brief.md`. It has five sections: Task, Direction (a link to the current-direction file), Page and owner, Hand back, Done means. `design-check.js --brief` checks it.
+_Avoid_: prompt, handover note
+
+**Hand back**:
+How a session that does not own a page gets its content published: it delivers the files to the owning session, and the owning session publishes them.
+_Avoid_: republish, sync
