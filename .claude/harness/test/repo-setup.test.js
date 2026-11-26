@@ -60,7 +60,8 @@ test('records the named cloud environment and is complete', () => {
 test('a second run changes nothing and reports every row as already there', () => {
   const dir = tmp();
   run(dir, { github: fakeGithub(), environment: 'acme-shop' });
-  const snapshot = () => spawnSync('find', [dir, '-type', 'f', '-printf', '%p %T@\\n'], { encoding: 'utf8' }).stdout;
+  const snapshot = () => fs.readdirSync(dir, { recursive: true }).sort()
+    .map((f) => `${f} ${fs.statSync(path.join(dir, f)).mtimeMs}`).join('\n');
   const before = snapshot();
   const settings = fs.readFileSync(path.join(dir, '.claude', 'settings.json'), 'utf8');
   const glossary = fs.readFileSync(path.join(dir, 'GLOSSARY.md'), 'utf8');
@@ -200,10 +201,77 @@ test('the checklist shows each row, and a link and one action for every needs-yo
   assert.match(text, /2 row\(s\) need you/);
 });
 
+test('every needs-you row carries a link and one action', () => {
+  const dirs = [];
+  const rows = [];
+  const add = (dir, opts) => { dirs.push(dir); rows.push(...run(dir, opts).rows); };
+  add(tmp(), { github: fakeGithub([], { unreachable: true }) });
+  const off = tmp();
+  fs.mkdirSync(path.join(off, '.claude'));
+  fs.writeFileSync(path.join(off, '.claude', 'settings.json'), '{ nope');
+  add(off, { github: fakeGithub() });
+  const switched = tmp();
+  fs.mkdirSync(path.join(switched, '.claude'));
+  fs.writeFileSync(path.join(switched, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'product-team@jyeann': false } }));
+  add(switched, { github: fakeGithub() });
+  const busy = tmp();
+  fs.mkdirSync(path.join(busy, '.harness'));
+  fs.writeFileSync(path.join(busy, '.harness', 'state.json'), '{}');
+  add(busy, { github: fakeGithub() });
+  rows.push(...setupRepo({ sourceClaudeDir: CLAUDE_DIR, targetDir: tmp(), github: fakeGithub() }).rows);
+  const owner = rows.filter((r) => r.status === 'needs you');
+  assert.deepEqual([...new Set(owner.map((r) => r.id))].sort(), ['environment', 'harness', 'labels', 'mattpocock-skills', 'product-team']);
+  for (const r of owner) {
+    assert.ok(r.link, `${r.id}: ${r.detail}`);
+    assert.ok(r.action, r.id);
+  }
+});
+
+test('labels that exist in another letter case count as there', () => {
+  const github = fakeGithub(LABELS.map((l) => l.name.toUpperCase()));
+  const rows = byId(run(tmp(), { github }));
+  assert.equal(rows.labels.status, 'already there');
+  assert.deepEqual(github.created, []);
+});
+
+test('refuses a --repo that is not owner/name', () => {
+  for (const repo of ['acme', 'acme/shop/issues/1', '../x', 'acme/..', 'a b/c']) {
+    const res = run(tmp(), { repo, github: fakeGithub() });
+    assert.equal(res.ok, false, repo);
+    assert.match(res.message, /owner\/name/);
+  }
+  assert.equal(parseRepo('https://example.com/acme/..'), null);
+});
+
+test('naming a new environment keeps the rest of the environment file', () => {
+  const dir = tmp();
+  fs.mkdirSync(path.join(dir, 'docs', 'agents'), { recursive: true });
+  const file = path.join(dir, 'docs', 'agents', 'environment.md');
+  fs.writeFileSync(file, '# Env\n\nKeys: STRIPE\nCloud environment: old\n');
+  assert.equal(byId(run(dir, { github: fakeGithub(), environment: 'new-env' })).environment.status, 'done');
+  assert.equal(fs.readFileSync(file, 'utf8'), '# Env\n\nKeys: STRIPE\nCloud environment: new-env\n');
+  fs.writeFileSync(file, '# Env\nKeys: STRIPE');
+  run(dir, { github: fakeGithub(), environment: 'new-env' });
+  assert.equal(fs.readFileSync(file, 'utf8'), '# Env\nKeys: STRIPE\nCloud environment: new-env\n');
+  const bad = byId(run(dir, { github: fakeGithub(), environment: 'bad/name' })).environment;
+  assert.equal(bad.status, 'needs you');
+});
+
+test('the CLI refuses unknown options, missing values and two targets without writing', () => {
+  const dir = tmp();
+  const env = { ...process.env, PATH: tmp() };
+  for (const args of [['--chek'], ['--repo', '--check'], ['--environment'], [tmp()], ['--repo', 'acme/shop/x']]) {
+    const r = spawnSync(process.execPath, [BIN, dir, ...args], { encoding: 'utf8', env });
+    assert.equal(r.status, 2, args.join(' '));
+    assert.match(r.stderr, /^setup-repo: /);
+  }
+  assert.deepEqual(fs.readdirSync(dir), []);
+});
+
 test('the CLI exits 0 when complete, 1 while a row needs the owner, and 2 when refused', () => {
   const dir = tmp();
-  // No gh on PATH: labels need the owner, everything else is set up.
-  const env = { ...process.env, PATH: path.dirname(process.execPath) };
+  // An empty PATH, so no real gh can be reached: labels need the owner, everything else is set up.
+  const env = { ...process.env, PATH: tmp() };
   const first = spawnSync(process.execPath, [BIN, dir, '--repo', 'acme/shop'], { encoding: 'utf8', env });
   assert.equal(first.status, 1, first.stderr);
   assert.match(first.stdout, /\[needs you\] +Labels/);

@@ -9,22 +9,33 @@
 const path = require('node:path');
 const { setupRepo, formatChecklist } = require('../lib/repo-setup');
 
-const args = process.argv.slice(2);
-const value = (flag) => { const i = args.indexOf(flag); return i >= 0 ? args[i + 1] : undefined; };
-const valued = new Set(['--repo', '--environment']);
-const positional = args.filter((a, i) => !a.startsWith('--') && !valued.has(args[i - 1]));
-const targetDir = path.resolve(positional[0] || process.env.CLAUDE_PROJECT_DIR || process.cwd());
+// Strict parsing: a typo or a missing value must not turn a --check into a real setup.
+const VALUED = new Set(['--repo', '--environment']);
+const SWITCHES = new Set(['--check']);
+const opts = { positional: [] };
+const fail = (message) => { console.error(`setup-repo: ${message}`); process.exit(2); };
+const argv = process.argv.slice(2);
+for (let i = 0; i < argv.length; i += 1) {
+  const a = argv[i];
+  if (VALUED.has(a)) {
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith('--')) fail(`${a} needs a value`);
+    opts[a] = v;
+    i += 1;
+  } else if (SWITCHES.has(a)) opts[a] = true;
+  else if (a.startsWith('--')) fail(`unknown option ${a}`);
+  else opts.positional.push(a);
+}
+if (opts.positional.length > 1) fail('give at most one target directory');
+const targetDir = path.resolve(opts.positional[0] || process.env.CLAUDE_PROJECT_DIR || process.cwd());
 
 const res = setupRepo({
   sourceClaudeDir: path.resolve(__dirname, '..', '..'),
   targetDir,
-  repo: value('--repo'),
-  environment: value('--environment'),
-  check: args.includes('--check'),
+  repo: opts['--repo'],
+  environment: opts['--environment'],
+  check: opts['--check'] === true,
 });
-if (!res.ok) {
-  console.error(`setup-repo: ${res.message}`);
-  process.exit(2);
-}
+if (!res.ok) fail(res.message);
 console.log(formatChecklist(res));
 process.exit(res.complete ? 0 : 1);

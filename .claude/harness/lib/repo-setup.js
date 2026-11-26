@@ -36,7 +36,11 @@ const DOCS = [
 const ENV_FILE = 'docs/agents/environment.md';
 const ENV_LINE = /^Cloud environment: (.+)$/m;
 const ENV_DOCS = 'https://code.claude.com/docs/en/claude-code-on-the-web';
+const HARNESS_DOCS = 'https://github.com/jyeann/claude-setup/blob/main/.claude/harness/README.md';
+const SETUP_DOCS = 'https://github.com/jyeann/claude-setup#new-repository';
 const SKIP_IN_HARNESS = ['test', 'fixtures'];
+// owner/name as GitHub allows it; anything else could reshape the `gh api` path.
+const REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 const exists = (p) => fs.existsSync(p);
 const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
@@ -44,7 +48,8 @@ const hash = (file) => crypto.createHash('sha256').update(fs.readFileSync(file))
 
 function parseRepo(url) {
   const m = /([^/:]+)\/([^/]+?)(?:\.git)?\/?$/.exec(String(url || '').trim());
-  return m ? `${m[1]}/${m[2]}` : null;
+  const name = m ? `${m[1]}/${m[2]}` : null;
+  return name && REPO_RE.test(name) && !name.split('/').some((p) => /^\.+$/.test(p)) ? name : null;
 }
 
 function repoFromGit(dir) {
@@ -92,7 +97,7 @@ function harnessCurrent(src, targetDir, dry) {
 function harnessRow(src, targetDir, check) {
   const row = { id: 'harness', title: 'Harness (guards, verify gate, rules, settings)' };
   const dry = install({ sourceClaudeDir: src, targetDir, dryRun: true });
-  if (!dry.ok) return { ...row, status: 'needs you', detail: dry.message, action: dry.message.includes('harness.js off') ? 'Finish the run or run `node .claude/harness/bin/harness.js off`, then re-run.' : 'Fix the problem above, then re-run.' };
+  if (!dry.ok) return { ...row, status: 'needs you', detail: dry.message, link: HARNESS_DOCS, action: dry.message.includes('harness.js off') ? 'Finish the run or run `node .claude/harness/bin/harness.js off`, then re-run.' : 'Fix the problem above, then re-run.' };
   if (harnessCurrent(src, targetDir, dry)) return { ...row, status: 'already there' };
   if (check) return { ...row, status: 'missing', detail: 'install or update with this command' };
   const res = install({ sourceClaudeDir: src, targetDir });
@@ -108,13 +113,13 @@ function pluginRow(plugin, src, targetDir, check) {
   const row = { id: plugin.id, title: plugin.title };
   const file = path.join(targetDir, '.claude', 'settings.json');
   const read = readSettings(file);
-  if (!read.ok) return { ...row, status: 'needs you', detail: read.message, action: 'Fix .claude/settings.json, then re-run.' };
+  if (!read.ok) return { ...row, status: 'needs you', detail: read.message, link: file, action: 'Fix .claude/settings.json, then re-run.' };
   const s = read.settings;
   const key = `${plugin.id}@${MARKETPLACE}`;
   const enabled = (s.enabledPlugins || {})[key];
   const known = Boolean((s.extraKnownMarketplaces || {})[MARKETPLACE]);
   if (enabled === false) {
-    return { ...row, status: 'needs you', detail: `${key} is switched off in .claude/settings.json`, action: `Set enabledPlugins."${key}" to true in .claude/settings.json if this product should use it, then re-run.` };
+    return { ...row, status: 'needs you', detail: `${key} is switched off in .claude/settings.json`, link: file, action: `Set enabledPlugins."${key}" to true in .claude/settings.json if this product should use it, then re-run.` };
   }
   if (enabled === true && known) return { ...row, status: 'already there' };
   if (check) return { ...row, status: 'missing', detail: `${key} is not enabled in .claude/settings.json` };
@@ -130,13 +135,15 @@ function pluginRow(plugin, src, targetDir, check) {
 function labelsRow(repo, github, check) {
   const row = { id: 'labels', title: 'Labels (owner gates, afk/hitl, triage, needs-fable)' };
   const names = LABELS.map((l) => l.name);
-  if (!repo) return { ...row, status: 'needs you', detail: 'no GitHub repository found (no origin remote)', action: 'Re-run with --repo owner/name.' };
+  if (!repo) return { ...row, status: 'needs you', detail: 'no GitHub repository found (no origin remote)', link: SETUP_DOCS, action: 'Re-run with --repo owner/name.' };
   const link = `https://github.com/${repo}/labels`;
   const listed = github.listLabels(repo);
   if (!listed.ok) {
     return { ...row, status: 'needs you', detail: `GitHub not reachable: ${listed.message}`, link, action: `Create the labels ${names.join(', ')} there, or re-run where gh can reach GitHub.` };
   }
-  const missing = LABELS.filter((l) => !listed.names.includes(l.name));
+  // GitHub label names are case-insensitive: an existing `Accepted` is the `accepted` label.
+  const have = new Set(listed.names.map((n) => n.toLowerCase()));
+  const missing = LABELS.filter((l) => !have.has(l.name.toLowerCase()));
   if (missing.length === 0) return { ...row, status: 'already there', link };
   if (check) return { ...row, status: 'missing', detail: `missing: ${missing.map((l) => l.name).join(', ')}`, link };
   const failed = missing.filter((l) => !github.createLabel(repo, l).ok);
@@ -164,14 +171,19 @@ function docsRow(src, targetDir, repo, check) {
 function environmentRow(targetDir, repo, environment, check) {
   const row = { id: 'environment', title: 'Cloud environment (allowed hosts, keys)' };
   const file = path.join(targetDir, ENV_FILE);
-  const current = exists(file) ? (ENV_LINE.exec(fs.readFileSync(file, 'utf8')) || [])[1] : undefined;
+  const text = exists(file) ? fs.readFileSync(file, 'utf8') : undefined;
+  const current = text === undefined ? undefined : (ENV_LINE.exec(text) || [])[1];
   const ask = { status: 'needs you', link: ENV_DOCS, action: `Create a cloud environment for ${repo || 'this repository'} (its allowed hosts and keys) in Claude Code on the web, then re-run with --environment <name>.` };
   if (environment !== undefined && !/^[\w .()-]{1,64}$/.test(environment)) return { ...row, ...ask, detail: `"${environment}" is not a valid environment name` };
   if (current && (environment === undefined || environment === current)) return { ...row, status: 'already there', detail: current };
   if (environment === undefined) return { ...row, ...ask, detail: 'no cloud environment recorded; this command does not create one' };
   if (check) return { ...row, status: 'missing', detail: `would record ${environment}` };
+  // Only the `Cloud environment:` line is ours; any other text the owner wrote in the file is kept.
+  const line = `Cloud environment: ${environment}`;
+  let out = `# Cloud environment\n\nThe cloud environment product sessions for this repository run in, named by the owner.\n\n${line}\n`;
+  if (text !== undefined) out = current ? text.replace(ENV_LINE, line) : `${text}${text.endsWith('\n') || text === '' ? '' : '\n'}${line}\n`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `# Cloud environment\n\nThe cloud environment product sessions for this repository run in, named by the owner.\n\nCloud environment: ${environment}\n`);
+  fs.writeFileSync(file, out);
   return { ...row, status: 'done', detail: `recorded ${environment} in ${ENV_FILE}` };
 }
 
@@ -180,6 +192,7 @@ function setupRepo({ sourceClaudeDir, targetDir, repo, github = ghClient(), envi
   const dir = path.resolve(targetDir);
   if (!exists(dir) || !fs.statSync(dir).isDirectory()) return { ok: false, message: `${dir} is not a directory`, rows: [] };
   if (real(path.join(dir, '.claude')) === real(src)) return { ok: false, message: 'the target is this repository (claude-setup); name the product repository', rows: [] };
+  if (repo !== undefined && parseRepo(repo) !== repo) return { ok: false, message: `--repo must be owner/name, got "${repo}"`, rows: [] };
   const name = repo || repoFromGit(dir);
   const rows = [
     harnessRow(src, dir, check),
