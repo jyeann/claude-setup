@@ -33,7 +33,7 @@ unattended run is not interrupted between them. Build and verify still go throug
 A product run never writes into this repository (`claude-setup`). Each product lives in its own repository, called `<product-repo>` below, or at a path the owner gives. Its run records go in `<product-repo>/docs/product/<slug>/`, inside the product's repository.
 
 1. **Pick the target.** Use the repository or path the owner named. With no target, propose a new repository named after the product (`<slug>`) and ask the owner once: a new repository is a spend and access decision. Do not start the run without the answer.
-2. **Install the harness there** with the `harness-install` skill, or from a clone of this repo: `node .claude/harness/bin/install.js <product-repo>` (add `--dry-run` first to show the changes). Commit the result in `<product-repo>`.
+2. **Set the repository up** with the `repo-setup` skill, or from a clone of this repo: `node .claude/harness/bin/setup-repo.js <product-repo>` (add `--check` first to only report). It installs the harness, enables the two plugins, creates the labels and the repository docs, and reports the cloud environment. Relay every `needs you` row to the owner with its link and action, and commit the result in `<product-repo>`. Plugins load only at session start, so step 3 opens a new session.
 3. **Work inside `<product-repo>`** from here on: open the session there, so its hooks and settings load. In the commands below, `<product-repo>` is that repository's absolute path.
 4. **Start the harness before phase 1**, with the whole pipeline as the definition of done:
 
