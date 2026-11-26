@@ -173,6 +173,10 @@ _Avoid_: example folder, product folder
 `.harness/work/<run>/`: gitignored space where helper agents keep unfinished work, writable during a harness run. Files move into the tree only when finished, so the cloud platform's commit-check Stop hook does not fire on work in progress (#112).
 _Avoid_: scratch dir, tmp folder, staging area
 
+**Running helper**:
+A background agent this session started (its Agent call returned `async_launched`) with no end record yet: no SubagentStop and no successful TaskStop for it in the session trace, and launched under four hours ago. The Stop hook holds a stop once while one exists (#86).
+_Avoid_: pending agent, open task
+
 ## Design
 
 **Design run**:
