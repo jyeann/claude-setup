@@ -9,7 +9,9 @@
 // A layer verdict comment on the spec issue that redirects a layer sends the run back to that layer's phase;
 // a 4th redirect at one gate stops the run (exit 3, "PIPELINE STOPPED").
 // --change: a change-request run (#89) for an accepted product, gated on that change's own spec issue; its
-// records go in <docs>/changes/<issue>/. Refused (exit 2) while the product's first run is not accepted.
+// records go in <docs>/changes/<issue>/. Refused (exit 2) while the product's first run is not accepted. The
+// last "Size: fix|change|new direction" line of the change's decisions.md picks the walk (#90); a fix has no
+// spec-approved gate, and a size only goes up.
 // --issue-json: a saved copy of the spec issue (with its comments as an array, for the layer verdicts),
 // read only when gh cannot reach GitHub.
 const { checkPipeline, formatReport } = require('../lib/pipeline');

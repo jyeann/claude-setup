@@ -50,11 +50,27 @@ The owner gate on a spec issue, including the chosen look, passed before tickets
 The owner gate where the owner accepts the finished result against its spec issue.
 
 **Change request**:
-A request to change a product the owner has already accepted, written as its own spec issue and gated like a first run.
+A request to change a product the owner has already accepted, on its own issue, sized as a fix, a change or a new direction; the size decides its phases and gates.
 _Avoid_: follow-up, v2, enhancement
 
+**Size**:
+How much weight a change request gets: fix, change or new direction, written on the request's issue and as a `Size:` line in its `decisions.md`. A size only goes up.
+_Avoid_: priority, estimate
+
+**Fix**:
+A change request that adds no new behaviour. The owner's issue is the request: no spec issue and no spec-approved gate, one ticket, the build gate, and the owner's accepted on that issue. A fix found to need new behaviour is re-sized as a change.
+_Avoid_: hotfix, patch, bug (for the size)
+
+**Change**:
+A change request that adds new behaviour inside the approved product: its own spec issue, a short spec phase and both owner gates.
+_Avoid_: feature, enhancement (for the size)
+
+**New direction**:
+A change request that changes what the product is: phases 1 to 4a in full, in the change's records, and both owner gates.
+_Avoid_: pivot, v2
+
 **Change run**:
-The harness run for one change request (`pipeline.js check ... --change <N>`): spec, spec-approved, plan, build, review, qa, release and accepted on the change's spec issue, with its records in `changes/<N>/` beside the first run's.
+The harness run for one change request (`pipeline.js check ... --change <N>`), walked by its size: a fix walks size, plan, build, review, qa, release and accepted; a change size, spec, spec-approved, plan, build, review, qa, release and accepted; a new direction adds discover, ux and design before its spec. Gates are on issue #N, records in `changes/<N>/` beside the first run's.
 _Avoid_: rerun, second run
 
 **Gate response**:
