@@ -11,7 +11,8 @@ const DIRECTION_SECTIONS = ['Look', 'Tool', 'Characters', 'Reference images', 'C
 const RESTATED = DIRECTION_SECTIONS.filter((s) => s !== 'Changed');
 const BRIEF_SECTIONS = ['Task', 'Direction', 'Page and owner', 'Hand back', 'Done means'];
 const DIRECTION_LINK = /docs\/design\/[A-Za-z0-9._-]+\/direction\.md/;
-const PAGE_URL = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/;
+const PAGE_URL = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[A-Za-z0-9_-]+/gi;
+const ARTIFACT_ID = /^https?:\/\/claude\.ai\/(?:code\/)?artifact\/([A-Za-z0-9_-]+)$/i;
 const PLACEHOLDER = /<[a-z][^<>\n]*>/;
 // A copied line must be long enough to be direction, not a shared word like "Blender only."
 const MIN_COPIED = 30;
@@ -19,7 +20,13 @@ const MIN_COPIED = 30;
 const ok = Object.freeze({ block: false, reason: '' });
 const deny = (reason) => ({ block: true, reason });
 
-const normalizeUrl = (url) => (typeof url === 'string' ? url.replace(/[?#].*$/, '').replace(/\/+$/, '') : '');
+// claude.ai/artifact/<id> and claude.ai/code/artifact/<id> are the same page; host and scheme case do not matter.
+function normalizeUrl(url) {
+  if (typeof url !== 'string') return '';
+  const bare = url.trim().replace(/[?#].*$/, '').replace(/\/+$/, '');
+  const id = ARTIFACT_ID.exec(bare)?.[1];
+  return id ? `https://claude.ai/artifact/${id}` : bare;
+}
 
 // `## Heading` -> body text, for the headings named.
 function sections(text) {
@@ -114,7 +121,8 @@ function findPage(registers, input, projectDir) {
   const url = normalizeUrl(input.url);
   const file = relFile(input.file_path, projectDir);
   for (const { product, data } of registers) {
-    const page = data.pages.find((p) => (url && normalizeUrl(p.url) === url) || (!url && file && p.file === file));
+    // Either key is enough: a page registered by file stays guarded when the publish also names a url.
+    const page = data.pages.find((p) => (url && p.url && normalizeUrl(p.url) === url) || (file && p.file === file));
     if (page) return { product, page };
   }
   return null;
@@ -147,10 +155,12 @@ function claimPublish(event, projectDir, now = () => new Date().toISOString()) {
   if (!isPublish(event) || event.tool_input?.asset) return no('not a page publish');
   if (!event.session_id) return no('no session id');
   const input = event.tool_input || {};
-  const match = PAGE_URL.exec(typeof event.tool_response === 'string' ? event.tool_response : JSON.stringify(event.tool_response ?? ''));
-  const url = normalizeUrl(input.url) || (match ? normalizeUrl(match[0]) : '');
-  if (!url) return no('no page url in the result');
-  const { registers } = readRegisters(projectDir);
+  const text = typeof event.tool_response === 'string' ? event.tool_response : JSON.stringify(event.tool_response ?? '');
+  const found = [...new Set((text.match(PAGE_URL) || []).map(normalizeUrl))];
+  const url = normalizeUrl(input.url) || (found.length === 1 ? found[0] : '');
+  if (!url) return no(found.length > 1 ? 'more than one page url in the result' : 'no page url in the result');
+  const { registers, errors } = readRegisters(projectDir);
+  if (errors.length) return no(`the register is not valid: ${errors.join('; ')}`);
   if (findPage(registers, { url }, projectDir)) return no('page already has an owner');
   const product = productFor(input, projectDir);
   if (!product) return no('no single product folder under docs/design');
@@ -163,7 +173,10 @@ function claimPublish(event, projectDir, now = () => new Date().toISOString()) {
   Object.assign(page, { owner: event.session_id, claimedAt: now() });
   data.pages.push(page);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`);
+  // Write whole or not at all: a half-written register would block every publish in other sessions.
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`);
+  fs.renameSync(tmp, file);
   return { claimed: true, product, page };
 }
 

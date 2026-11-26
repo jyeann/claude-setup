@@ -23,6 +23,9 @@ look the owner had already moved past. The owner said "Blender only" three times
 - **Hand back, then the owner publishes.** Put the finished files where the brief's "Hand back" section says (a
   branch, or files in the repo) and tell the owning session with `send_message`. The owner merges the content and
   publishes. One session never removes or restores another session's preview.
+- **A broken register blocks every publish.** If a `pages.json` cannot be read or is not valid (a merge
+  conflict, a page with no owner), the guard cannot tell who owns what, so it blocks all Artifact publishes until
+  the file is fixed. This is on purpose: unlike the other guards, it fails closed for a bad register.
 - **Moving ownership** is an edit to `pages.json`. The owning session makes it, or the owner tells you to.
   Commit it before the new owner publishes.
 - **Page not in the register:** the publish is allowed, and the session that publishes becomes the owner. If

@@ -127,8 +127,8 @@ test('register check accepts a valid register and rejects broken ones', () => {
   assert.ok(dup.some((p) => /twice/.test(p)));
 });
 
-test('page urls compare without query, hash or trailing slash', () => {
-  assert.equal(design.normalizeUrl(`${PAGE}/?v=3#top`), PAGE);
+test('page urls compare without query, hash, trailing slash or the /code segment', () => {
+  assert.equal(design.normalizeUrl(`${PAGE}/?v=3#top`), 'https://claude.ai/artifact/1111-aaaa');
   assert.equal(design.normalizeUrl(undefined), '');
 });
 
@@ -190,7 +190,7 @@ test('a first publish records its session as owner in the product register', () 
   const claimed = design.claimPublish(event, dir, () => '2026-11-26T00:00:00Z');
   assert.equal(claimed.claimed, true);
   assert.deepEqual(readRegister(dir, 'gachi').pages, [
-    { url: PAGE, file: 'docs/design/gachi/pages/look.html', owner: 'sess-owner', claimedAt: '2026-11-26T00:00:00Z' },
+    { url: design.normalizeUrl(PAGE), file: 'docs/design/gachi/pages/look.html', owner: 'sess-owner', claimedAt: '2026-11-26T00:00:00Z' },
   ]);
 });
 
@@ -292,4 +292,48 @@ test('settings register the publish hooks on the Artifact tool', () => {
   const cmds = (event) => settings.hooks[event].filter((g) => g.matcher === 'Artifact').flatMap((g) => g.hooks.map((h) => h.command));
   assert.ok(cmds('PreToolUse').some((c) => c.includes('pre-publish.js')));
   assert.ok(cmds('PostToolUse').some((c) => c.includes('post-publish.js')));
+});
+
+// --- review fixes ---
+
+test('a file-only entry blocks a publish that carries a url and that file', () => {
+  const dir = project();
+  register(dir, 'gachi', [{ file: 'docs/design/gachi/look.html', owner: 'sess-owner' }]);
+  const v = design.checkPublish(publish({ url: OTHER_PAGE, file_path: path.join(dir, 'docs/design/gachi/look.html') }, 'sess-other'), dir);
+  assert.equal(v.block, true);
+});
+
+test('the two forms of an artifact url are the same page', () => {
+  assert.equal(design.normalizeUrl('HTTPS://Claude.ai/artifact/1111-aaaa/'), design.normalizeUrl(PAGE));
+  const dir = project();
+  register(dir, 'gachi', [{ url: PAGE, owner: 'sess-owner' }]);
+  assert.equal(design.checkPublish(publish({ url: 'https://claude.ai/artifact/1111-aaaa' }, 'sess-other'), dir).block, true);
+});
+
+test('no claim into a register that is not valid, and no claim from an ambiguous result', () => {
+  const dir = project();
+  register(dir, 'gachi', [{ url: PAGE }]);
+  assert.equal(design.claimPublish({ ...publish({ file_path: '/tmp/x.html' }), tool_response: `ok ${OTHER_PAGE}` }, dir).claimed, false);
+  assert.deepEqual(readRegister(dir, 'gachi').pages, [{ url: PAGE }]);
+  const two = project();
+  register(two, 'gachi', []);
+  const r = design.claimPublish({ ...publish({ file_path: '/tmp/x.html' }), tool_response: `${PAGE} and ${OTHER_PAGE}` }, two);
+  assert.equal(r.claimed, false);
+});
+
+test('a claim writes the register whole, with no temp file left behind', () => {
+  const dir = project();
+  register(dir, 'gachi', [{ url: OTHER_PAGE, owner: 'a' }]);
+  assert.equal(design.claimPublish({ ...publish({ file_path: '/tmp/x.html' }), tool_response: PAGE }, dir).claimed, true);
+  assert.equal(readRegister(dir, 'gachi').pages.length, 2);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'docs/design/gachi')), ['pages.json']);
+});
+
+test('post-publish says when it could not record an owner', () => {
+  const dir = project();
+  register(dir, 'a', []);
+  register(dir, 'b', []);
+  const r = runHook('post-publish.js', dir, { ...publish({ file_path: '/tmp/x.html' }), tool_response: PAGE });
+  assert.equal(r.status, 0);
+  assert.match(r.stderr, /not recorded/);
 });
