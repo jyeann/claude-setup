@@ -1,12 +1,18 @@
 # Copy to .github/workflows/verify.yml in a project built with the harness.
 # Required status checks for the ruleset: verify, protected-files, secret-scan (pinned to the Actions app)
 #   .claude/harness/ci/protect.sh --checks verify,protected-files,secret-scan --apply
+# Fast checks (protected-files, secret-scan) run on every event. The heavy `verify` job runs only on a PR that is
+# not a draft, and on workflow_dispatch; a docs-only PR skips its steps (docs/, *.md, never a protected path).
+# A push to main runs only the fast checks: the ruleset's strict up-to-date rule means the merged tree passed.
+# Open PRs as drafts and mark them ready when the work is done. Why: claude-setup ADR-0004 (#105).
 name: verify
 
 on:
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,19 +24,30 @@ concurrency:
 jobs:
   verify:
     name: verify
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+      - name: Docs-only change? (the steps below skip only when every changed file is documentation)
+        id: scope
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        # Markdown your tests read (fixtures, golden files) is a gate input: add `--keep <path>/` or list it in .harness-protected.
+        run: node .claude/harness/bin/docs-only.js --base "origin/$BASE_REF"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         with:
           node-version: 22
       - name: Install dependencies (no install scripts)
-        if: ${{ hashFiles('package-lock.json') != '' }}
+        if: ${{ steps.scope.outputs.docs_only != 'true' && hashFiles('package-lock.json') != '' }}
         run: npm ci --ignore-scripts
       - name: Strong verify (tests, source coverage, test quality, mutation spot-check)
+        if: ${{ steps.scope.outputs.docs_only != 'true' }}
         run: node .claude/harness/bin/verify.js
 
   # Fails a PR that edits the gate (acceptance tests, verify config, .claude/, workflows). The checker and its

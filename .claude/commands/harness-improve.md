@@ -13,7 +13,7 @@ The learning loop: record -> score -> find failures -> propose -> measure.
    If it says "No sessions recorded", stop: traces appear after normal sessions with the PostToolUse hook enabled.
 2. Launch the `harness-improver` agent. It reads the report and traces and returns ONE proposal. It cannot edit files.
 3. Show the proposal to the user. Do not apply it unless they approve.
-4. On approval: create a branch, make exactly the proposed edit, and open a PR (do not merge). `.claude/` changes are
+4. On approval: create a branch, make exactly the proposed edit, and open a draft PR, marked ready once pushed (do not merge). `.claude/` changes are
    flagged by the protected-files check, so a human reviews them.
 5. After the user merges it, record the change so later reports show whether it helped:
    ```bash

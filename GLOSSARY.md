@@ -108,6 +108,18 @@ _Avoid_: stack list, support matrix
 The standard reports the verify gate reads (JUnit XML for test results; lcov and the mutation-testing-elements JSON to follow) and the trust rules it applies to them: a non-zero exit fails, the gate owns a fresh report directory outside the project, only a report written during the run counts, and its totals must match the runner's own summary. Recorded in ADR-0003.
 _Avoid_: report format, output spec
 
+**Full gate**:
+The heavy CI jobs that decide a merge: the template's `verify`, and this repository's `gate-retro-board`, `gate-slug-react` and `eval-kit-selftest`. They run on a PR that is not a draft and on a manual run, never after a merge to `main`; on a docs-only PR their steps skip. Recorded in ADR-0004.
+_Avoid_: heavy CI, slow checks, the full suite
+
+**Draft PR (fast checks only)**:
+A pull request opened as a draft. CI runs only the fast checks on it (`secret-scan`, `protected-files`, and here `harness-tests`); the full gate starts when the PR is marked ready. Agents open PRs as drafts and mark them ready when their work is done. A draft PR does not mark its ticket done (ADR-0001).
+_Avoid_: WIP PR
+
+**Docs-only change**:
+A PR whose every changed file ends in `.md` or is a text or image file under `docs/`, and none of them is a gate input (a protected path or a `--keep` path such as `testbench/`). Only such a PR skips the full gate's steps; one other file runs the gate. Recorded in ADR-0004.
+_Avoid_: docs PR, trivial change
+
 ## Layout
 
 **Test bench**:
