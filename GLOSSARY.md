@@ -99,6 +99,14 @@ _Avoid_: autopilot, auto mode
 **Owner decision line**:
 A line starting `Owner decision:` in a closing message: the one way to end a turn with a question while run-unattended.
 
+**Kickoff choices**:
+The owner's twelve process choices for a product (how gates are approved, who judges them, who merges, absent or reachable, how a halt arrives, who picks standards and the look, staging, user testing, security review), made before a run starts and kept in the product's `kickoff.json`. About the process only; what goes into the product is the build standards checklist (#127). A choice that no check holds yet is **recorded only**.
+_Avoid_: settings, preferences, config (for the owner's choices)
+
+**Hard limits**:
+The areas whose work always stops for the owner, whatever the kickoff choices say: login and accounts, payments, user data, data migrations, deploy, secrets, spend and legal. Fixed in `lib/kickoff.js`; a product can add areas, never remove one.
+_Avoid_: sensitive list, red lines
+
 **Intervention**:
 A human prompt mid-run that is not an answer to an owner gate; counted as a defect in the KPI.
 _Avoid_: interruption
