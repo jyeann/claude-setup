@@ -145,15 +145,29 @@ function designPageProblems(docs) {
   if (raw === null) return [`${DESIGN_PAGE} is missing: copy .claude/harness/templates/${DESIGN_PAGE}, render the look variations and the key screens with the chosen look into ${SCREENS_DIR}/, link them from the page, and post it on the spec issue`];
   const { bodies, problems } = pageSections(raw, DESIGN_PAGE, DESIGN_PAGE_SECTIONS);
   const out = problems.filter((p) => !/contains a code block/.test(p));
-  for (const name of ['Look variations', 'Key screens']) {
+  const screens = path.join(docs, SCREENS_DIR);
+  let realScreens = null;
+  try { realScreens = fs.realpathSync(screens); } catch { /* no screens folder: every local link fails below */ }
+  // A link counts as rendered when it is a web page, or a file (not a folder) in screens/, followed through links.
+  const linkProblem = (link) => {
+    if (WEB.test(link)) return null;
+    if (/^[a-z][\w+.-]*:/i.test(link) || link.startsWith('#')) return `${DESIGN_PAGE} links ${link}, which is not a rendered file: link a file in ${SCREENS_DIR}/ or a published page`;
+    let file;
+    try { file = decodeURIComponent(link.split(/[?#]/)[0]); } catch { return `${DESIGN_PAGE} links ${link}, which is not a valid path: fix the link`; }
+    const target = path.resolve(docs, file);
+    if (!inside(screens, target) || target === screens) return `${DESIGN_PAGE} links ${link}, outside the ${SCREENS_DIR}/ folder: put every rendered file in ${SCREENS_DIR}/ beside the page, so the owner's approval covers it`;
+    let real;
+    try { real = fs.realpathSync(target); } catch { return `${DESIGN_PAGE} links ${link}, which does not exist: render it there or fix the link`; }
+    if (!realScreens || !inside(realScreens, real) || !fs.statSync(real).isFile()) return `${DESIGN_PAGE} links ${link}, which is not a file in the ${SCREENS_DIR}/ folder: link the rendered file itself`;
+    return null;
+  };
+  for (const name of DESIGN_PAGE_SECTIONS) {
     if (!filled(bodies.get(name))) continue;
     const links = [...bodies.get(name).join('\n').matchAll(LINK)].map((m) => m[1] ?? m[2]);
-    if (links.length === 0) out.push(`${DESIGN_PAGE} section "${name}" links no rendered screen: render it into ${SCREENS_DIR}/ and link the file; the owner judges rendered screens, not words`);
-    for (const link of links.filter((l) => !WEB.test(l) && !/^[a-z][\w+.-]*:/i.test(l) && !l.startsWith('#'))) {
-      const target = path.resolve(docs, decodeURIComponent(link.split('#')[0]));
-      if (!inside(path.join(docs, SCREENS_DIR), target)) out.push(`${DESIGN_PAGE} links ${link}, outside the ${SCREENS_DIR}/ folder: put every rendered file in ${SCREENS_DIR}/ beside the page, so the owner's approval covers it`);
-      else if (!fs.existsSync(target)) out.push(`${DESIGN_PAGE} links ${link}, which does not exist: render it there or fix the link`);
-    }
+    const bad = links.map(linkProblem).filter(Boolean);
+    out.push(...bad);
+    const rendered = links.length - bad.length;
+    if (['Look variations', 'Key screens'].includes(name) && rendered === 0 && bad.length === 0) out.push(`${DESIGN_PAGE} section "${name}" links no rendered screen: render it into ${SCREENS_DIR}/ and link the file; the owner judges rendered screens, not words`);
   }
   return [...out, ...problems.filter((p) => /contains a code block/.test(p))];
 }

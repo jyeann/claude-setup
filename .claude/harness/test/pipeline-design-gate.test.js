@@ -159,9 +159,16 @@ test('the design-approved page needs every section filled, rendered links, exist
     [DESIGN_PAGE.replace('screens/add.png', 'screens/missing.png'), /links screens\/missing\.png, which does not exist/],
     [DESIGN_PAGE.replace('screens/add.png', '../elsewhere/add.png'), /links \.\.\/elsewhere\/add\.png, outside the screens\/ folder/],
     [`${DESIGN_PAGE}\n\`\`\`html\n<div></div>\n\`\`\`\n`, /contains a code block/],
+
+    [DESIGN_PAGE.replace('(screens/add.png)', '(#home)'), /links #home, which is not a rendered file/],
+    [DESIGN_PAGE.replace('(screens/add.png)', '(mailto:x@example.com)'), /links mailto:x@example\.com, which is not a rendered file/],
+    [DESIGN_PAGE.replace('(screens/add.png)', '(screens/)'), /links screens\/, outside the screens\/ folder/],
+    [DESIGN_PAGE.replace('(screens/add.png)', '(screens/a%zz.png)'), /links screens\/a%zz\.png, which is not a valid path/],
+    [DESIGN_PAGE.replace('Variation B, picked by the owner', '[Variation B](screens/gone.png), picked by the owner'), /links screens\/gone\.png, which does not exist/],
+    [DESIGN_PAGE.replace('screens/add.png', 'screens/folder'), /links screens\/folder, which is not a file in the screens\/ folder/],
   ];
   for (const [page, message] of cases) {
-    const { root } = await newRun({ ...EARLY, 'docs/design-approved-page.md': page });
+    const { root } = await newRun({ ...EARLY, 'docs/design-approved-page.md': page, 'docs/screens/folder/x.png': 'x' });
     const r = await check(root);
     assert.equal(r.blocked, 'look', String(message));
     assert.match(problemsOf(r, 'look').join('\n'), message);
@@ -170,6 +177,11 @@ test('the design-approved page needs every section filled, rendered links, exist
   const web = DESIGN_PAGE.replace('(screens/add.png)', '(https://claude.ai/artifact/abc "Add screen")').replace('(screens/look-a.png)', '(screens/look-a.png#top)');
   const { root } = await newRun({ ...EARLY, 'docs/design-approved-page.md': web });
   assert.equal(statusOf(await check(root)).look, 'done');
+  // A link in screens/ that leads out of it through a symlink does not count.
+  const linked = await newRun({ ...EARLY, 'outside.png': 'secret' });
+  fs.rmSync(path.join(linked.root, 'docs/screens/add.png'));
+  fs.symlinkSync(path.join(linked.root, 'outside.png'), path.join(linked.root, 'docs/screens/add.png'));
+  assert.match(problemsOf(await check(linked.root), 'look').join('\n'), /links screens\/add\.png, which is not a file in the screens\/ folder/);
 });
 
 test('an impression redirect at design-approved redoes only the look phase; rounds, then a 4th stops the run', async () => {
