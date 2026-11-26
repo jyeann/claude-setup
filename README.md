@@ -47,6 +47,10 @@ repository or a paid service, and never applies a gate label to an issue. Re-run
 that is already right and reports what was missing; `--check` only reports. Then commit what it wrote and open a
 new session in that repository, because plugins and hooks load only when a session starts.
 
+A product run checks this first: `harness.js init` with `pipeline.js check` as its verify command refuses to start
+(exit 2, nothing written) while any checklist row is open, and names each row and its action. Where `gh` cannot
+reach GitHub, pass `--labels-json <file>` (a saved copy of the repository's labels) to `init` or `setup-repo.js`.
+
 From a Claude Code session without a clone of this repo, install the plugin first
 (`/plugin install product-team --marketplace jyeann/claude-setup`) and run `/product-team:repo-setup`.
 The installer alone is still there for the harness only: `node .claude/harness/bin/install.js <dir> [--dry-run]`.

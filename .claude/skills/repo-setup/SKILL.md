@@ -20,6 +20,8 @@ missing.
    node "${CLAUDE_PLUGIN_ROOT}/harness/bin/setup-repo.js" <product-repo> [--repo owner/name] [--environment <name>]
    ```
    `--repo` defaults to the target's `origin` remote. `--check` writes nothing and creates nothing.
+   `--labels-json <file>` is a saved copy of the repository's labels (a JSON array of names or label
+   objects), read only when `gh` cannot reach GitHub; the labels row then says so.
 3. **Cloud environment.** The command never creates one (owner decision on #108). In a cloud session,
    call `get_environment`: if this session already runs in an environment made for the product, pass
    its name with `--environment`. Otherwise leave the row as `needs you` and give the owner its action.
@@ -42,6 +44,11 @@ If `${CLAUDE_PLUGIN_ROOT}` is still a literal string in the command above, the c
 | Cloud environment | Reports it. With `--environment <name>`, records the name in `docs/agents/environment.md`. |
 
 Exit 0: checklist complete. Exit 1: a row needs the owner (or is missing, with `--check`). Exit 2: refused.
+
+A product run depends on this: `harness.js init` with `pipeline.js check` as its verify command runs the same
+check first and refuses to start (exit 2, nothing written) while any row is open. Run from the product's own
+installed copy (`.claude/harness/bin/setup-repo.js` in `<product-repo>`), the harness row is `already there`
+and the harness is left as it is; run it from `claude-setup` to update the harness.
 
 ## Do not
 
