@@ -8,12 +8,14 @@ const { tailOutput } = require('../lib/stop-loop');
 const { writeCheckpoint, restoreCheckpoint } = require('../lib/checkpoint');
 const { preflightForProject } = require('../lib/preflight');
 const { productRunGate } = require('../lib/repo-setup');
+const { startNote } = require('../lib/kickoff');
 
 const USAGE = `harness <command>
   init --verify "<cmd>" [--task "<text>"] [--task-file <f>] [--max N] [--stall N] [--protect a/,b/] [--verify-timeout SECONDS] [--lint "<cmd>"] [--no-commit-gate]
         [--no-checkpoint] [--checkpoint-push] [--require-sandbox]\n        [--hide <paths>] [--no-diagnosis] [--open-gate-files]\n        [--max-minutes N] [--no-progress N] [--labels-json <file>]
         A product run (verify = pipeline.js check) starts only when setup-repo.js --check reports the checklist
         complete; --labels-json is a saved copy of the repository's labels, read only when gh cannot reach GitHub.
+        It names the kickoff step while the product has no valid kickoff.json (kickoff.js --page).
   checkpoint    snapshot the worktree to refs/harness/wip/<branch> now (the Stop hook does this every iteration)
   restore       copy the latest checkpoint's files back into the worktree (fetches from origin if needed)
   status        show the current run
@@ -71,10 +73,13 @@ async function main([command, ...rest]) {
       const setup = productRunGate({ sourceClaudeDir: path.resolve(__dirname, '..', '..'), projectDir, verifyCommand: state.verifyCommand, labelsJson: f['labels-json'] });
       if (!setup.ok) throw new Error(setup.message);
       setup.warnings.forEach((w) => console.error(`[harness] WARNING: ${w}`));
+      // #135: a product run names the kickoff step while the product has no usable kickoff choices.
+      const kickoffNote = setup.checked ? startNote({ projectDir, verifyCommand: state.verifyCommand }) : null;
       const { warnings, errors } = preflightForProject(projectDir, { requireSandbox: Boolean(f['require-sandbox']) });
       warnings.forEach((w) => console.error(`[harness] WARNING: ${w}`));
       if (errors.length > 0) throw new Error(errors.join(' '));
       writeState(projectDir, state);
+      if (kickoffNote) console.error(`[harness] NOTE: ${kickoffNote}`);
       console.log(`Harness run started. Done = \`${state.verifyCommand}\` exits 0 (max ${state.maxIterations} iterations).`);
       return 0;
     }

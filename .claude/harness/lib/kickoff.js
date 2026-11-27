@@ -7,6 +7,7 @@
 // result carries them, and the file can only add areas to them (alsoSensitive). Each choice also says whether a
 // check enforces it today; one that nothing enforces is "recorded only" and names the ticket that will.
 const fs = require('node:fs');
+const path = require('node:path');
 
 const deepFreeze = (o) => { Object.values(o).forEach((v) => { if (v && typeof v === 'object') deepFreeze(v); }); return Object.freeze(o); };
 
@@ -212,4 +213,74 @@ function describe(r) {
   return out.join('\n');
 }
 
-module.exports = { CHOICES, DEFAULTS, HARD_LIMITS, validate, readKickoff, enforcement, notEnforced, describe };
+// ---- The kickoff step (#135): what the owner is shown before a run starts, and what the run tells them back.
+
+// The choices as data, in page order: for the agent that turns the owner's answers into kickoff.json.
+const pageData = () => CHOICES.map((c) => ({
+  id: c.id,
+  group: c.group,
+  question: c.question,
+  options: Object.entries(c.options).map(([value, label]) => ({ value, label, recommended: value === c.default, prototypeOnly: (c.prototypeOnly ?? []).includes(value) })),
+}));
+
+// The one page the owner reads at the kickoff step: every choice in plain language, the recommended pick marked.
+function page() {
+  const out = [
+    'Kickoff choices',
+    '',
+    `${CHOICES.length} choices about how this run is handled, made once, before it starts. They are about the process only, not about what goes into the product.`,
+    'The recommended pick is marked. Answer with the number and letter of each one you want different ("4a, 6c"), or say "all recommended".',
+  ];
+  let group = '';
+  pageData().forEach((c, i) => {
+    if (c.group !== group) { group = c.group; out.push('', group); }
+    out.push(`  ${i + 1}. ${c.question}`);
+    c.options.forEach((o, j) => out.push(`       ${String.fromCharCode(97 + j)}) ${o.label}${o.recommended ? '  <- recommended' : ''}`));
+  });
+  out.push('', 'Two more things to say:');
+  out.push('  - Is this product a prototype? Only then can a pick marked "prototypes only" be taken.');
+  out.push('  - Is there any other area of this product whose work should always stop for you? It is added to the list below.');
+  out.push('', 'Always stops for the owner, whatever is chosen here:');
+  out.push(...HARD_LIMITS.map((h) => `  - ${h.label}`));
+  return out.join('\n');
+}
+
+// Who judges each judgement layer (ADR-0002), read from the choices: the "Who judges each layer" section of the
+// spec-approved page. `judgedBy` depends only on the picks, so it reads the same whatever is enforced today;
+// `why` names the choices it comes from and says, in plain words, when one of them is recorded only.
+const pick = (id, choices) => byId.get(id).options[choices[id]];
+const JUDGES = {
+  problem: { from: ['gate1'], by: (c) => pick('gate1', c) },
+  impression: { from: ['look'], by: (c) => pick('look', c) },
+  approach: { from: ['gate1'], by: (c) => pick('gate1', c) },
+  correctness: { from: ['uat', 'gate2'], by: (c) => `Checks (the verify gate); user acceptance testing: ${pick('uat', c)}; the result: ${pick('gate2', c)}` },
+  craft: { from: ['security', 'gate2'], by: (c) => `Developer review; security review: ${pick('security', c)}; the result: ${pick('gate2', c)}` },
+};
+function judges(choices) {
+  return Object.entries(JUDGES).map(([layer, rule]) => {
+    const recorded = rule.from.filter((id) => !enforcement(id, choices).enforced);
+    const named = rule.from.map((id) => `"${byId.get(id).question}"`).join(' and ');
+    const open = recorded.map((id) => `"${byId.get(id).question}"`).join(' and ');
+    const why = `Kickoff choice ${named}${recorded.length ? `. Nothing checks the pick for ${open} yet` : ''}`;
+    return { layer, judgedBy: rule.by(choices), why };
+  });
+}
+const judgesTable = (choices) => ['| Layer | Judged by | Why |', '|---|---|---|', ...judges(choices).map((j) => `| ${j.layer} | ${j.judgedBy} | ${j.why} |`)].join('\n');
+
+// What `harness.js init` says when a product's first run starts without usable kickoff choices: it names the
+// kickoff step. null when there is nothing to say (a valid file, a change run, or no --docs in the command).
+const DOCS_FLAG = /\s--docs\s+(?:'([^']*)'|"([^"]*)"|(\S+))/;
+function startNote({ projectDir, verifyCommand }) {
+  const command = String(verifyCommand ?? '');
+  const m = DOCS_FLAG.exec(command);
+  if (!m || /\s--change\s/.test(command)) return null;
+  const docs = m[1] ?? m[2] ?? m[3];
+  const r = readKickoff(path.resolve(projectDir, docs, 'kickoff.json'));
+  if (r.ok && !r.missing) return null;
+  const bin = 'node .claude/harness/bin/kickoff.js';
+  const step = `the kickoff step (orch-product-team, "Starting the run"): show the owner the choices page (${bin} --page), write their answers to ${path.join(docs, 'kickoff.json')}, and print ${bin} --docs ${docs} back to them`;
+  if (r.missing) return `no kickoff choices yet. Before phase 1, do ${step}. A new run stops at its kickoff phase until the file is there; a run that was already under way is told once and reads the defaults.`;
+  return `the kickoff file is not valid (${r.errors.join('; ')}), so the run stops at its kickoff phase. Fix it with the owner: ${step}.`;
+}
+
+module.exports = { CHOICES, DEFAULTS, HARD_LIMITS, validate, readKickoff, enforcement, notEnforced, describe, page, pageData, judges, judgesTable, startNote };

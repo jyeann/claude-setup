@@ -7,6 +7,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { PAGE_SECTIONS, checkPipeline, formatReport, defaultTasksCheck, defaultReadIssue } = require('../lib/pipeline');
 const { buildState } = require('../lib/state');
+const { judgesTable, DEFAULTS } = require('../lib/kickoff');
 
 const PIPELINE = path.join(__dirname, '..', 'bin', 'pipeline.js');
 const VERIFY = path.join(__dirname, '..', 'bin', 'verify.js');
@@ -19,7 +20,9 @@ const TEMPLATE_PAGE = path.join(__dirname, '..', 'templates', 'spec-approved-pag
 // A filled spec-approved page: every section of the template with real content.
 // The real choices carry the Stack part (#62): the proposed stack and its alternatives, each with its status.
 const PAGE_STACK = '\n### Stack\n\nNode.js, gate adapter node (proven), every check runs. Alternative: Vite and React, adapter vitest-stryker (experimental).\n';
-const PAGE = `# Spec-approved page: adder\n${PAGE_SECTIONS.map((name) => `\n## ${name}\n\nFilled in for the adder product.\n${name === 'The real choices' ? PAGE_STACK : ''}`).join('')}`;
+// Who judges each layer follows the kickoff choices (#135); the fixture's kickoff.json takes every default.
+const JUDGES = judgesTable(DEFAULTS);
+const PAGE = `# Spec-approved page: adder\n${PAGE_SECTIONS.map((name) => `\n## ${name}\n\n${name === 'Who judges each layer' ? JUDGES : 'Filled in for the adder product.'}\n${name === 'The real choices' ? PAGE_STACK : ''}`).join('')}`;
 // A page for a stack with no adapter: the three options, each with what the gate would check.
 const PAGE_UNSUPPORTED = PAGE.replace(PAGE_STACK, '\n### Stack\n\nPython has no adapter yet (planned). Options: a supported alternative, Node.js (proven); a weaker gate on junit (experimental) without coverage, test quality and mutation; or building the adapter first as its own spec.\n');
 const DESIGN = `# Design\n${LONG}\n\n## Stack\n\nAdapter: node (proven)\nAlternative: vitest-stryker (experimental)\n`;
@@ -70,6 +73,7 @@ function write(root, files) {
 function project(overrides = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-'));
   write(root, {
+    'docs/kickoff.json': { version: 1 },
     'docs/brief.md': `# Brief\n## Success criteria\nSC1 a person can add two numbers. ${LONG}`,
     'docs/ux.md': `# UX\n### J1. Add (SC1)\nUC1 the sum is shown. ${LONG}`,
     'docs/design.md': DESIGN,
@@ -99,8 +103,9 @@ test('a project with every phase complete and a green gate passes', async () => 
   assert.match(formatReport(r), /PIPELINE COMPLETE$/);
 });
 
-test('an empty project is blocked at discover, later phases are pending, and the gate is not run', async () => {
+test('a project with only its kickoff choices is blocked at discover, later phases are pending, and the gate is not run', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-'));
+  write(root, { 'docs/kickoff.json': { version: 1 } });
   let ran = false;
   const r = await check(root, async () => { ran = true; return { pass: true, output: '' }; });
   assert.equal(r.pass, false);
@@ -249,8 +254,8 @@ test('CLI: exit 1 with the next task when incomplete, exit 2 on bad usage', () =
   const run = (args) => spawnSync('node', [PIPELINE, ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, CLAUDE_PROJECT_DIR: root } });
   const incomplete = run(['check', '--product', '.', '--docs', 'docs']);
   assert.equal(incomplete.status, 1);
-  assert.match(incomplete.stdout, /\[1\/14\] discover: incomplete/);
-  assert.match(incomplete.stdout, /\[3\/14\] look: pending/);
+  assert.match(incomplete.stdout, /\[1\/15\] kickoff: incomplete/);
+  assert.match(incomplete.stdout, /\[4\/15\] look: pending/);
   assert.equal(run(['check']).status, 2);
   assert.equal(run(['check', '--nope', 'x']).status, 2);
 });
@@ -339,7 +344,7 @@ test('warnings come after the instruction on a blocked run, where the Stop hook 
 // ---- owner gates: spec-approved between 4a and 4b, accepted between release and retro (#24) ----
 test('the pipeline has the two owner gates in place: spec-approved after 4a, accepted after release', async () => {
   const r = await check(project());
-  assert.deepEqual(r.phases.map((p) => p.name), ['discover', 'ux', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted', 'retro']);
+  assert.deepEqual(r.phases.map((p) => p.name), ['kickoff', 'discover', 'ux', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted', 'retro']);
 });
 
 test('4a needs the spec issue and the chosen look recorded in decisions.md', async () => {
@@ -426,7 +431,7 @@ test('while spec-approved is missing on the spec issue the pipeline waits, befor
   assert.equal(statusOf(r).plan, 'pending');
   assert.deepEqual(asked, [{ spec: 19, cwd: path.join(root, 'app') }]);
   const report = formatReport(r);
-  assert.match(report, /\[5\/12\] spec-approved: waiting/);
+  assert.match(report, /\[6\/13\] spec-approved: waiting/);
   assert.match(report, /never add the label yourself/);
   assert.doesNotMatch(report, /do not stop to ask a human/);
   assert.equal(report.split('\n').at(-1), 'waiting for owner: spec issue #19 needs label spec-approved');
@@ -543,7 +548,7 @@ process.stdout.write(JSON.stringify([{ number: 19, labels: labels.map((name) => 
   fs.writeFileSync(labels, '["afk","spec-approved"]');
   const next = run();
   assert.equal(next.status, 1, next.stdout + next.stderr);
-  assert.match(next.stdout, /\[5\/12\] spec-approved: done/);
+  assert.match(next.stdout, /\[6\/13\] spec-approved: done/);
   assert.match(next.stdout, /INCOMPLETE at phase "plan"[\s\S]*no acceptance tests/);
 });
 

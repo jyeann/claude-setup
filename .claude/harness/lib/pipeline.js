@@ -12,7 +12,7 @@ const { runVerify } = require('./verify');
 const { fetchIssue, fetchIssueComments } = require('./gh-issues');
 const { OPTIONS, loadCatalogue, readStack } = require('./catalogue');
 const { adapterProtected, matchesProtected } = require('./protected');
-const { readKickoff, CHOICES: KICKOFF_CHOICES } = require('./kickoff');
+const { readKickoff, judges: kickoffJudges, CHOICES: KICKOFF_CHOICES } = require('./kickoff');
 
 const VERIFY_BIN = path.join(__dirname, '..', 'bin', 'verify.js');
 const TASKS_SYNC_BIN = path.join(__dirname, '..', 'bin', 'tasks-sync.js');
@@ -42,6 +42,7 @@ const LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|<(https?:\/\/[^>\s]+)>/g
 const WEB = /^(?:https?:)?\/\//i;
 // The owner gates, in walk order.
 const OWNER_GATES = ['design-approved', 'spec-approved', 'accepted'];
+const KICKOFF_FILE = 'kickoff.json';
 
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
@@ -124,7 +125,18 @@ function pageSections(raw, page, names) {
 }
 const filled = (lines) => Boolean(lines) && Boolean(lines.join('\n').trim()) && !PLACEHOLDER.test(lines.join('\n'));
 
-function pageProblems(docs, { designGate = false } = {}) {
+// "Who judges each layer" is filled from the kickoff choices (#135): each layer's row says who judges it as the
+// choices do. `judges` is null for a run that does not hold its page to the choices (see judgesFor).
+const cellText = (t) => t.replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+function judgesProblems(lines, judges, docsDir) {
+  if (!judges || !filled(lines)) return [];
+  const rows = new Map(lines.filter((l) => /^\s*\|.*\|\s*$/.test(l)).map((l) => l.trim().slice(1, -1).split('|').map(cellText)).map(([layer, by]) => [layer, by]));
+  const wrong = judges.filter((j) => rows.get(j.layer) !== cellText(j.judgedBy));
+  if (wrong.length === 0) return [];
+  return [`${PAGE} section "Who judges each layer" does not follow the kickoff choices for ${wrong.map((j) => `${j.layer} (judged by: ${j.judgedBy})`).join('; ')}: copy the rows printed by node .claude/harness/bin/kickoff.js --docs ${docsDir} --judges, one table row per layer; the "Why" cell may say more`];
+}
+
+function pageProblems(docs, { designGate = false, judges = null, docsDir = docs } = {}) {
   const raw = read(path.join(docs, PAGE));
   if (raw === null) return [`${PAGE} is missing: copy .claude/harness/templates/${PAGE}, fill every section from brief.md, ux.md, design.md and the one-way rows of decisions.md, and post it on the spec issue`];
   const { bodies, problems } = pageSections(raw, PAGE, PAGE_SECTIONS);
@@ -133,6 +145,7 @@ function pageProblems(docs, { designGate = false } = {}) {
   // After the design gate, the owner is not asked about the look again: the page points at what they approved.
   const screens = bodies.get('Screens');
   if (designGate && filled(screens) && !screens.join('\n').includes(DESIGN_PAGE)) out.push(`${PAGE} section "Screens" does not link the approved design: link ${DESIGN_PAGE} (approved at design-approved) instead of asking about the look again`);
+  out.push(...judgesProblems(bodies.get('Who judges each layer'), judges, docsDir));
   out.push(...problems.filter((p) => /contains a code block/.test(p)));
   return out;
 }
@@ -194,13 +207,14 @@ function stackPartProblems(lines, docs) {
 // Phase 4a: the spec issue is written (to-spec) and the look chosen from rendered variations (prototype).
 // Both are recorded in decisions.md, which is where the gates find the spec issue number. The
 // spec-approved page is written last, so the owner judges one page at the gate.
-function specProblems({ docs, designGate }) {
+function specProblems(ctx) {
+  const { docs, designGate } = ctx;
   const text = read(path.join(docs, 'decisions.md'));
   if (text === null) return ['decisions.md is missing: every decision made without a human is logged there, starting with the spec issue'];
   const out = [];
   if (!SPEC_ISSUE.test(text)) out.push('decisions.md has no "Spec issue: #N" line: write the spec issue in this product\'s repository (to-spec), then record its number on a line of its own');
   if (!LOOK.test(text)) out.push('decisions.md has no "Look:" line: render variations (prototype), choose one, put it in the spec issue and record it as "Look: <choice and where it is rendered>" ("Look: none" for a product without a screen)');
-  return [...out, ...pageProblems(docs, { designGate })];
+  return [...out, ...pageProblems(docs, { designGate, judges: judgesFor(ctx), docsDir: rel(ctx.root, docs) || '.' })];
 }
 
 // Phase 2b (#149): the look, chosen from rendered variations, and the key screens rendered with it, on the
@@ -649,7 +663,60 @@ const releaseProblems = ({ product }) => [
   ...(read(path.join(product, 'CHANGELOG.md')) === null ? ['CHANGELOG.md is missing in the product directory'] : []),
 ];
 
+// ---- The kickoff step (#135, spec #126). Before discover, the owner makes the kickoff choices and the run keeps
+// them in <docs>/kickoff.json (lib/kickoff.js). The phase is a list of requirements, checked in order; the first
+// one not met is reported. A later requirement (the product Q&A and design pipelines of spec #156) is one more
+// entry: a check that takes the run's context and returns its problems, or what an owner gate returns to wait.
+function kickoffChoicesProblems(ctx) {
+  const k = ctx.kickoff;
+  const file = rel(ctx.root, k.file);
+  const show = 'node .claude/harness/bin/kickoff.js';
+  if (k.missing) {
+    const step = `show the owner the choices page (${show} --page), write their answers to ${file} (start from .claude/harness/templates/${KICKOFF_FILE}), and print ${show} --docs ${rel(ctx.root, ctx.docs) || '.'} back to them`;
+    if (ctx.kickoffState.required) return [`${file} is missing: the owner has not made the kickoff choices for this run. Now: ${step}. The picks are the owner's; never fill them in for the owner`];
+    // A run that was under way before the step existed is not sent back: told once, it reads the defaults.
+    if (!ctx.kickoffState.told) {
+      ctx.warnings.push(`note: this run started before the kickoff step existed and has no ${file}, so it reads the default kickoff choices (${show} prints them). Said once. To choose instead: ${step}.`);
+      ctx.kickoffState.told = true;
+      saveGates(ctx);
+    }
+    return [];
+  }
+  if (!k.ok) return [`${file} is not valid, so nothing in it applies and the run cannot rely on it: ${k.errors.join('; ')}. Fix the file to say what the owner chose (${show} --docs ${rel(ctx.root, ctx.docs) || '.'} checks it); where a pick is unclear, ask the owner, never choose for them`];
+  return [];
+}
+const KICKOFF_REQUIREMENTS = [
+  ['choices', kickoffChoicesProblems],
+];
+async function kickoffPhase(ctx) {
+  for (const [, check] of KICKOFF_REQUIREMENTS) {
+    const out = await check(ctx);
+    if (!Array.isArray(out) || out.length) return out;
+  }
+  return [];
+}
+
+// Whether this run must have a kickoff file. Decided once, at the run's first check by a harness that has the
+// step, and kept in the run's gate state. A run that has the file, or has neither a record nor a brief yet, made
+// (or must make) its choices at kickoff. Any other was under way before the step existed and is never sent back
+// to kickoff for a missing file. An invalid file is reported in every run.
+function kickoffFor(ctx, underWay) {
+  const g = ctx.gates;
+  if (!g.kickoff) {
+    g.kickoff = { required: !ctx.kickoff.missing || !underWay };
+    saveGates(ctx);
+  }
+  return g.kickoff;
+}
+// The spec-approved page is held to the choices only in a run that made them at kickoff, and only until the
+// owner approves the page: an approved page is never reopened because the choices or their wording changed.
+function judgesFor(ctx) {
+  if (ctx.change || !ctx.kickoffState?.required || !ctx.kickoff.ok || ctx.gates.approvals['spec-approved']) return null;
+  return kickoffJudges(ctx.kickoff.choices);
+}
+
 const PHASES = [
+  ['kickoff', kickoffPhase],
   ['discover', ({ docs }) => doc(docs, 'brief.md', 'product brief', (t) => (/success criteria/i.test(t) ? [] : ['brief.md has no "Success criteria" section: list user-visible, testable criteria']))],
   ['ux', ({ docs }) => doc(docs, 'ux.md', 'UX design', (t) => {
     if (ids(t, /\bJ\d+\b/g).length === 0) return ['ux.md names no journeys: number them J1, J2, ... so the browser walkthrough can be checked against them'];
@@ -679,8 +746,7 @@ const NO_DESIGN = KICKOFF_CHOICES.find((c) => c.id === 'design').options.none;
 // later edit cannot add the gate to a run past it or drop it from a run waiting at it; such an edit only warns.
 function designGateFor(ctx) {
   const g = ctx.gates;
-  const kickoff = readKickoff(path.join(ctx.docs, 'kickoff.json'));
-  const none = kickoff.choices.design === 'none';
+  const none = ctx.kickoff.choices.design === 'none';
   if (!g.designGate) {
     const past = Object.keys(g.approvals).length > 0 || pinnedSpec(ctx) !== null || read(path.join(ctx.docs, 'design.md')) !== null;
     if (past) g.designGate = { applies: false, why: 'this run was past the experience phase when the design gate was added; its look is approved at spec-approved as before' };
@@ -688,7 +754,7 @@ function designGateFor(ctx) {
     else g.designGate = { applies: true };
     saveGates(ctx);
   }
-  const kickfile = rel(ctx.root, path.join(ctx.docs, 'kickoff.json'));
+  const kickfile = rel(ctx.root, ctx.kickoff.file);
   if (g.designGate.applies && none) ctx.warnings.push(`warning: ${kickfile} now says no screens are designed, but this run took the design gate at its first check: the gate stays. Ask the owner if it should not.`);
   if (g.designGate.kickoff && !none) ctx.warnings.push(`warning: ${kickfile} now asks for designed screens, but this run left the design gate out at its first check: the look is approved at spec-approved. Start a new run for a design gate.`);
   return g.designGate;
@@ -847,8 +913,12 @@ async function checkPipeline({ root, product, docs, change, runGate = defaultGat
     const refused = changeStartProblem(ctx);
     if (refused) throw new Error(refused);
   }
+  // A first run with a record in .harness/pipeline/ or a brief was under way before this check.
+  const underWay = !ctx.change && ([gatesFile(ctx), freezeFile(ctx), pinFile(ctx)].some((f) => fs.existsSync(f)) || fs.existsSync(path.join(ctx.docs, 'brief.md')));
   ctx.gates = readGates(ctx);
   if (!ctx.change) {
+    ctx.kickoff = readKickoff(path.join(ctx.docs, KICKOFF_FILE));
+    ctx.kickoffState = kickoffFor(ctx, underWay);
     ctx.designGateState = designGateFor(ctx);
     ctx.designGate = ctx.designGateState.applies;
     if (ctx.designGate) ctx.phases = withDesignGate(PHASES);
@@ -927,9 +997,13 @@ function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, war
       waitLine(waiting),
     ].join('\n');
   }
+  // The kickoff choices are the owner's own: the one phase whose missing output an agent must not decide.
+  const instruction = blocked === 'kickoff'
+    ? 'This phase needs the owner\'s answers: ask the owner now, in this turn, and write down what they say. Never decide the kickoff choices for the owner.'
+    : `Do this phase now; do not stop to ask a human. Decide, log the decision in ${log}, continue.`;
   return [
     ...lines,
-    `PIPELINE INCOMPLETE at phase "${blocked}". Do this phase now; do not stop to ask a human. Decide, log the decision in ${log}, continue.`,
+    `PIPELINE INCOMPLETE at phase "${blocked}". ${instruction}`,
     ...current.problems.map((p) => `  - ${p}`),
     ...warnings,
     ...(blocked === 'build' && gateOutput ? ['', gateOutput.trimEnd()] : []),

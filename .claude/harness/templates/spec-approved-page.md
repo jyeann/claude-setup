@@ -43,6 +43,9 @@ a screen.>
 
 ## Who judges each layer
 
+<!-- Filled from the kickoff choices: replace the five rows below with the rows that kickoff.js --docs <docs> --judges
+prints for this product. Keep "Judged by" as printed; "Why" may say more about this product. -->
+
 | Layer | Judged by | Why |
 |---|---|---|
 | problem | <owner / checks / developer review / skip> | <reason for this product> |

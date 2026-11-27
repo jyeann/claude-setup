@@ -111,6 +111,10 @@ A line starting `Owner decision:` in a closing message: the one way to end a tur
 The owner's twelve process choices for a product (how gates are approved, who judges them, who merges, absent or reachable, how a halt arrives, who picks standards and the look, staging, user testing, security review), made before a run starts and kept in the product's `kickoff.json`. About the process only; what goes into the product is the build standards checklist (#127). A choice that no check holds yet is **recorded only**.
 _Avoid_: settings, preferences, config (for the owner's choices)
 
+**Kickoff step**:
+The start of a product's first run, before `discover`: the owner is shown the kickoff choices on one page with the recommended picks marked, answers, and the answers are written to the product's `kickoff.json` and printed back. In the pipeline it is the `kickoff` phase, complete when that file exists and is valid. A run that was under way before the step existed is told once and reads the defaults.
+_Avoid_: onboarding, setup (that is the repository setup checklist), intake
+
 **Hard limits**:
 The areas whose work always stops for the owner, whatever the kickoff choices say: login and accounts, payments, user data, data migrations, deploy, secrets, spend and legal. Fixed in `lib/kickoff.js`; a product can add areas, never remove one.
 _Avoid_: sensitive list, red lines

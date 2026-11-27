@@ -7,6 +7,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { PAGE_SECTIONS, DESIGN_PAGE_SECTIONS, checkPipeline, formatReport, defaultReadIssue } = require('../lib/pipeline');
+const { judgesTable, DEFAULTS } = require('../lib/kickoff');
 
 const LONG = 'x'.repeat(320);
 const passGate = async () => ({ pass: true, output: 'VERIFY PASSED' });
@@ -36,7 +37,8 @@ The error state for a non-number is not drawn yet.
 `;
 const PAGE_STACK = '\n### Stack\n\nNode.js, gate adapter node (proven). Alternative: Vite and React, adapter vitest-stryker (experimental).\n';
 const SCREENS_LINK = 'The look and the key screens were approved at design-approved: see [the design-approved page](design-approved-page.md).';
-const specPage = (screens = SCREENS_LINK) => `# Spec-approved page: adder\n${PAGE_SECTIONS.map((name) => `\n## ${name}\n\n${name === 'Screens' ? screens : 'Filled in for the adder product.'}\n${name === 'The real choices' ? PAGE_STACK : ''}`).join('')}`;
+// `judges` fills "Who judges each layer": a run that made its kickoff choices must give the rows they print (#135).
+const specPage = (screens = SCREENS_LINK, judges = 'Filled in for the adder product.') => `# Spec-approved page: adder\n${PAGE_SECTIONS.map((name) => `\n## ${name}\n\n${{ Screens: screens, 'Who judges each layer': judges }[name] ?? 'Filled in for the adder product.'}\n${name === 'The real choices' ? PAGE_STACK : ''}`).join('')}`;
 const DESIGN = `# Design\n${LONG}\n\n## Stack\n\nAdapter: node (proven)\nAlternative: vitest-stryker (experimental)\n`;
 const CONFIG = { testCommand: 'node --test', adapter: 'node', holdout: { command: 'node --test holdout' }, journeys: { command: 'node --test journeys', uxFile: '../docs/ux.md' } };
 const PASS = 'verdict: problem=pass impression=pass approach=pass correctness=pass craft=pass';
@@ -104,7 +106,7 @@ const edit = (root, rel) => fs.appendFileSync(path.join(root, rel), '\nRedone af
 test('a new run walks the look phase and the design-approved gate between the experience phase and system design', async () => {
   const { root } = await newRun({ ...EARLY, ...LATE });
   const r = await check(root);
-  assert.deepEqual(r.phases.map((p) => p.name), ['discover', 'ux', 'look', 'design-approved', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted', 'retro']);
+  assert.deepEqual(r.phases.map((p) => p.name), ['kickoff', 'discover', 'ux', 'look', 'design-approved', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted', 'retro']);
 });
 
 test('while design-approved is missing the run waits there, before system design, as at the other gates', async () => {
@@ -115,7 +117,7 @@ test('while design-approved is missing the run waits there, before system design
   assert.deepEqual(['discover', 'ux', 'look'].map((p) => statusOf(r)[p]), ['done', 'done', 'done']);
   assert.equal(statusOf(r).design, 'pending');
   const report = formatReport(r);
-  assert.match(report, /\[4\/14\] design-approved: waiting/);
+  assert.match(report, /\[5\/15\] design-approved: waiting/);
   assert.match(report, /never add the label yourself/);
   assert.equal(report.split('\n').at(-1), 'waiting for owner: spec issue #19 needs label design-approved');
 });
@@ -260,16 +262,21 @@ test('the spec-approved page links the approved design instead of asking about t
 
 test('a product whose kickoff choice is no designed screens skips the look phase and the gate', async () => {
   const kickoff = { version: 1, choices: { design: 'none' } };
-  const { root, o } = await newRun({ ...LATE, ...Object.fromEntries(Object.entries(EARLY).filter(([f]) => !f.includes('design-approved') && !f.includes('screens'))), 'docs/spec-approved-page.md': specPage('No screens: standard components throughout.') }, { kickoff });
+  const { root, o } = await newRun({ ...LATE, ...Object.fromEntries(Object.entries(EARLY).filter(([f]) => !f.includes('design-approved') && !f.includes('screens'))), 'docs/spec-approved-page.md': specPage('No screens: standard components throughout.', judgesTable({ ...DEFAULTS, design: 'none' })) }, { kickoff });
   o.label('afk', 'spec-approved', 'accepted');
   const r = await check(root);
-  assert.deepEqual(r.phases.map((p) => p.name), ['discover', 'ux', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted', 'retro']);
+  assert.deepEqual(r.phases.map((p) => p.name), ['kickoff', 'discover', 'ux', 'design', 'spec', 'spec-approved', 'plan', 'build', 'review', 'qa', 'release', 'accepted', 'retro']);
   assert.equal(r.pass, true);
   assert.match(formatReport(r), /design gate: not in this run - the kickoff choice is "None; standard components throughout"/);
 });
 
 test('an invalid kickoff file keeps the gate: nothing in it applies', async () => {
   const { root } = await newRun(EARLY, { kickoff: { version: 1, choices: { design: 'none', bogus: 1 } } });
+  // The broken file is the first thing reported (#135); the gate it tried to drop is still in the walk.
+  const r = await check(root);
+  assert.equal(r.blocked, 'kickoff');
+  assert.equal(statusOf(r)['design-approved'], 'pending');
+  write(root, { 'docs/kickoff.json': { version: 1 } });
   assert.equal((await check(root)).blocked, 'design-approved');
 });
 

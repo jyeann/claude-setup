@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // Usage: pipeline.js check --product <dir> --docs <dir> [--change <issue>] [--issue-json <file>]
-// The whole-pipeline definition of done for orch-product-team: every phase has its output, the owner gates
+// The whole-pipeline definition of done for orch-product-team: the kickoff choices are made (kickoff.json, #135),
+// every phase has its output, the owner gates
 // (design-approved, spec-approved, accepted; #149) are on the spec issue, and the product passes its own verify gate. Use it as the harness verify command so
 // the Stop hook keeps the agent working through every phase. Exit 0: complete. Exit 1: a phase is incomplete
 // (named, with what is missing). Exit 2: usage error. Exit 3: waiting for the owner; the last line reads
