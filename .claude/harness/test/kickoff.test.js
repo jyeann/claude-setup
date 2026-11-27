@@ -218,8 +218,21 @@ test('a choice not yet enforced names the ticket that will enforce it', () => {
   }
 });
 
-test('the look is enforced only while the owner judges the spec gate', () => {
-  assert.equal(k.enforcement('look', { ...OWNER_PICKS, gate1: 'agent' }).enforced, false);
+test('the look is enforced while the owner judges it: at design-approved, or at the spec gate when there is no design gate', () => {
+  assert.equal(k.enforcement('look', { ...OWNER_PICKS, gate1: 'agent' }).enforced, true);
+  assert.match(k.enforcement('look', OWNER_PICKS).by, /design-approved/);
+  assert.equal(k.enforcement('look', { ...OWNER_PICKS, design: 'none' }).enforced, true);
+  assert.equal(k.enforcement('look', { ...OWNER_PICKS, design: 'none', gate1: 'agent' }).enforced, false);
+  assert.equal(k.enforcement('look', { ...OWNER_PICKS, look: 'agent' }).enforced, false);
+});
+
+test('no designed screens is enforced by leaving out the design gate; key or all screens hold the run at it (#149)', () => {
+  const none = k.enforcement('design', { ...OWNER_PICKS, design: 'none' });
+  assert.equal(none.enforced, true);
+  assert.match(none.by, /leaves out the look phase and the design-approved gate/);
+  const key = k.enforcement('design', OWNER_PICKS);
+  assert.equal(key.enforced, false);
+  assert.match(key.by, /design-approved.*#134/);
 });
 
 test('user testing by both is enforced only while the owner judges the result', () => {

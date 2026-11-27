@@ -2,8 +2,8 @@
 // Whole-pipeline definition of done for orch-product-team. Used as the harness verify command, it makes the
 // Stop hook hold the agent until every phase has produced its output and the product passes its own gate.
 // Phases are checked in order and the first incomplete one is reported; that message is the agent's next task.
-// The one exception is an owner gate (spec-approved, accepted): while its label is missing on the spec issue,
-// read from GitHub, the result is `waiting` and the Stop hook lets the turn end (#24).
+// The one exception is an owner gate (design-approved, spec-approved, accepted): while its label is missing on the
+// spec issue, read from GitHub, the result is `waiting` and the Stop hook lets the turn end (#24, #149).
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -12,6 +12,7 @@ const { runVerify } = require('./verify');
 const { fetchIssue, fetchIssueComments } = require('./gh-issues');
 const { OPTIONS, loadCatalogue, readStack } = require('./catalogue');
 const { adapterProtected, matchesProtected } = require('./protected');
+const { readKickoff, CHOICES: KICKOFF_CHOICES } = require('./kickoff');
 
 const VERIFY_BIN = path.join(__dirname, '..', 'bin', 'verify.js');
 const TASKS_SYNC_BIN = path.join(__dirname, '..', 'bin', 'tasks-sync.js');
@@ -31,6 +32,16 @@ const PAGE_SECTIONS = ['Problem and who it is for', 'Not building', 'The real ch
 // A template placeholder starts with a letter (so `5 < 10` is prose) and is not a link or an email autolink.
 const PLACEHOLDER = /<(?![A-Za-z][\w+.-]*:)(?![^<>]*@)[A-Za-z][^<>]*>/;
 const CODE_FENCE = /^\s*(?:```|~~~)/m;
+// The one page the owner reads at design-approved (templates/design-approved-page.md, #149): the look variations,
+// the chosen look and the key screens, each rendered and linked. The rendered files live in <docs>/screens/.
+const DESIGN_PAGE = 'design-approved-page.md';
+const DESIGN_PAGE_SECTIONS = ['Look variations', 'The chosen look', 'Key screens', "What we're unsure about"];
+const SCREENS_DIR = 'screens';
+// A markdown link target (an optional title after it), or an autolink to a web page.
+const LINK = /\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|<(https?:\/\/[^>\s]+)>/g;
+const WEB = /^(?:https?:)?\/\//i;
+// The owner gates, in walk order.
+const OWNER_GATES = ['design-approved', 'spec-approved', 'accepted'];
 
 const read = (file) => { try { return fs.readFileSync(file, 'utf8'); } catch { return null; } };
 const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
@@ -93,9 +104,8 @@ function planProblems({ product, docs, change }) {
 
 // The spec-approved page must have every section of the template, each filled (not empty, no placeholder
 // left), and no code: the owner judges it in plain language.
-function pageProblems(docs) {
-  const raw = read(path.join(docs, PAGE));
-  if (raw === null) return [`${PAGE} is missing: copy .claude/harness/templates/${PAGE}, fill every section from brief.md, ux.md, design.md and the one-way rows of decisions.md, and post it on the spec issue`];
+// A page's "## " sections (comments removed), each section's lines, and the problems of a missing or unfilled one.
+function pageSections(raw, page, names) {
   const text = raw.replace(/<!--[\s\S]*?-->/g, '');
   const bodies = new Map();
   let current = null;
@@ -103,15 +113,63 @@ function pageProblems(docs) {
     const h = /^##\s+(.+?)\s*$/.exec(line);
     if (h) { current = h[1]; bodies.set(current, []); } else if (current !== null) bodies.get(current).push(line);
   }
-  const out = PAGE_SECTIONS.flatMap((name) => {
-    if (!bodies.has(name)) return [`${PAGE} has no section "${name}": add the heading "## ${name}" and fill it`];
+  const problems = names.flatMap((name) => {
+    if (!bodies.has(name)) return [`${page} has no section "${name}": add the heading "## ${name}" and fill it`];
     const body = bodies.get(name).join('\n');
-    if (!body.trim() || PLACEHOLDER.test(body)) return [`${PAGE} section "${name}" is not filled: replace the template placeholders with this product's content`];
+    if (!body.trim() || PLACEHOLDER.test(body)) return [`${page} section "${name}" is not filled: replace the template placeholders with this product's content`];
     return [];
   });
+  if (CODE_FENCE.test(text)) problems.push(`${page} contains a code block: write the page in plain language, with no code`);
+  return { text, bodies, problems };
+}
+const filled = (lines) => Boolean(lines) && Boolean(lines.join('\n').trim()) && !PLACEHOLDER.test(lines.join('\n'));
+
+function pageProblems(docs, { designGate = false } = {}) {
+  const raw = read(path.join(docs, PAGE));
+  if (raw === null) return [`${PAGE} is missing: copy .claude/harness/templates/${PAGE}, fill every section from brief.md, ux.md, design.md and the one-way rows of decisions.md, and post it on the spec issue`];
+  const { bodies, problems } = pageSections(raw, PAGE, PAGE_SECTIONS);
+  const out = problems.filter((p) => !/contains a code block/.test(p));
   out.push(...stackPartProblems(bodies.get('The real choices'), docs));
-  if (CODE_FENCE.test(text)) out.push(`${PAGE} contains a code block: write the page in plain language, with no code`);
+  // After the design gate, the owner is not asked about the look again: the page points at what they approved.
+  const screens = bodies.get('Screens');
+  if (designGate && filled(screens) && !screens.join('\n').includes(DESIGN_PAGE)) out.push(`${PAGE} section "Screens" does not link the approved design: link ${DESIGN_PAGE} (approved at design-approved) instead of asking about the look again`);
+  out.push(...problems.filter((p) => /contains a code block/.test(p)));
   return out;
+}
+
+// The design-approved page: every section filled, no code, and the look and the key screens shown rendered,
+// never only described: each of those sections links at least one rendered file or published page. A local link
+// must name an existing file in the screens/ folder beside the page, so the approval covers what the owner saw.
+function designPageProblems(docs) {
+  const raw = read(path.join(docs, DESIGN_PAGE));
+  if (raw === null) return [`${DESIGN_PAGE} is missing: copy .claude/harness/templates/${DESIGN_PAGE}, render the look variations and the key screens with the chosen look into ${SCREENS_DIR}/, link them from the page, and post it on the spec issue`];
+  const { bodies, problems } = pageSections(raw, DESIGN_PAGE, DESIGN_PAGE_SECTIONS);
+  const out = problems.filter((p) => !/contains a code block/.test(p));
+  const screens = path.join(docs, SCREENS_DIR);
+  let realScreens = null;
+  try { realScreens = fs.realpathSync(screens); } catch { /* no screens folder: every local link fails below */ }
+  // A link counts as rendered when it is a web page, or a file (not a folder) in screens/, followed through links.
+  const linkProblem = (link) => {
+    if (WEB.test(link)) return null;
+    if (/^[a-z][\w+.-]*:/i.test(link) || link.startsWith('#')) return `${DESIGN_PAGE} links ${link}, which is not a rendered file: link a file in ${SCREENS_DIR}/ or a published page`;
+    let file;
+    try { file = decodeURIComponent(link.split(/[?#]/)[0]); } catch { return `${DESIGN_PAGE} links ${link}, which is not a valid path: fix the link`; }
+    const target = path.resolve(docs, file);
+    if (!inside(screens, target) || target === screens) return `${DESIGN_PAGE} links ${link}, outside the ${SCREENS_DIR}/ folder: put every rendered file in ${SCREENS_DIR}/ beside the page, so the owner's approval covers it`;
+    let real;
+    try { real = fs.realpathSync(target); } catch { return `${DESIGN_PAGE} links ${link}, which does not exist: render it there or fix the link`; }
+    if (!realScreens || !inside(realScreens, real) || !fs.statSync(real).isFile()) return `${DESIGN_PAGE} links ${link}, which is not a file in the ${SCREENS_DIR}/ folder: link the rendered file itself`;
+    return null;
+  };
+  for (const name of DESIGN_PAGE_SECTIONS) {
+    if (!filled(bodies.get(name))) continue;
+    const links = [...bodies.get(name).join('\n').matchAll(LINK)].map((m) => m[1] ?? m[2]);
+    const bad = links.map(linkProblem).filter(Boolean);
+    out.push(...bad);
+    const rendered = links.length - bad.length;
+    if (['Look variations', 'Key screens'].includes(name) && rendered === 0 && bad.length === 0) out.push(`${DESIGN_PAGE} section "${name}" links no rendered screen: render it into ${SCREENS_DIR}/ and link the file; the owner judges rendered screens, not words`);
+  }
+  return [...out, ...problems.filter((p) => /contains a code block/.test(p))];
 }
 
 // The stack is a one-way choice, shown under "The real choices" as a "### Stack" part: the proposed stack and
@@ -136,13 +194,27 @@ function stackPartProblems(lines, docs) {
 // Phase 4a: the spec issue is written (to-spec) and the look chosen from rendered variations (prototype).
 // Both are recorded in decisions.md, which is where the gates find the spec issue number. The
 // spec-approved page is written last, so the owner judges one page at the gate.
-function specProblems({ docs }) {
+function specProblems({ docs, designGate }) {
   const text = read(path.join(docs, 'decisions.md'));
   if (text === null) return ['decisions.md is missing: every decision made without a human is logged there, starting with the spec issue'];
   const out = [];
   if (!SPEC_ISSUE.test(text)) out.push('decisions.md has no "Spec issue: #N" line: write the spec issue in this product\'s repository (to-spec), then record its number on a line of its own');
   if (!LOOK.test(text)) out.push('decisions.md has no "Look:" line: render variations (prototype), choose one, put it in the spec issue and record it as "Look: <choice and where it is rendered>" ("Look: none" for a product without a screen)');
-  return [...out, ...pageProblems(docs)];
+  return [...out, ...pageProblems(docs, { designGate })];
+}
+
+// Phase 2b (#149): the look, chosen from rendered variations, and the key screens rendered with it, on the
+// design-approved page. The spec issue is opened here, because the design gate's label goes on it; phase 4a
+// completes it.
+function lookProblems({ docs }) {
+  const text = read(path.join(docs, 'decisions.md'));
+  const out = [];
+  if (text === null) out.push('decisions.md is missing: every decision made without a human is logged there, starting with the spec issue');
+  else {
+    if (!SPEC_ISSUE.test(text)) out.push('decisions.md has no "Spec issue: #N" line: open the spec issue in this product\'s repository now (the brief, the journeys and the look; phase 4a completes it), then record its number on a line of its own');
+    if (!LOOK.test(text)) out.push('decisions.md has no "Look:" line: render variations (prototype), choose one and record it as "Look: <choice and where it is rendered>"');
+  }
+  return [...out, ...designPageProblems(docs)];
 }
 
 const specIssueOf = (docs) => Number((SPEC_ISSUE.exec(read(path.join(docs, 'decisions.md')) ?? '') ?? [])[1]) || null;
@@ -296,6 +368,7 @@ function phaseOf(ctx, file) {
   if (ctx.change && inside(ctx.docs, abs)) return null;
   if (inside(ctx.docs, abs)) {
     const d = rel(ctx.docs, abs);
+    if (d === DESIGN_PAGE || d.startsWith(`${SCREENS_DIR}/`)) return 'look';
     return { 'brief.md': 'discover', 'ux.md': 'ux', 'design.md': 'design' }[d] ?? (d.startsWith('adr/') ? 'design' : null);
   }
   if (!inside(ctx.product, abs)) return null;
@@ -331,8 +404,10 @@ function hashed(ctx, keep) {
   return Object.fromEntries(all.filter(keep).map((f) => [f, sha(fs.readFileSync(path.join(ctx.root, f)))]));
 }
 const phaseOutputs = (ctx, phase) => hashed(ctx, (f) => phaseOf(ctx, f) === phase);
-// spec-approved approves the brief, ux, design and the page (a change: its spec outputs); accepted approves the product.
+// design-approved approves the look phase (its page and the rendered screens); spec-approved the brief, ux, design
+// and the page (a change: its spec outputs); accepted the product.
 function approvedFiles(ctx, gate) {
+  if (gate === 'design-approved') return hashed(ctx, (f) => phaseOf(ctx, f) === 'look');
   const page = ctx.change ? null : rel(ctx.root, path.join(ctx.docs, PAGE));
   const phases = gate === 'accepted' ? ['plan', 'build'] : (ctx.change ? ['discover', 'ux', 'design', 'spec'] : ['discover', 'ux', 'design']);
   return hashed(ctx, (f) => f === page || phases.includes(phaseOf(ctx, f)));
@@ -388,6 +463,9 @@ const cannotRead = (ctx, spec, why) => (ctx.change
   ? `cannot read change spec issue #${spec} (${why}): check the --change number in the verify command; it must be an issue of this product's repository`
   : `cannot read spec issue #${spec} (${why}): fix the "Spec issue: #N" line in decisions.md so it names this product's spec issue`);
 
+const walkIndex = (ctx, name) => ctx.phases.findIndex(([n]) => n === name);
+const judgedAt = (ctx, phase) => ctx.phases.slice(walkIndex(ctx, phase)).find(([n]) => OWNER_GATES.includes(n))[0];
+
 // An owner gate passes when its label is on the spec issue and the latest layer verdict, if any, is all pass.
 // Missing label, no answer from GitHub, a malformed verdict, a redirect waiting to be judged again or a void
 // approval: wait (never pass). Any other read error is the run's to fix, usually a wrong "Spec issue:" line.
@@ -403,7 +481,8 @@ function ownerGate(gate) {
     if (r.unreachable) return wait(`could not read the labels of spec issue #${spec} (${r.unreachable}), so the gate counts as not passed`);
     const g = ctx.gates;
     const labelled = labelNames(r.issue).includes(gate);
-    const latest = latestVerdict(r.issue, ctx.layers);
+    // At the design gate the impression the owner judges is the look: a redirect there redoes the look phase.
+    const latest = latestVerdict(r.issue, gate === 'design-approved' ? { ...ctx.layers, impression: 'look' } : ctx.layers);
 
     if (labelled && g.approvals[gate]) {
       const changed = voidedFiles(ctx, gate);
@@ -415,9 +494,10 @@ function ownerGate(gate) {
     }
     if (latest?.unreadable) return wait(`${latest.unreadable}: save the issue with its comments, or let gh reach GitHub`);
     if (latest && !latest.ok) return wait(`the latest verdict on spec issue #${spec} cannot be read (${latest.errors.join('; ')}), so it is not a pass. Ask the owner to post it again in this form: ${EXPECTED}`);
-    // Correctness and craft are judged on the built product, at accepted.
-    const early = gate === 'spec-approved' ? latest?.redirects.filter((x) => x.phase === 'build') ?? [] : [];
-    if (early.length) return wait(`${early.map((x) => `${x.layer} is judged at accepted`).join('; ')}, so a redirect on it at spec-approved is not read and the gate is not passed. Ask the owner to post the verdict again with ${early.map((x) => `${x.layer}=pass`).join(' ')}, in this form: ${EXPECTED}`);
+    // A layer whose phase comes after this gate is judged at a later gate: correctness and craft on the built
+    // product at accepted, the approach (system design) at spec-approved.
+    const early = (latest?.redirects ?? []).filter((x) => walkIndex(ctx, x.phase) > walkIndex(ctx, gate));
+    if (early.length) return wait(`${early.map((x) => `${x.layer} is judged at ${judgedAt(ctx, x.phase)}`).join('; ')}, so a redirect on it at ${gate} is not read and the gate is not passed. Ask the owner to post the verdict again with ${early.map((x) => `${x.layer}=pass`).join(' ')}, in this form: ${EXPECTED}`);
     if (latest?.redirects.length) {
       if (!g.seen[latest.id]) {
         takeRedirect(ctx, gate, latest);
@@ -588,6 +668,32 @@ const PHASES = [
   ['retro', ({ docs }) => doc(docs, 'retro.md', 'retro')],
 ];
 
+// The design gate (#149, spec #148): a new first run walks the look phase and the design-approved gate between ux and
+// design (system design). Left out for a product with no designed screens (kickoff choice design: none) and for a
+// run already past the experience phase when its harness was updated, so no run is sent backwards.
+const LOOK_PHASES = [['look', lookProblems], ['design-approved', ownerGate('design-approved')]];
+const withDesignGate = (phases) => phases.flatMap((p) => (p[0] === 'design' ? [...LOOK_PHASES, p] : [p]));
+const NO_DESIGN = KICKOFF_CHOICES.find((c) => c.id === 'design').options.none;
+
+// Decided once, at the run's first check by a harness that has the gate, and kept in the run's gate state, so a
+// later edit cannot add the gate to a run past it or drop it from a run waiting at it; such an edit only warns.
+function designGateFor(ctx) {
+  const g = ctx.gates;
+  const kickoff = readKickoff(path.join(ctx.docs, 'kickoff.json'));
+  const none = kickoff.choices.design === 'none';
+  if (!g.designGate) {
+    const past = Object.keys(g.approvals).length > 0 || pinnedSpec(ctx) !== null || read(path.join(ctx.docs, 'design.md')) !== null;
+    if (past) g.designGate = { applies: false, why: 'this run was past the experience phase when the design gate was added; its look is approved at spec-approved as before' };
+    else if (none) g.designGate = { applies: false, why: `the kickoff choice is "${NO_DESIGN}"`, kickoff: true };
+    else g.designGate = { applies: true };
+    saveGates(ctx);
+  }
+  const kickfile = rel(ctx.root, path.join(ctx.docs, 'kickoff.json'));
+  if (g.designGate.applies && none) ctx.warnings.push(`warning: ${kickfile} now says no screens are designed, but this run took the design gate at its first check: the gate stays. Ask the owner if it should not.`);
+  if (g.designGate.kickoff && !none) ctx.warnings.push(`warning: ${kickfile} now asks for designed screens, but this run left the design gate out at its first check: the look is approved at spec-approved. Start a new run for a design gate.`);
+  return g.designGate;
+}
+
 // ---- Sizing a change request (#90). The change's decisions.md carries a line "Size: fix", "Size: change" or
 // "Size: new direction" (a reason may follow); the last such line is the size. A re-size adds a new line.
 const SIZES = Object.freeze(['fix', 'change', 'new direction']);
@@ -742,6 +848,11 @@ async function checkPipeline({ root, product, docs, change, runGate = defaultGat
     if (refused) throw new Error(refused);
   }
   ctx.gates = readGates(ctx);
+  if (!ctx.change) {
+    ctx.designGateState = designGateFor(ctx);
+    ctx.designGate = ctx.designGateState.applies;
+    if (ctx.designGate) ctx.phases = withDesignGate(PHASES);
+  }
   const finished = ctx.change ? ctx.gates.finished : null;
   if (finished) {
     const changed = changedKeys(finishedFiles(ctx), finished.files ?? {});
@@ -784,7 +895,8 @@ async function walkPhases(ctx) {
     if (out.length) blocked = name;
   }
   const log = ctx.change ? { log: rel(ctx.root, path.join(ctx.records, 'decisions.md')) } : {};
-  return { pass: blocked === null, blocked, ...(waiting ? { waiting } : {}), ...(stopped ? { stopped } : {}), ...log, phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
+  const design = ctx.designGateState && !ctx.designGateState.applies ? { designGate: ctx.designGateState } : {};
+  return { pass: blocked === null, blocked, ...(waiting ? { waiting } : {}), ...(stopped ? { stopped } : {}), ...log, ...design, phases, gateOutput: ctx.gateOutput, warnings: ctx.warnings };
 }
 
 const waitLine = ({ gate, spec }) => `waiting for owner: spec issue #${spec} needs label ${gate}`;
@@ -792,8 +904,9 @@ const waitLine = ({ gate, spec }) => `waiting for owner: spec issue #${spec} nee
 // The Stop hook forwards only the tail of the output, so the instruction and the gate's own failure
 // details go last.
 // A waiting report ends with the waiting line, which the Stop hook recognises (lib/stop-loop.js).
-function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, warnings = [], log = 'decisions.md' }) {
+function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, warnings = [], log = 'decisions.md', designGate }) {
   const lines = phases.map((p, i) => `[${i + 1}/${phases.length}] ${p.name}: ${p.status}`);
+  if (designGate) lines.push(`design gate: not in this run - ${designGate.why}`);
   if (pass) return [...lines, ...warnings, 'PIPELINE COMPLETE'].join('\n');
   const current = phases.find((p) => p.name === blocked);
   if (stopped) {
@@ -823,4 +936,4 @@ function formatReport({ pass, blocked, waiting, stopped, phases, gateOutput, war
   ].join('\n');
 }
 
-module.exports = { PAGE_SECTIONS, LAYERS, CHANGE_LAYERS, NEW_DIRECTION_LAYERS, FIX_LAYERS, SIZES, readSize, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };
+module.exports = { PAGE_SECTIONS, DESIGN_PAGE_SECTIONS, OWNER_GATES, LAYERS, CHANGE_LAYERS, NEW_DIRECTION_LAYERS, FIX_LAYERS, SIZES, readSize, MAX_ROUNDS, parseVerdict, checkPipeline, formatReport, frozenFiles, amendCounts, defaultTasksCheck, defaultReadIssue };

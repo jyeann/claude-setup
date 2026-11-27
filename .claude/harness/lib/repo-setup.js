@@ -14,6 +14,7 @@ const { PIPELINE_COMMAND } = require('./stop-loop');
 const LABELS = [
   { name: 'spec-approved', color: '0E8A16', description: 'Owner gate: spec approved. Applied by the owner only.' },
   { name: 'accepted', color: '1D76DB', description: 'Owner gate: result accepted against the spec. Applied by the owner only.' },
+  { name: 'design-approved', color: 'C5DEF5', description: 'Owner gate: look and key screens approved. Applied by the owner only.' },
   { name: 'afk', color: 'C2E0C6', description: 'Ticket an agent can finish alone' },
   { name: 'hitl', color: 'F9D0C4', description: 'Ticket that needs a human' },
   { name: 'needs-triage', color: 'FBCA04', description: 'Maintainer needs to evaluate this issue' },
@@ -21,7 +22,7 @@ const LABELS = [
   { name: 'wontfix', color: 'FFFFFF', description: 'Will not be actioned' },
   { name: 'needs-fable', color: '5319E7', description: 'Owner approval for a fable run' },
 ];
-const GATE_LABELS = ['spec-approved', 'accepted'];
+const GATE_LABELS = ['design-approved', 'spec-approved', 'accepted'];
 const MARKETPLACE = 'jyeann';
 const PLUGINS = [
   { id: 'product-team', title: 'Plugin product-team (agents, skills, commands)' },

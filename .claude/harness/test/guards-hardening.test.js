@@ -132,6 +132,9 @@ test('gh cannot add or remove an owner gate label; other label and issue command
     'gh api repos/o/r/issues/19/labels -f labels[]=spec-approved',
     "gh api --method POST repos/o/r/issues/19/labels --input - <<< '{\"labels\":[\"accepted\"]}'",
     'gh label create accepted',
+    'gh issue edit 19 --add-label design-approved',
+    'gh api repos/o/r/issues/19/labels -f labels[]=design-approved',
+    'gh issue edit 19 --remove-label design-approved',
   ]) blocked(cmd);
   for (const cmd of [
     'gh issue edit 19 --add-label afk',
@@ -139,6 +142,8 @@ test('gh cannot add or remove an owner gate label; other label and issue command
     'gh api repos/o/r/issues/19 --jq .labels',
     'gh issue comment 19 --body "waiting for owner: spec issue #19 needs label spec-approved"',
     'gh api repos/o/r/issues/19/labels',
+    'gh issue comment 19 --body "waiting for owner: spec issue #19 needs label design-approved"',
+    'gh issue edit 19 --add-label design-review',
   ]) allowed(cmd);
 });
 

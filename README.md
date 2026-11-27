@@ -1,8 +1,9 @@
 # claude-setup
 
 A product team for Claude Code. One idea goes in; a team of agents scopes it, designs it, builds it under an
-objective gate, reviews it, walks it in a browser and documents it. The owner is asked at two owner gates only:
-`spec-approved` (the spec, including the chosen look) and `accepted` (the released result). The harness, not the
+objective gate, reviews it, walks it in a browser and documents it. The owner is asked at three owner gates only:
+`design-approved` (the look and the key screens, rendered), `spec-approved` (the spec) and `accepted` (the released
+result). A product with no designed screens has only the last two. The harness, not the
 agent, decides when it is done.
 
 Start with `.claude/skills/orch-product-team/SKILL.md` and `.claude/harness/README.md`.
@@ -26,8 +27,9 @@ path you give), never in this one: the skill sets that repository up there (see 
 and keeps the run records in `<product-repo>/docs/product/<slug>/`. With no target named, it proposes a new
 repository named after the product and asks you once. It then starts the harness with the whole pipeline as the
 definition of done, so the Stop hook sends the agent back to the next unfinished phase instead of letting it stop
-to ask. The run pauses only at the two owner gates, labels you add to the spec issue: `spec-approved` after the spec
-(phase 4a), before any ticket or test is written, and `accepted` after release, before the retro. While a label is
+to ask. The run pauses only at the owner gates, labels you add to the spec issue: `design-approved` after the look
+and key screens are rendered, before the system is designed; `spec-approved` after the spec (phase 4a), before any
+ticket or test is written; and `accepted` after release, before the retro. While a label is
 missing, the pipeline reports `waiting for owner` and the turn ends; add the label and the run moves on. Your answer
 at a gate counts as a gate response, not an intervention. This repo keeps only the process and its test bench
 (`testbench/retro-board/`).
