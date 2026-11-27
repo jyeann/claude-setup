@@ -76,13 +76,18 @@ function validatePipeline(doc, { file = '<pipeline>' } = {}) {
     const where = item('question', q, i);
     if (!where) return;
     for (const f of ['ask', 'why']) if (!nonEmpty(q[f])) at(where, `missing ${f}`);
+    const p = pathProblem(q);
+    if (p) at(where, p);
   });
   section('criteria').forEach((c, i) => {
     const where = item('criterion', c, i);
     if (!where) return;
     if (!nonEmpty(c.mustBeTrue)) at(where, 'missing mustBeTrue');
-    if (!CHECK_KINDS.includes(c.check?.kind)) at(where, `check kind "${c.check?.kind}" is not one of ${CHECK_KINDS.join(', ')}`);
-    if (!nonEmpty(c.check?.how)) at(where, 'check has no "how"');
+    if (!c.check || typeof c.check !== 'object') at(where, 'check is not an object with "kind" and "how"');
+    else {
+      if (!CHECK_KINDS.includes(c.check.kind)) at(where, `check kind "${c.check.kind}" is not one of ${CHECK_KINDS.join(', ')}`);
+      if (!nonEmpty(c.check.how)) at(where, 'check has no "how"');
+    }
     const p = pathProblem(c);
     if (p) at(where, p);
   });
@@ -130,7 +135,7 @@ function dependencyOrder(deps) {
     if (state.get(id) === 'done') return true;
     if (state.get(id) === 'open') return false;
     state.set(id, 'open');
-    for (const d of deps[id] ?? []) if (deps[d] !== undefined && !visit(d)) return false;
+    for (const d of deps[id]) if (Object.hasOwn(deps, d) && !visit(d)) return false;
     state.set(id, 'done');
     order.push(id);
     return true;
@@ -146,6 +151,7 @@ function validateCatalogue(entries) {
   const problems = [];
   const counts = {};
   const deps = {};
+  const fileOf = {};
   if (entries.length === 0) problems.push('the pipeline catalogue has no pipeline files');
   for (const { file, doc, error } of entries) {
     if (error) { problems.push(error); continue; }
@@ -153,12 +159,13 @@ function validateCatalogue(entries) {
     const id = doc?.id;
     if (typeof id !== 'string' || !PIPELINE_ID.test(id)) continue;
     if (file !== `${id}.json`) problems.push(`${file}: file name must be ${id}.json`);
-    if (counts[id] !== undefined) { problems.push(`${file}: pipeline ${id} is defined twice`); continue; }
+    if (Object.hasOwn(counts, id)) { problems.push(`${file}: pipeline ${id} is defined twice`); continue; }
     counts[id] = list(doc.criteria).length;
-    deps[id] = list(doc.dependsOn).filter((d) => typeof d === 'string');
+    deps[id] = list(doc.dependsOn).filter((d) => typeof d === 'string' && PIPELINE_ID.test(d));
+    fileOf[id] = file;
   }
   for (const [id, needs] of Object.entries(deps)) {
-    for (const d of needs) if (deps[d] === undefined && d !== id) problems.push(`${id}.json: pipeline: depends on "${d}", which is not a pipeline in the catalogue (${Object.keys(deps).sort().join(', ')})`);
+    for (const d of needs) if (!Object.hasOwn(deps, d)) problems.push(`${fileOf[id]}: pipeline: depends on "${d}", which is not a pipeline in the catalogue (${Object.keys(deps).sort().join(', ')})`);
   }
   const order = dependencyOrder(deps);
   if (order === null) problems.push('the pipelines depend on each other in a circle: no pipeline in it could start');

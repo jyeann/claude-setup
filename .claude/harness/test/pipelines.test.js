@@ -79,7 +79,8 @@ test('a criterion says what must be true and how it is checked', () => {
   const criterion = (over) => pipeline({ criteria: [{ id: 'demo.fits', mustBeTrue: 'It fits.', check: { kind: 'review', how: 'Read it.' }, ...over }] });
   assert.match(problemsOf(criterion({ mustBeTrue: '' })), /demo\.fits: missing mustBeTrue/);
   assert.match(problemsOf(criterion({ check: { kind: 'vibes', how: 'Feel it.' } })), /check kind "vibes" is not one of measure, compare, review/);
-  assert.match(problemsOf(criterion({ check: undefined })), /check kind "undefined"/);
+  assert.match(problemsOf(criterion({ check: undefined })), /demo\.fits: check is not an object/);
+  assert.match(problemsOf(criterion({ check: 'review' })), /demo\.fits: check is not an object/);
   assert.match(problemsOf(criterion({ check: { kind: 'measure' } })), /check has no "how"/);
   for (const kind of CHECK_KINDS) assert.equal(problemsOf(criterion({ check: { kind, how: 'Do it.' } })), '', kind);
 });
@@ -95,6 +96,7 @@ test('paths are optional; a criterion or output may belong to one declared path'
   assert.match(problemsOf(pipeline({ paths: [{ id: 'follow', title: 'Follow' }] })), /path follow: has no when/);
   assert.match(problemsOf(pipeline({ paths: [{ id: 'Follow It', title: 'Follow', when: 'x' }] })), /path id "Follow It" is not lower-case words/);
   assert.match(problemsOf(pipeline({ paths, outputs: [{ id: 'demo.page', path: 'borrow', title: 'A page', what: 'A page.' }] })), /demo\.page: path "borrow"/);
+  assert.match(problemsOf(pipeline({ questions: [{ id: 'demo.who', path: 'borrow', ask: 'Who?', why: 'Because.' }] })), /demo\.who: names path "borrow"/);
 });
 
 test('the hand-off names logic, assets and runtime, and hands over something', () => {
@@ -128,6 +130,18 @@ test('an unknown dependency is refused, naming the known pipelines', () => {
   assert.match(catalogueProblems(named('screens', ['brand'])), /screens\.json: pipeline: depends on "brand", which is not a pipeline in the catalogue \(screens\)/);
 });
 
+test('a dependency or pipeline named like a built-in object property is handled as any other name', () => {
+  assert.match(catalogueProblems(named('a', ['constructor'])), /a\.json: pipeline: depends on "constructor", which is not a pipeline/);
+  assert.equal(catalogueProblems(named('constructor')), '');
+  assert.deepEqual(dependencyOrder({ a: ['constructor'] }), ['a']);
+});
+
+test('an unknown dependency is reported once, under the real file name', () => {
+  const { problems } = validateCatalogue([{ file: 'x.json', doc: named('a', ['b']) }]);
+  assert.deepEqual(problems, ['x.json: file name must be a.json', 'x.json: pipeline: depends on "b", which is not a pipeline in the catalogue (a)']);
+  assert.equal(catalogueProblems(named('a', ['Bad'])).match(/Bad/g).length, 1);
+});
+
 test('a circle of dependencies is refused', () => {
   assert.match(catalogueProblems(named('a', ['b']), named('b', ['c']), named('c', ['a'])), /depend on each other in a circle/);
   assert.match(catalogueProblems(named('a', ['a'])), /circle/);
@@ -138,6 +152,9 @@ test('the order puts every pipeline after what it depends on', () => {
   const { order, counts } = validateCatalogue([named('screens', ['brand']), named('storyboard', ['storyline']), named('brand'), named('storyline')].map(entry));
   assert.deepEqual(order, ['brand', 'screens', 'storyline', 'storyboard']);
   assert.deepEqual(counts, { screens: 1, storyboard: 1, brand: 1, storyline: 1 });
+  assert.deepEqual(dependencyOrder({ d: ['b', 'c'], b: ['a'], c: ['a'], a: [] }), ['a', 'b', 'c', 'd']);
+  // not only alphabetical luck: a pipeline that sorts first still comes after what it needs
+  assert.deepEqual(dependencyOrder({ a: ['z'], z: [] }), ['z', 'a']);
 });
 
 test('a duplicate id, a wrong file name, bad JSON and an empty catalogue are refused', () => {
@@ -191,6 +208,8 @@ test('the first two pipelines are brand and screens, and screens follows brand',
   const { order } = validateCatalogue(loadPipelines(PIPELINES_DIR));
   for (const id of ['brand', 'screens']) assert.ok(order.includes(id), id);
   assert.ok(order.indexOf('brand') < order.indexOf('screens'));
+  const screens = loadPipelines(PIPELINES_DIR).find((e) => e.file === 'screens.json').doc;
+  assert.deepEqual(screens.dependsOn, ['brand']);
 });
 
 test('brand has two paths, follow a guide or create one, each with its own criteria and output', () => {

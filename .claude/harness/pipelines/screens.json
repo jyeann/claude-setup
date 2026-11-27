@@ -44,12 +44,12 @@
     {
       "id": "screens.look-from-variations",
       "mustBeTrue": "The look was chosen from rendered variations of the same screen, and the choice is recorded.",
-      "check": { "kind": "review", "how": "The variations are rendered files and the design direction file names the one chosen and when." }
+      "check": { "kind": "review", "how": "The variations are rendered files and the run's `Look:` line in its decisions record names the one chosen." }
     },
     {
       "id": "screens.every-key-screen-rendered",
-      "mustBeTrue": "Every key screen is rendered in the chosen look, at each width named in the Q&A.",
-      "check": { "kind": "compare", "how": "The list of key screens is compared with the rendered files: one file per screen per width, none missing." }
+      "mustBeTrue": "Every key screen is rendered in the chosen look as a page a browser can open, at each width named in the Q&A.",
+      "check": { "kind": "compare", "how": "The list of key screens is compared with the rendered pages: one per screen, opening at each width, none missing. A picture of a screen does not count, because it cannot be measured." }
     },
     {
       "id": "screens.journeys-covered",
@@ -58,7 +58,7 @@
     },
     {
       "id": "screens.states-shown",
-      "mustBeTrue": "Each key screen is shown in every state it can be in: empty, loading, filled, and error.",
+      "mustBeTrue": "Each key screen is shown in every state the screen list names for it (from empty, loading, filled and error).",
       "check": { "kind": "compare", "how": "The screen list names the states of each key screen and each state has a rendered file." }
     },
     {
@@ -83,12 +83,12 @@
     },
     {
       "id": "screens.text-contrast",
-      "mustBeTrue": "Text on every key screen has a contrast ratio of at least 4.5 to 1 against what is behind it (3 to 1 for large text).",
-      "check": { "kind": "measure", "how": "An accessibility scan of each rendered key screen reports no contrast failure (WCAG 2.2, 1.4.3)." }
+      "mustBeTrue": "On every key screen, in each theme, text has a contrast ratio of at least 4.5 to 1 against what is behind it (3 to 1 for large text), and controls and their focus mark at least 3 to 1.",
+      "check": { "kind": "measure", "how": "An accessibility scan of each rendered key screen in each theme reports no contrast failure (WCAG 2.2, 1.4.3 and 1.4.11)." }
     },
     {
       "id": "screens.target-size",
-      "mustBeTrue": "Everything a user taps or clicks is at least 24 by 24 CSS pixels, or has that much space around it.",
+      "mustBeTrue": "Everything a user taps or clicks is at least 24 by 24 CSS pixels, or has that much space around it (44 by 44 points in a native app).",
       "check": { "kind": "measure", "how": "An accessibility scan of each rendered key screen reports no target-size failure (WCAG 2.2, 2.5.8)." }
     },
     {
@@ -111,7 +111,7 @@
     {
       "id": "screens.key-screens",
       "title": "Key screens, rendered",
-      "what": "Each key screen in the chosen look, at each width and in each state, as files the build is compared against."
+      "what": "Each key screen in the chosen look, at each width and in each state, as pages a browser can open and the build is compared against."
     }
   ],
   "handoff": {

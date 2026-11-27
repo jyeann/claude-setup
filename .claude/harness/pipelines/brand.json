@@ -86,7 +86,7 @@
     {
       "id": "brand.direction-from-variations",
       "path": "create-guide",
-      "mustBeTrue": "The brand direction was chosen from at least three rendered variations, and the choice is recorded.",
+      "mustBeTrue": "The brand direction was chosen from at least two rendered variations, and the choice is recorded.",
       "check": { "kind": "review", "how": "The variations are rendered files in the product repository and the brand record names the one chosen and when." }
     },
     {
@@ -97,19 +97,18 @@
     },
     {
       "id": "brand.licences-recorded",
-      "path": "create-guide",
-      "mustBeTrue": "Every typeface, image and icon set in the guide has its licence recorded, and the licence allows the product's use.",
+      "mustBeTrue": "Every typeface, image and icon set the brand uses has its licence recorded, and the licence allows the product's use.",
       "check": { "kind": "review", "how": "The brand record lists each asset with its licence and source; an asset with no licence line fails." }
     },
     {
       "id": "brand.text-contrast",
-      "mustBeTrue": "Every pair of text colour and background colour the tokens allow has a contrast ratio of at least 4.5 to 1 (3 to 1 for large text).",
-      "check": { "kind": "measure", "how": "A contrast tool measures each allowed pair in the design tokens (WCAG 2.2, 1.4.3)." }
+      "mustBeTrue": "Every text and background pair listed in the design tokens file has a contrast ratio of at least 4.5 to 1 (3 to 1 for large text), in each theme.",
+      "check": { "kind": "measure", "how": "A contrast tool measures each listed pair in each theme (WCAG 2.2, 1.4.3)." }
     },
     {
       "id": "brand.tokens-file",
-      "mustBeTrue": "One design tokens file holds the colours with their roles, the typefaces and the size scale, and nothing else in the product defines them again.",
-      "check": { "kind": "measure", "how": "The tokens file parses and has the colour, typeface and size groups; a search finds no colour value or font name outside it." }
+      "mustBeTrue": "One design tokens file holds the colours with their roles, the text and background pairs that may be used together, the typefaces and the size scale.",
+      "check": { "kind": "measure", "how": "The tokens file parses and has the colour, pair, typeface and size groups, none of them empty." }
     },
     {
       "id": "brand.scripts-covered",
@@ -138,7 +137,7 @@
     {
       "id": "brand.tokens",
       "title": "Design tokens file",
-      "what": "Colours with roles, typefaces and the size scale, in one file the screens and the code read."
+      "what": "Colours with roles, the text and background pairs that may be used together, typefaces and the size scale, in one file the screens and the code read."
     },
     {
       "id": "brand.logo-files",

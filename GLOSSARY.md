@@ -208,7 +208,7 @@ Design work (looks, brand kits, concept art, animation) carried out across one o
 _Avoid_: design phase
 
 **Design pipeline**:
-One kind of design work a project can need (brand, screens, and later storyline, storyboard, character concept, 3D assets), held as one entry in the pipeline catalogue: the questions asked in the product Q&A, the written criteria its output is judged against, its outputs, the pipelines it depends on, and what it hands to system analysis (logic, assets, runtime cost). A pipeline may have **paths**, the ways it can run (brand: follow an existing guide, or create one). Pipelines are picked by what the project needs, not by its product kind (spec #156).
+One kind of design work a project can need (brand, screens, and later storyline, storyboard, character concept, 3D assets), held as one entry in the pipeline catalogue: the questions asked in the product Q&A, the written criteria its output is judged against, its outputs, the pipelines it depends on, and what it hands to system analysis (logic, assets, runtime cost). A pipeline may have **paths**, the ways it can run (brand: follow an existing guide, or create one). Pipelines are picked by what the project needs, not by its product kind (spec #156). Always written with "design": the plain word pipeline still means the run's phases walked by `pipeline.js`.
 _Avoid_: design phase, workstream, track
 
 **Pipeline catalogue**:
