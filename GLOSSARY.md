@@ -208,12 +208,16 @@ Design work (looks, brand kits, concept art, animation) carried out across one o
 _Avoid_: design phase
 
 **Design pipeline**:
-One kind of design work a project can need (brand, screens, and later storyline, storyboard, character concept, 3D assets), held as one entry in the pipeline catalogue: the questions asked in the product Q&A, the written criteria its output is judged against, its outputs, the pipelines it depends on, and what it hands to system analysis (logic, assets, runtime cost). A pipeline may have **paths**, the ways it can run (brand: follow an existing guide, or create one). Pipelines are picked by what the project needs, not by its product kind (spec #156). Always written with "design": the plain word pipeline still means the run's phases walked by `pipeline.js`.
+One kind of design work a project can need (brand, screens, storyline, storyboard, character concept, 3D assets), held as one entry in the pipeline catalogue: the questions asked in the product Q&A, the written criteria its output is judged against, its outputs, the pipelines it depends on, and what it hands to system analysis (logic, assets, runtime cost). A pipeline may have **paths**, the ways it can run (brand: follow an existing guide, or create one). Pipelines are picked by what the project needs, not by its product kind (spec #156). Always written with "design": the plain word pipeline still means the run's phases walked by `pipeline.js`.
 _Avoid_: design phase, workstream, track
 
 **Pipeline catalogue**:
 The design pipelines in `.claude/harness/pipelines/`, one file per pipeline, kept like the standards catalogue. Checked by `check-pipelines.js`, which also prints the pipelines in dependency order.
 _Avoid_: design checklist, pipeline list
+
+**Starting set**:
+A suggested list of design pipelines for one product kind (product UI: brand and screens; a website with 3D: brand, screens and 3D assets; a game: all six), kept in `.claude/harness/pipelines/sets/starting-sets.json` and checked by `check-pipelines.js`. A suggestion only: kickoff picks the pipelines by what the project needs and may add or drop any.
+_Avoid_: template, preset, default pipelines
 
 **Criteria form**:
 A pipeline's questions and written criteria, filled in for one product from the catalogue entry and the Q&A answers, and approved by the owner at kickoff. Each criterion says what must be true and how it is checked: measured by a tool, compared with a named reference, or reviewed against the written line.

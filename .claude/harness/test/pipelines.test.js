@@ -1,5 +1,6 @@
 'use strict';
-// The design pipeline catalogue (#157, spec #156): the format of a pipeline, the checker, and the first two.
+// The design pipeline catalogue (#157, #158, spec #156): the format of a pipeline, the checker, the six shipped
+// pipelines and the suggested starting sets.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -7,8 +8,9 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const {
-  PIPELINES_DIR, CHECK_KINDS, HANDOFF_KINDS, PIPELINE_FIELDS,
+  PIPELINES_DIR, STARTING_SETS, CHECK_KINDS, HANDOFF_KINDS, PIPELINE_FIELDS,
   loadPipelines, validatePipeline, validateCatalogue, dependencyOrder,
+  loadStartingSets, validateStartingSets, checkFolder,
 } = require('../lib/pipelines');
 
 const BIN = path.join(__dirname, '..', 'bin', 'check-pipelines.js');
@@ -225,4 +227,158 @@ test('brand has two paths, follow a guide or create one, each with its own crite
 
 test('every shipped pipeline names a runtime cost for system analysis', () => {
   for (const { file, doc } of loadPipelines(PIPELINES_DIR)) assert.ok(doc.handoff.runtime.length > 0, file);
+});
+
+// ---- the concept pipelines (#158)
+
+const shipped = () => Object.fromEntries(loadPipelines(PIPELINES_DIR).map(({ doc }) => [doc.id, doc]));
+
+test('the catalogue holds the four concept pipelines beside brand and screens', () => {
+  assert.deepEqual(Object.keys(shipped()).sort(), ['3d-assets', 'brand', 'character-concept', 'screens', 'storyboard', 'storyline']);
+  for (const id of ['storyline', 'storyboard', 'character-concept', '3d-assets']) {
+    const doc = shipped()[id];
+    for (const field of ['questions', 'criteria', 'outputs']) assert.ok(doc[field].length > 0, `${id} ${field}`);
+  }
+});
+
+test('storyboard depends on storyline and comes after it in the order', () => {
+  assert.deepEqual(shipped().storyboard.dependsOn, ['storyline']);
+  const { order } = validateCatalogue(loadPipelines(PIPELINES_DIR));
+  assert.ok(order.indexOf('storyline') < order.indexOf('storyboard'));
+});
+
+test('3D assets can be picked with no game pipeline: it depends on nothing', () => {
+  assert.deepEqual(shipped()['3d-assets'].dependsOn, []);
+  assert.match(shipped()['3d-assets'].appliesWhen, /design element/);
+  // nothing else depends on the game pipelines except storyboard on storyline
+  for (const [id, doc] of Object.entries(shipped())) {
+    const game = doc.dependsOn.filter((d) => ['storyline', 'storyboard', 'character-concept'].includes(d));
+    assert.deepEqual(game, id === 'storyboard' ? ['storyline'] : [], id);
+  }
+});
+
+test('storyline has a one-story and a branching path, and only the branching path needs a story map a script can read', () => {
+  const doc = shipped().storyline;
+  assert.deepEqual(doc.paths.map((p) => p.id), ['linear', 'branching']);
+  for (const p of doc.paths) assert.ok(doc.criteria.some((c) => c.path === p.id), `criteria for ${p.id}`);
+  assert.ok(doc.criteria.some((c) => c.path === 'branching' && c.check.kind === 'measure' && /story map file/.test(c.check.how)));
+  for (const c of doc.criteria.filter((x) => x.path === 'linear')) assert.doesNotMatch(`${c.mustBeTrue} ${c.check.how}`, /story map/, c.id);
+  assert.ok(doc.outputs.some((o) => o.path === 'branching' && /a script can read/.test(o.what)));
+});
+
+test('a measure criterion in the concept pipelines names a file a tool can open, not a picture of it', () => {
+  // Lesson from #157: a measure check needs an output in a form a tool can read.
+  const form = /file|script|tool|colour picker|validator|video player/i;
+  for (const id of ['storyline', 'storyboard', 'character-concept', '3d-assets']) {
+    for (const c of shipped()[id].criteria.filter((x) => x.check.kind === 'measure')) assert.match(c.check.how, form, c.id);
+  }
+  assert.ok(shipped()['3d-assets'].criteria.some((c) => c.check.kind === 'measure' && /not as a picture/.test(c.mustBeTrue)));
+});
+
+test('no concept criterion needs the product built: none checks running product code', () => {
+  // Lesson from #157: the design gate comes before system design and build.
+  const needsBuild = /\b(the built product|in the product code|the running product|the build passes|in the app at runtime)\b/i;
+  for (const id of ['storyline', 'storyboard', 'character-concept', '3d-assets']) {
+    for (const c of shipped()[id].criteria) assert.doesNotMatch(`${c.mustBeTrue} ${c.check.how}`, needsBuild, c.id);
+  }
+});
+
+test('every concept hand-off names a runtime cost and the logic the output implies', () => {
+  const cost = /download|frame|memory|load|size|network|bitrate/i;
+  for (const id of ['storyline', 'storyboard', 'character-concept', '3d-assets']) {
+    const { handoff } = shipped()[id];
+    assert.ok(handoff.runtime.some((line) => cost.test(line)), `${id} runtime`);
+    assert.ok(handoff.logic.length > 0, `${id} logic`);
+  }
+  assert.ok(shipped().storyline.handoff.logic.some((line) => /branching/.test(line) && /state the product must store/.test(line)));
+});
+
+// ---- suggested starting sets (#158)
+
+const setsOf = (sets) => ({ sets });
+const set = (over = {}) => ({ id: 'kind', productKind: 'A kind', why: 'Because.', pipelines: ['brand'], ...over });
+const catalogue = [entry(named('brand')), entry(named('screens', ['brand']))];
+const setProblems = (doc) => validateStartingSets(doc, catalogue).join('\n');
+
+test('a starting set of known pipelines with their dependencies has no problems', () => {
+  assert.equal(setProblems(setsOf([set({ pipelines: ['brand', 'screens'] })])), '');
+});
+
+test('a starting set naming a pipeline not in the catalogue is refused, naming the known ones', () => {
+  assert.match(setProblems(setsOf([set({ pipelines: ['brand', 'storyline'] })])), /starting-sets\.json: set kind: "storyline" is not a pipeline in the catalogue \(brand, screens\)/);
+  assert.match(setProblems(setsOf([set({ pipelines: ['constructor'] })])), /"constructor" is not a pipeline/);
+  assert.match(setProblems(setsOf([set({ pipelines: [7] })])), /7 is not a pipeline/);
+});
+
+test('a starting set that leaves out a dependency is refused', () => {
+  assert.match(setProblems(setsOf([set({ pipelines: ['screens'] })])), /set kind: screens depends on brand, which the set does not list/);
+});
+
+test('starting sets need ids, a product kind, a reason and pipelines, each once', () => {
+  assert.match(setProblems(null), /is not an object with "sets"/);
+  assert.match(setProblems([]), /is not an object with "sets"/);
+  assert.match(setProblems({}), /"sets" is not a non-empty list/);
+  assert.match(setProblems(setsOf([])), /"sets" is not a non-empty list/);
+  assert.match(setProblems(setsOf(['x'])), /set 1: is not an object/);
+  assert.match(setProblems(setsOf([set({ id: 'Bad Id' })])), /id "Bad Id" is not lower-case words/);
+  assert.match(setProblems(setsOf([set(), set()])), /set kind: is listed twice/);
+  assert.match(setProblems(setsOf([set({ productKind: ' ', why: undefined })])), /has no productKind[\s\S]*has no why/);
+  assert.match(setProblems(setsOf([set({ pipelines: [] })])), /pipelines is not a non-empty list/);
+  assert.match(setProblems(setsOf([set({ pipelines: ['brand', 'brand'] })])), /lists a pipeline twice/);
+});
+
+test('a folder with no starting sets file has no sets, and a file that is not JSON or a sets/ that is a file is an error', () => {
+  const dir = tmp();
+  assert.equal(loadStartingSets(dir), null);
+  fs.mkdirSync(path.join(dir, 'sets'));
+  fs.writeFileSync(path.join(dir, STARTING_SETS), '{ nope');
+  assert.match(loadStartingSets(dir).error, /starting-sets\.json: is not valid JSON/);
+  const asFile = tmp();
+  fs.writeFileSync(path.join(asFile, 'sets'), 'not a folder');
+  assert.match(loadStartingSets(asFile).error, /starting-sets\.json: cannot be read \(ENOTDIR\)/);
+  assert.match(checkFolder(asFile).problems.join('\n'), /cannot be read \(ENOTDIR\)/);
+});
+
+test('check-pipelines prints good starting sets, and exits 1 on a set with an unknown pipeline, a missing dependency or bad JSON', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'brand.json'), JSON.stringify(named('brand')));
+  fs.writeFileSync(path.join(dir, 'screens.json'), JSON.stringify(named('screens', ['brand'])));
+  fs.mkdirSync(path.join(dir, 'sets'));
+  fs.writeFileSync(path.join(dir, STARTING_SETS), JSON.stringify(setsOf([set({ id: 'product-ui', pipelines: ['brand', 'screens'] })])));
+  let r = run(dir);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Suggested starting sets: product-ui \(brand, screens\)\./);
+  fs.writeFileSync(path.join(dir, STARTING_SETS), JSON.stringify(setsOf([set({ pipelines: ['screens', 'storyline'] })])));
+  r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /depends on brand, which the set does not list/);
+  assert.match(r.stderr, /"storyline" is not a pipeline in the catalogue/);
+  fs.writeFileSync(path.join(dir, STARTING_SETS), '{ nope');
+  r = run(dir);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /is not valid JSON/);
+});
+
+test('the shipped starting sets suggest brand and screens for product UI, all six for a game, and 3D on a website without a game pipeline', () => {
+  const loaded = loadStartingSets(PIPELINES_DIR);
+  assert.ok(loaded && loaded.doc, 'the shipped catalogue has starting sets');
+  assert.deepEqual(validateStartingSets(loaded.doc, loadPipelines(PIPELINES_DIR)), []);
+  const byId = Object.fromEntries(loaded.doc.sets.map((s) => [s.id, s.pipelines]));
+  assert.deepEqual(byId['product-ui'], ['brand', 'screens']);
+  for (const id of ['brand', 'screens', 'storyline', 'storyboard', 'character-concept', '3d-assets']) assert.ok(byId.game.includes(id), `game has ${id}`);
+  assert.ok(byId['website-with-3d'].includes('3d-assets'));
+  for (const id of ['storyline', 'storyboard', 'character-concept']) assert.ok(!byId['website-with-3d'].includes(id), id);
+  const r = run();
+  assert.match(r.stdout, /Suggested starting sets: product-ui \(brand, screens\);/);
+});
+
+test('the shipped folder needs its starting sets file; another folder may go without', () => {
+  const dir = tmp();
+  for (const f of fs.readdirSync(PIPELINES_DIR).filter((x) => x.endsWith('.json'))) fs.copyFileSync(path.join(PIPELINES_DIR, f), path.join(dir, f));
+  assert.deepEqual(checkFolder(dir).problems, []);
+  assert.equal(checkFolder(dir).sets, null);
+  assert.equal(run(dir).status, 0);
+  assert.match(checkFolder(dir, { requireSets: true }).problems.join('\n'), /starting-sets\.json: missing/);
+  assert.deepEqual(checkFolder().problems, []);
+  assert.ok(checkFolder().sets.sets.length > 0);
 });

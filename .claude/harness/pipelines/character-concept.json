@@ -1,0 +1,126 @@
+{
+  "id": "character-concept",
+  "title": "Character concept",
+  "appliesWhen": "The product shows characters: game characters, a mascot, an assistant's avatar, or illustrated guides. Left out when no character is shown.",
+  "dependsOn": [],
+  "questions": [
+    {
+      "id": "character-concept.cast",
+      "ask": "Which characters are needed, and which are main characters (seen most, or central to the product)?",
+      "why": "Main characters get the full design; the others follow their pattern."
+    },
+    {
+      "id": "character-concept.role-and-feel",
+      "ask": "For each main character: what role do they play, and what should a person feel on seeing them?",
+      "why": "Each concept is judged against its role and feeling; without them every variation is equally right."
+    },
+    {
+      "id": "character-concept.style",
+      "ask": "Which art style (for example realistic, stylised, flat illustration, pixel art), and which existing characters or works feel right or wrong?",
+      "why": "References show what words cannot; the wrong ones rule directions out early."
+    },
+    {
+      "id": "character-concept.moves",
+      "ask": "Will the characters be drawn in 2D or built as 3D models, and which moves and expressions do they need (for example idle, walk, talk, happy, sad)?",
+      "why": "3D characters continue in the 3D assets pipeline; every move and expression is art to make and a state the product switches between."
+    },
+    {
+      "id": "character-concept.smallest-size",
+      "ask": "What is the smallest size each character is shown at, in pixels on the smallest named screen (for example an icon, a map marker, a chat avatar)?",
+      "why": "A character that cannot be told apart at its smallest size fails where it is seen most."
+    },
+    {
+      "id": "character-concept.existing",
+      "ask": "Is there an existing character, mascot or licensed property the concepts must follow?",
+      "why": "An existing character is an input to follow; a licence is an owner decision."
+    },
+    {
+      "id": "character-concept.audience",
+      "ask": "Who is the audience, and are there content limits or ways people must or must not be shown?",
+      "why": "Characters represent people; the owner sets these limits, not the designer."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "character-concept.from-variations",
+      "mustBeTrue": "Each main character was chosen from at least two rendered variations, and the choice is recorded.",
+      "check": { "kind": "review", "how": "At least two variations of each main character are image files in the product repository, and the character record names the one chosen." }
+    },
+    {
+      "id": "character-concept.turnaround",
+      "mustBeTrue": "Each main character has a turnaround: front, side and back views at the same scale, as image files.",
+      "check": { "kind": "review", "how": "Each main character's sheet is opened; the three views are present, drawn at the same height, and show the same design." }
+    },
+    {
+      "id": "character-concept.silhouettes-differ",
+      "mustBeTrue": "Each main character can be told apart from the other main characters by silhouette alone.",
+      "check": { "kind": "review", "how": "The main characters are shown side by side as solid single-colour shapes with no labels; a reviewer who has read the character sheets names each one correctly." }
+    },
+    {
+      "id": "character-concept.reads-small",
+      "mustBeTrue": "Each character can still be told apart at the smallest size named in the Q&A.",
+      "check": { "kind": "review", "how": "Each character is rendered at that pixel size beside the others at the same size; a reviewer names each one correctly." }
+    },
+    {
+      "id": "character-concept.palette-recorded",
+      "mustBeTrue": "Each character sheet has a flat-colour front view (no shading) and lists the character's base colours as colour values, and every colour area of that view uses one of them.",
+      "check": { "kind": "measure", "how": "A colour picker samples one point in each colour area of the flat-colour front view image; a sampled value not on the sheet's list is listed." }
+    },
+    {
+      "id": "character-concept.moves-drawn",
+      "mustBeTrue": "Every move and expression the Q&A named for a character is listed on its sheet and drawn at least once as a key pose.",
+      "check": { "kind": "compare", "how": "The moves and expressions in the Q&A answer are compared with the sheet's list and its drawn poses; a named move or expression with no pose is listed." }
+    },
+    {
+      "id": "character-concept.matches-storyline",
+      "mustBeTrue": "Where the project picked the storyline pipeline, every character on its cast list has a concept that fits the one-line role given there.",
+      "check": { "kind": "compare", "how": "The storyline's cast list is compared with the character sheets; a character with no sheet, or a sheet that contradicts the role, is listed. Passes without a comparison when the storyline pipeline is not picked." }
+    },
+    {
+      "id": "character-concept.matches-existing",
+      "mustBeTrue": "Where the Q&A named an existing character or property, the concept follows it and differs only where the owner agreed.",
+      "check": { "kind": "compare", "how": "Each concept is set beside the named reference; every difference is listed, and one without the owner's recorded agreement fails. Passes without a comparison when the Q&A named nothing to follow." }
+    },
+    {
+      "id": "character-concept.original-or-licensed",
+      "mustBeTrue": "Each character is recorded as original, with the references used to make it, or as licensed, with its licence.",
+      "check": { "kind": "review", "how": "The character record has one line per character saying original or licensed, with the references or the licence; a character with no line fails." }
+    },
+    {
+      "id": "character-concept.audience-limits-kept",
+      "mustBeTrue": "No character goes beyond the content limits or the ways of showing people the Q&A set.",
+      "check": { "kind": "review", "how": "Each character sheet is read against the Q&A answer on audience and limits; a character that goes beyond them is listed." }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "character-concept.variations",
+      "title": "Character variations",
+      "what": "At least two rendered variations of each main character, for the owner to choose from."
+    },
+    {
+      "id": "character-concept.sheets",
+      "title": "Character sheets",
+      "what": "One sheet per main character: the turnaround, a flat-colour front view, the key poses for each move and expression, the colour values, the silhouette and the smallest-size view, and whether it is 2D or 3D."
+    },
+    {
+      "id": "character-concept.record",
+      "title": "Character record",
+      "what": "Each character with its role, the variation chosen and when, and whether it is original (with references) or licensed (with the licence)."
+    }
+  ],
+  "handoff": {
+    "logic": [
+      "Each move and expression on a sheet is a state the product switches between, with a test that each one plays.",
+      "Characters a user can choose or change are settings the product stores for each user."
+    ],
+    "assets": [
+      "2D characters: sprite sheets or vector files for each move and expression, at each size shown.",
+      "3D characters continue in the 3D assets pipeline as models built from the turnaround."
+    ],
+    "runtime": [
+      "Sprite sheet size grows with frames per move times moves times sizes: the move list sets the image memory and download size.",
+      "Each animated character on screen costs memory and frame time; the most characters on screen at once, set in system design, sets that budget."
+    ]
+  }
+}
