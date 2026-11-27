@@ -1,0 +1,118 @@
+{
+  "id": "storyboard",
+  "title": "Storyboard",
+  "appliesWhen": "Some beats of the storyline are shown as a sequence of shots: cut-scenes, an animated intro, a trailer, or the key moments of a level. Left out when no scene is shown shot by shot.",
+  "dependsOn": ["storyline"],
+  "questions": [
+    {
+      "id": "storyboard.which-beats",
+      "ask": "Which beats of the storyline are shown as storyboarded scenes (cut-scenes, intro, trailer), and which are played without one?",
+      "why": "Only the beats named here get a storyboard; this list is what the storyboards are counted against."
+    },
+    {
+      "id": "storyboard.playback",
+      "ask": "Is each scene played as pre-rendered video, drawn live by the product or game engine, or shown as still panels?",
+      "why": "The single biggest runtime choice: video is download size, live scenes are frame budget and engine work, still panels are neither."
+    },
+    {
+      "id": "storyboard.screen-shapes",
+      "ask": "Which screen shapes (for example 16:9 landscape, 9:16 portrait) and devices must the scenes fit, which device is the slowest, and how much of each edge must be kept clear (the safe area)? If no margin is named, 5 percent of each side is kept clear, the common title-safe margin.",
+      "why": "Each shape crops the frame differently; what matters must stay inside the safe area of the narrowest one. The slowest device sets the frame budget for scenes drawn live."
+    },
+    {
+      "id": "storyboard.length-and-skip",
+      "ask": "How long may each scene run at most, and may the user skip it?",
+      "why": "Sets the time budget per scene; a skip is behaviour the product must build."
+    },
+    {
+      "id": "storyboard.sound-and-captions",
+      "ask": "Will scenes have voice, music or sound effects; in which languages are voices recorded; and must speech have subtitles?",
+      "why": "Sound and voice are content to make per language; subtitles are text the product shows in time with the scene."
+    },
+    {
+      "id": "storyboard.style",
+      "ask": "What must the shots look like: the character concepts, the brand, or a reference film or game?",
+      "why": "Gives the reference each panel is compared with."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "storyboard.beats-covered",
+      "mustBeTrue": "Every beat the Q&A named for a storyboard has one, and every storyboard names the storyline beat it shows.",
+      "check": { "kind": "compare", "how": "The beats named in the Q&A are compared with the storyboards' beat numbers, both ways; a beat with no storyboard, or a storyboard with no beat, is listed." }
+    },
+    {
+      "id": "storyboard.shot-list-file",
+      "mustBeTrue": "Each scene has a shot list in a file a script can read (CSV or JSON), one row per shot with the scene, the storyline beat, framing, who is in it, action, camera move, seconds, flashes per second (0 when none), and subtitle text for any speech.",
+      "check": { "kind": "measure", "how": "A script reads each shot list file without errors and finds every column filled in each row; subtitle text may be empty only where the shot has no speech." }
+    },
+    {
+      "id": "storyboard.panel-per-shot",
+      "mustBeTrue": "Every row of the shot list has one drawn panel showing its framing, who is in it, and its action, with the camera move marked by an arrow or note.",
+      "check": { "kind": "compare", "how": "The panels are counted against the shot list rows and each panel is set beside its row; a missing panel, or one that shows other framing or people than its row, is listed." }
+    },
+    {
+      "id": "storyboard.length-fits",
+      "mustBeTrue": "Each scene's running time, the sum of its shots' seconds, is within the length agreed in the Q&A.",
+      "check": { "kind": "measure", "how": "The seconds in each shot list file are added up per scene and compared with the Q&A limit." }
+    },
+    {
+      "id": "storyboard.animatic",
+      "mustBeTrue": "Each scene played as video or drawn live is shown as an animatic: its panels played in order at their shot list timings, as a video file a player can open.",
+      "check": { "kind": "measure", "how": "Each animatic opens in a video player, and its running time matches the sum of its shot list seconds within one second. Passes without an animatic for a scene the Q&A chose to show as still panels." }
+    },
+    {
+      "id": "storyboard.safe-area",
+      "mustBeTrue": "In every panel, faces, the main action and any text sit inside the safe area of the narrowest screen shape named in the Q&A.",
+      "check": { "kind": "review", "how": "Each panel is drawn on a frame showing the safe area of every named screen shape, with the edge margin the Q&A set; a face, action or text outside the narrowest one is listed." }
+    },
+    {
+      "id": "storyboard.no-flashing",
+      "mustBeTrue": "No shot flashes more than three times in any one second.",
+      "check": { "kind": "measure", "how": "A script reads the flashes-per-second column of each shot list file; a value above three fails (WCAG 2.2, 2.3.1)." }
+    },
+    {
+      "id": "storyboard.continuity",
+      "mustBeTrue": "Characters, places and objects look the same and stay where they were from shot to shot, and match the reference the Q&A named for the look.",
+      "check": { "kind": "review", "how": "Each scene's panels are read in order beside the named reference; a character, place or object that changes or jumps between shots without a reason in the shot list is listed." }
+    },
+    {
+      "id": "storyboard.playback-recorded",
+      "mustBeTrue": "Each scene records how it is played (pre-rendered video, drawn live, or still panels) and whether it can be skipped, as the Q&A agreed.",
+      "check": { "kind": "compare", "how": "Each scene's playback and skip entries are compared with the Q&A answers; a missing or different entry is listed." }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "storyboard.shot-lists",
+      "title": "Shot lists",
+      "what": "One file per scene (CSV or JSON) with a row per shot: scene, storyline beat, framing, who is in it, action, camera move, seconds, flashes per second, subtitle text; and per scene its playback and whether it can be skipped."
+    },
+    {
+      "id": "storyboard.panels",
+      "title": "Storyboard panels",
+      "what": "One drawn panel per shot, on frames showing the safe area of each named screen shape, as image files grouped by scene."
+    },
+    {
+      "id": "storyboard.animatics",
+      "title": "Animatics",
+      "what": "For each scene played as video or drawn live, its panels played at their timings, as a video file a player can open."
+    }
+  ],
+  "handoff": {
+    "logic": [
+      "A scene the user may skip is an input the product must handle and test; a scene shown only once is state the product must store.",
+      "A scene drawn live is engine work: each camera move and character action in the shot list is animation or code to build.",
+      "Subtitles are text in each language the product shows in time with the scene, with a setting to turn them on or off."
+    ],
+    "assets": [
+      "Pre-rendered scenes: one video file per scene, for each screen shape and each voice language.",
+      "Voice, music and sound for each scene, in each language recorded."
+    ],
+    "runtime": [
+      "Pre-rendered video is often the largest download: each file costs roughly its bitrate times its running time, multiplied by the screen shapes and voice languages.",
+      "A scene drawn live must hold the frame budget on the slowest named device for its whole running time.",
+      "Streaming a scene instead of shipping it is a network dependency and a delay before it starts."
+    ]
+  }
+}

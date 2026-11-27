@@ -1,6 +1,6 @@
 'use strict';
 // The design pipeline catalogue (#157, spec #156): the kinds of design work a project can need (brand, screens,
-// later storyline, storyboard, character concept, 3D assets). One JSON file per pipeline in
+// storyline, storyboard, character concept, 3D assets). One JSON file per pipeline in
 // .claude/harness/pipelines/. Each is a form: the questions asked in the product Q&A, the written criteria its
 // output is judged against at the design gate, its outputs, the pipelines it depends on, and what it hands to
 // system analysis. Kickoff picks the pipelines a project needs (a later ticket); no always-loaded rule refers
@@ -9,6 +9,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const PIPELINES_DIR = path.join(__dirname, '..', 'pipelines');
+// Suggested starting sets by product kind (#158). A suggestion only; selection is per project (#159). Kept in a
+// sub-folder so the catalogue loader, which reads every *.json directly in the pipelines folder, never takes it
+// for a pipeline.
+const STARTING_SETS = path.join('sets', 'starting-sets.json');
 
 // How a criterion is checked at the gate: a tool measures it, the output is compared with a named reference
 // (a brand guide, the experience document), or a reviewer reads the output against the written line.
@@ -172,7 +176,67 @@ function validateCatalogue(entries) {
   return { problems, counts, order: order ?? [] };
 }
 
+// Problems with the suggested starting sets, checked against a loaded catalogue: each set has an id, the
+// product kind it suits, a reason and a list of pipelines; every pipeline in a set is in the catalogue, is
+// listed once, and has the pipelines it depends on in the same set (a set must be startable as it stands).
+function validateStartingSets(doc, entries, { file = STARTING_SETS } = {}) {
+  const problems = [];
+  const at = (where, msg) => problems.push(`${file}: ${where}: ${msg}`);
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return [`${file}: is not an object with "sets"`];
+  if (!Array.isArray(doc.sets) || doc.sets.length === 0) return [`${file}: "sets" is not a non-empty list`];
+  const deps = {};
+  for (const { doc: p } of entries) if (p && typeof p.id === 'string') deps[p.id] = list(p.dependsOn);
+  const known = Object.keys(deps).sort().join(', ');
+  const ids = new Set();
+  doc.sets.forEach((set, i) => {
+    const where = nonEmpty(set?.id) ? `set ${set.id}` : `set ${i + 1}`;
+    if (!set || typeof set !== 'object' || Array.isArray(set)) { at(where, 'is not an object'); return; }
+    if (typeof set.id !== 'string' || !PIPELINE_ID.test(set.id)) at(where, `id ${JSON.stringify(set.id)} is not lower-case words joined by "-"`);
+    else if (ids.has(set.id)) at(where, 'is listed twice');
+    else ids.add(set.id);
+    for (const f of ['productKind', 'why']) if (!nonEmpty(set[f])) at(where, `has no ${f}`);
+    if (!Array.isArray(set.pipelines) || set.pipelines.length === 0) { at(where, 'pipelines is not a non-empty list'); return; }
+    if (new Set(set.pipelines).size !== set.pipelines.length) at(where, 'lists a pipeline twice');
+    for (const id of set.pipelines) {
+      if (typeof id !== 'string' || !Object.hasOwn(deps, id)) { at(where, `${JSON.stringify(id)} is not a pipeline in the catalogue (${known})`); continue; }
+      for (const d of deps[id]) if (!set.pipelines.includes(d)) at(where, `${id} depends on ${d}, which the set does not list`);
+    }
+  });
+  return problems;
+}
+
+// Reads the starting sets file of a pipelines folder: { doc } or { error }, or null when the folder has none.
+// Only a file that is not there counts as none; any other read failure (sets/ is a file, no permission) is an error.
+function loadStartingSets(dir = PIPELINES_DIR) {
+  let text;
+  try {
+    text = fs.readFileSync(path.join(dir, STARTING_SETS), 'utf8');
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    return { error: `${STARTING_SETS}: cannot be read (${e.code || e.message})` };
+  }
+  try {
+    return { doc: JSON.parse(text) };
+  } catch (e) {
+    return { error: `${STARTING_SETS}: is not valid JSON (${e.message})` };
+  }
+}
+
+// Checks a whole pipelines folder: the catalogue and its starting sets. The starting sets file is required when
+// requireSets is true (by default for the shipped folder) and checked whenever it is present.
+// Returns { problems, counts, order, sets } where sets is the starting sets document or null.
+function checkFolder(dir = PIPELINES_DIR, { requireSets = path.resolve(dir) === PIPELINES_DIR } = {}) {
+  const entries = loadPipelines(dir);
+  const { problems, counts, order } = validateCatalogue(entries);
+  const sets = loadStartingSets(dir);
+  if (sets === null && requireSets) problems.push(`${STARTING_SETS}: missing; the shipped catalogue suggests starting sets by product kind`);
+  else if (sets?.error) problems.push(sets.error);
+  else if (sets) problems.push(...validateStartingSets(sets.doc, entries));
+  return { problems, counts, order, sets: sets?.doc ?? null };
+}
+
 module.exports = {
-  PIPELINES_DIR, CHECK_KINDS, HANDOFF_KINDS, PIPELINE_FIELDS,
+  PIPELINES_DIR, STARTING_SETS, CHECK_KINDS, HANDOFF_KINDS, PIPELINE_FIELDS,
   loadPipelines, validatePipeline, validateCatalogue, dependencyOrder,
+  loadStartingSets, validateStartingSets, checkFolder,
 };

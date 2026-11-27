@@ -1,0 +1,162 @@
+{
+  "id": "storyline",
+  "title": "Storyline",
+  "appliesWhen": "The product tells a story the user follows or plays through: a game, an interactive story, or an intro or film with a plot. Left out when the product has no plot.",
+  "dependsOn": [],
+  "paths": [
+    {
+      "id": "linear",
+      "title": "One story",
+      "when": "Every user sees the same scenes in the same order; their choices change how a scene plays, not which scene comes next."
+    },
+    {
+      "id": "branching",
+      "title": "Branching story",
+      "when": "The user's choices change which scenes come next or how the story ends."
+    }
+  ],
+  "questions": [
+    {
+      "id": "storyline.premise",
+      "ask": "What is the story about in one sentence: who wants what, and what stands in their way?",
+      "why": "The premise is what every scene is judged against; without it no scene can be called wrong."
+    },
+    {
+      "id": "storyline.choices",
+      "ask": "Do the user's choices change which scenes come next or how the story ends? If yes, how many endings at most?",
+      "why": "Decides the path: one story, or a branching one. Every branch is more content to make and more state the product must keep."
+    },
+    {
+      "id": "storyline.length",
+      "ask": "How long should one play-through take, and is it played in one sitting or across several sessions?",
+      "why": "Sets the number of scenes; play across sessions means progress the product must save."
+    },
+    {
+      "id": "storyline.audience-and-limits",
+      "ask": "Who is the audience, and what age rating or content limits must the story keep?",
+      "why": "A rating rules content out and can decide which stores the product may be sold in."
+    },
+    {
+      "id": "storyline.existing-material",
+      "ask": "Is there existing material the story must follow: a world, earlier stories, a script, or a licensed property?",
+      "why": "Existing material is an input to follow, not something to rewrite unasked; a licence is an owner decision."
+    },
+    {
+      "id": "storyline.languages",
+      "ask": "Which languages will the story be shown in, and will any of it be spoken aloud?",
+      "why": "Every line is translated in each language; spoken lines are recorded in each language as well."
+    },
+    {
+      "id": "storyline.feel",
+      "ask": "Which three words should describe how the story feels?",
+      "why": "Tone is judged against these words; without them every draft is equally right."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "storyline.premise-written",
+      "mustBeTrue": "The storyline opens with the premise in one or two sentences, naming the main character, what they want, and what stands in their way.",
+      "check": { "kind": "review", "how": "The first lines of the storyline document are read; the main character, what they want and what stands in their way are each named there." }
+    },
+    {
+      "id": "storyline.beats-complete",
+      "mustBeTrue": "The story is written as a beat list: a table with one numbered row per beat (scene) from the start to every ending, each row giving where it happens, who is in it, what changes, its next beat or beats, and its estimated minutes as a number.",
+      "check": { "kind": "review", "how": "Each row of the beat list table is read; a beat missing its place, its characters, what changes or its minutes, or written as a placeholder, fails." }
+    },
+    {
+      "id": "storyline.length-fits",
+      "mustBeTrue": "The estimated play time is within the length agreed in the Q&A, counted over the longest way from the start to an ending.",
+      "check": { "kind": "measure", "how": "The minutes column of the beat list table is added up by a script and compared with the Q&A answer: every beat on the one-story path; on the branching path, the beats on the longest way a script finds through the story map file." }
+    },
+    {
+      "id": "storyline.one-order",
+      "path": "linear",
+      "mustBeTrue": "Every beat leads to exactly one next beat, except the last, which leads to none.",
+      "check": { "kind": "review", "how": "The next beat of each beat is read in the beat list; a beat with more than one next beat, or a beat other than the last with none, fails." }
+    },
+    {
+      "id": "storyline.map-file",
+      "path": "branching",
+      "mustBeTrue": "The beats and the choices between them are held in a story map file a script can read (for example JSON, or a Twine or Ink file), with the start and every ending marked.",
+      "check": { "kind": "measure", "how": "A script reads the story map file without errors, finds exactly one start, and finds every ending in the beat list marked as an ending." }
+    },
+    {
+      "id": "storyline.endings-reachable",
+      "path": "branching",
+      "mustBeTrue": "Every ending can be reached from the start, and every beat lies on a way from the start to an ending.",
+      "check": { "kind": "measure", "how": "A script walks the story map file from the start along every choice and lists any ending it cannot reach and any beat that leads to no ending; the list is empty." }
+    },
+    {
+      "id": "storyline.endings-within-limit",
+      "path": "branching",
+      "mustBeTrue": "The story has no more endings than the Q&A agreed.",
+      "check": { "kind": "measure", "how": "The endings marked in the story map file are counted and compared with the number the Q&A agreed." }
+    },
+    {
+      "id": "storyline.flags-listed",
+      "path": "branching",
+      "mustBeTrue": "Every fact a later beat depends on (a choice made, an item found, a character met) is a named story flag, with the beat that sets it and the beats that read it.",
+      "check": { "kind": "compare", "how": "Each choice and condition in the story map file is compared with the flag list; a condition with no flag, or a flag that no beat sets or no beat reads, is listed." }
+    },
+    {
+      "id": "storyline.save-points",
+      "mustBeTrue": "Where the Q&A says the story is played across sessions, the beat list marks each beat after which progress is saved, and every ending is preceded by at least one saved beat.",
+      "check": { "kind": "review", "how": "The saved-beat marks are read in the beat list, and each ending is traced back to a marked beat. Passes without marks when the Q&A says the story is played in one sitting." }
+    },
+    {
+      "id": "storyline.cast-matches-beats",
+      "mustBeTrue": "Every character in a beat is on the cast list with a one-line role, and every character on the cast list appears in at least one beat.",
+      "check": { "kind": "compare", "how": "The characters named in the beat list are compared with the cast list, both ways; a name on only one side is listed." }
+    },
+    {
+      "id": "storyline.limits-kept",
+      "mustBeTrue": "No beat holds content beyond the age rating or content limits given in the Q&A.",
+      "check": { "kind": "review", "how": "Each beat is read against the rating and limits the Q&A gave; a beat that goes beyond them is listed." }
+    },
+    {
+      "id": "storyline.follows-material",
+      "mustBeTrue": "Where the Q&A named existing material, the story agrees with it, and every change is listed with the owner's agreement.",
+      "check": { "kind": "compare", "how": "The beats and cast are set beside the named material; every difference is listed, and one without the owner's recorded agreement fails. Passes without a comparison when the Q&A named no material." }
+    },
+    {
+      "id": "storyline.fits-the-words",
+      "mustBeTrue": "The story fits the three words given in the Q&A.",
+      "check": { "kind": "review", "how": "The storyline is read beside the Q&A answers; each of the three words is matched to at least one named beat." }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "storyline.document",
+      "title": "Storyline",
+      "what": "The premise, the three words, the cast list with a one-line role for each character, and the beat list: a table (Markdown or CSV) with one numbered row per beat giving place, characters, what changes, next beats, estimated minutes and whether progress is saved after it."
+    },
+    {
+      "id": "storyline.story-map",
+      "path": "branching",
+      "title": "Story map file",
+      "what": "The beats and the choices between them, with the start and the endings marked, in a file a script can read (JSON, or a Twine or Ink file)."
+    },
+    {
+      "id": "storyline.flag-list",
+      "path": "branching",
+      "title": "Story flag list",
+      "what": "Each fact the story remembers, with the beat that sets it and the beats that read it."
+    }
+  ],
+  "handoff": {
+    "logic": [
+      "On the branching path, every story flag is state the product must store with the user's progress, and every choice is an action the product must offer and test.",
+      "Every ending must be reachable in a test play-through; the story map file is the list of ways to test.",
+      "Where the story is played across sessions, progress is saved at the marked beats: save data the product must store and keep readable after an update."
+    ],
+    "assets": [
+      "Every line of story text in each language, kept as text the product loads, not drawn into images.",
+      "On the branching path, the story map file, read by the code or by a dialogue engine."
+    ],
+    "runtime": [
+      "Each branch multiplies the scenes, art and voice lines to make, ship and load; the total number of beats sets the content size, and the longest way through sets the play length.",
+      "Spoken lines cost far more than text: one audio file per line per language, which can become the largest part of the download.",
+      "Save data grows with the number of story flags; stored online, it is a network call at each saved beat."
+    ]
+  }
+}

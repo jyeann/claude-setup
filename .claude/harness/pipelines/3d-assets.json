@@ -1,0 +1,138 @@
+{
+  "id": "3d-assets",
+  "title": "3D assets",
+  "appliesWhen": "The product shows 3D models: a game's world, characters or props, a product viewer, or 3D used as a design element on a website or in an app. Picked on its own, with no game pipeline, when 3D is only a design element.",
+  "dependsOn": [],
+  "questions": [
+    {
+      "id": "3d-assets.list",
+      "ask": "Which 3D assets are needed (for example characters, props, a scene, a product model, a decorative object), and which matter most?",
+      "why": "This list is what the delivered models are counted against; the ones that matter most get the largest share of the budget."
+    },
+    {
+      "id": "3d-assets.where-shown",
+      "ask": "Where is each asset shown (a web page, a native app, a game engine), and is it drawn live or rendered beforehand into images or video?",
+      "why": "Drawn live, an asset costs download size and frame time on the user's device; rendered beforehand, it becomes ordinary images or video."
+    },
+    {
+      "id": "3d-assets.slowest-device",
+      "ask": "What is the slowest device that must show the assets smoothly, and on what network?",
+      "why": "Sets each asset's budget: triangles, texture size and file size."
+    },
+    {
+      "id": "3d-assets.interaction",
+      "ask": "Can the user turn, move or change an asset, or does it only play animations? Which animations?",
+      "why": "Interaction is input the product must handle; each animation is part of the model file."
+    },
+    {
+      "id": "3d-assets.source",
+      "ask": "What must each asset match: concept art, a character turnaround, the brand's colours, or a real product's measurements?",
+      "why": "Gives the reference each model is compared with. 3D assets do not depend on another pipeline, so the reference is named here."
+    },
+    {
+      "id": "3d-assets.file-format",
+      "ask": "Which model file format must the assets be delivered in? If the stack is not chosen yet, binary glTF (.glb) is the default.",
+      "why": "Models are delivered in a format a tool can open and measure; a picture of a model cannot be measured."
+    },
+    {
+      "id": "3d-assets.fallback",
+      "ask": "What should a user see while a model loads, or on a device that cannot show 3D: a still image, or nothing?",
+      "why": "The fallback is design work and a branch the product must take."
+    },
+    {
+      "id": "3d-assets.licences",
+      "ask": "Are there bought or library models, textures or scans to use, and is there a budget for new ones?",
+      "why": "A licence is a spend and legal decision that belongs to the owner."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "3d-assets.budget-written",
+      "mustBeTrue": "Each asset on the asset list has a written budget of triangles, largest texture size and file size, set for the slowest device and network named in the Q&A.",
+      "check": { "kind": "review", "how": "Each row of the asset list is read; a row missing any of the three numbers fails, and the list names the device and network the numbers were set for." }
+    },
+    {
+      "id": "3d-assets.model-files",
+      "mustBeTrue": "Each asset drawn live is delivered as a model file in the format the Q&A named, not as a picture of the model.",
+      "check": { "kind": "measure", "how": "Each model file opens in a validator for its format (for example the Khronos glTF Validator for .glb) and reports no errors." }
+    },
+    {
+      "id": "3d-assets.within-budget",
+      "mustBeTrue": "Each model file is within its budget for triangles, largest texture size and file size.",
+      "check": { "kind": "measure", "how": "A model inspection tool (for example gltf-transform inspect) reports each file's triangles, texture sizes and file size; each number is compared with that asset's row in the asset list." }
+    },
+    {
+      "id": "3d-assets.size-and-origin",
+      "mustBeTrue": "Every model has the size the asset list gives, within the allowed difference the asset list gives with it, in the unit of its file format (metres for glTF), and its origin at the point the asset list names (for example at the feet, or the centre of the base).",
+      "check": { "kind": "measure", "how": "The inspection tool reports each model's bounding box; its size, and the distance of the origin from the named point of the box, are each within the allowed difference in the asset list." }
+    },
+    {
+      "id": "3d-assets.animations-named",
+      "mustBeTrue": "Every animation the Q&A named for an asset is in its model file under the name the asset list gives.",
+      "check": { "kind": "measure", "how": "The inspection tool lists the animations in each model file; the list is compared with the asset list, and a missing or differently named animation is listed." }
+    },
+    {
+      "id": "3d-assets.matches-source",
+      "mustBeTrue": "Each asset matches the source the Q&A named for it (concept art, a character turnaround, the brand's colours, or a real product's measurements), and differs only where the owner agreed.",
+      "check": { "kind": "compare", "how": "Each model is rendered from the front, side and back and set beside its named source; every difference is listed, and one without the owner's recorded agreement fails." }
+    },
+    {
+      "id": "3d-assets.shown-rendered",
+      "mustBeTrue": "Each asset is shown to the owner rendered, as a turntable video or a viewer page a browser can open.",
+      "check": { "kind": "review", "how": "Each asset has a turntable video or viewer page in the product repository that opens; a description in words or a single still does not count." }
+    },
+    {
+      "id": "3d-assets.fallback-made",
+      "mustBeTrue": "Each asset drawn live has the fallback the Q&A chose for loading and for devices that cannot show 3D, as an image file where that is a still image.",
+      "check": { "kind": "compare", "how": "The asset list is compared with the fallback images; an asset drawn live with no fallback, where the Q&A asked for one, is listed." }
+    },
+    {
+      "id": "3d-assets.motion-can-stop",
+      "mustBeTrue": "Every asset that moves on its own for more than five seconds has a still pose named in the asset list, to show when the user pauses it or the device asks for reduced motion.",
+      "check": { "kind": "review", "how": "Each asset with an animation that plays by itself is read in the asset list; one longer than five seconds with no still pose named fails (WCAG 2.2, 2.2.2 for pausing)." }
+    },
+    {
+      "id": "3d-assets.licences-recorded",
+      "mustBeTrue": "Every bought or library model, texture and scan has its licence recorded, and the licence allows the product's use.",
+      "check": { "kind": "review", "how": "The asset list names each bought or library source with its licence and what the licence allows; a source with no licence line, or whose licence does not allow the product's use, fails." }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "3d-assets.asset-list",
+      "title": "3D asset list",
+      "what": "One row per asset: where it is shown and how, its source, its budget (triangles, largest texture size, file size) and the device and network behind it, its size with its allowed difference and its origin, its animations, its still pose, its fallback, and its licence."
+    },
+    {
+      "id": "3d-assets.models",
+      "title": "Model files",
+      "what": "Each asset drawn live, with its textures and animations, in the file format the Q&A named."
+    },
+    {
+      "id": "3d-assets.renders",
+      "title": "Turntables or viewer pages",
+      "what": "Each asset rendered under its lighting, as a turntable video or a viewer page a browser can open; for an asset rendered beforehand, the finished images or video."
+    },
+    {
+      "id": "3d-assets.fallbacks",
+      "title": "Fallback images",
+      "what": "The still image shown while a model loads or where 3D cannot run, for each asset drawn live that needs one."
+    }
+  ],
+  "handoff": {
+    "logic": [
+      "An asset the user can turn, move or change is input the product must handle (pointer, touch and keyboard) and test.",
+      "Each named animation is a state the product plays and switches between; each still pose is what it shows when motion is reduced or paused.",
+      "The fallback is a branch the product takes while a model loads and where 3D cannot run, with a test for each."
+    ],
+    "assets": [
+      "Model files with their textures, shipped or served with the product.",
+      "Fallback images, and the images or video of assets rendered beforehand."
+    ],
+    "runtime": [
+      "The model files on one page or level add up to its download size and its load time on the slowest named network.",
+      "Triangles and the number of models on screen at once set the frame budget on the slowest named device; texture sizes set the graphics memory.",
+      "Drawing 3D in a web page adds a 3D library to the page, often a few hundred kilobytes, before any model loads."
+    ]
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "_about": "Suggested starting sets of design pipelines by product kind (#158, spec #156). A suggestion only: the pipelines are picked per project at kickoff by what the project needs (#159), and a project may add or drop any of them. Checked by check-pipelines.js: every pipeline in a set is in the catalogue, and every pipeline a set lists has the pipelines it depends on in the same set.",
+  "sets": [
+    {
+      "id": "product-ui",
+      "productKind": "Product UI: a website or app people use through screens",
+      "pipelines": ["brand", "screens"],
+      "why": "Most product work is the brand and the screens; nothing in it is a story, a character or a 3D model."
+    },
+    {
+      "id": "website-with-3d",
+      "productKind": "A website or app that uses 3D as a design element",
+      "pipelines": ["brand", "screens", "3d-assets"],
+      "why": "The screens carry the product; the 3D models are a design element on them, with no game pipeline needed."
+    },
+    {
+      "id": "game",
+      "productKind": "Game",
+      "pipelines": ["brand", "screens", "storyline", "storyboard", "character-concept", "3d-assets"],
+      "why": "A game usually needs all six: its name and menus, a story with scenes, characters, and models. A 2D game or one with no plot drops what it does not need."
+    }
+  ]
+}
