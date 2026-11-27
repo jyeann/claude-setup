@@ -1,0 +1,132 @@
+{
+  "id": "screens",
+  "title": "Screens",
+  "appliesWhen": "The product has screens a person uses (web, app, or a tool with a visual interface). Left out for a product with no screens, such as a command-line tool or an API.",
+  "dependsOn": ["brand"],
+  "questions": [
+    {
+      "id": "screens.devices",
+      "ask": "Which devices and screen sizes must the product work on, and which one matters most?",
+      "why": "Sets the widths every key screen is rendered at, and which one is designed first."
+    },
+    {
+      "id": "screens.which-matter-most",
+      "ask": "Which screens matter most to you: the ones a user sees first, uses most, or where money or trust is at stake?",
+      "why": "These are the key screens designed and approved before the build; the rest follow their pattern."
+    },
+    {
+      "id": "screens.existing",
+      "ask": "Are there existing screens, a design file or a component library the new screens must match or reuse?",
+      "why": "Existing screens are a reference to compare against, not something to redesign unasked."
+    },
+    {
+      "id": "screens.languages",
+      "ask": "Which languages will the screens be shown in, and does any read right to left?",
+      "why": "Text length and direction change layouts; a screen approved in one language can break in another."
+    },
+    {
+      "id": "screens.content",
+      "ask": "Is real content available (product names, prices, photos, sample records), or must it be written or made?",
+      "why": "Screens are judged with real content; placeholder text hides the layout problems real text causes."
+    },
+    {
+      "id": "screens.accessibility",
+      "ask": "Is there an accessibility level the product must meet beyond the default (WCAG 2.2 level AA)?",
+      "why": "A stricter level changes contrast, sizes and motion on every screen."
+    },
+    {
+      "id": "screens.motion",
+      "ask": "Should screens have transitions or animation, and how much?",
+      "why": "Motion is design work and runtime cost; none, light and rich are three different builds."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "screens.look-from-variations",
+      "mustBeTrue": "The look was chosen from rendered variations of the same screen, and the choice is recorded.",
+      "check": { "kind": "review", "how": "The variations are rendered files and the run's `Look:` line in its decisions record names the one chosen." }
+    },
+    {
+      "id": "screens.every-key-screen-rendered",
+      "mustBeTrue": "Every key screen is rendered in the chosen look as a page a browser can open, at each width named in the Q&A.",
+      "check": { "kind": "compare", "how": "The list of key screens is compared with the rendered pages: one per screen, opening at each width, none missing. A picture of a screen does not count, because it cannot be measured." }
+    },
+    {
+      "id": "screens.journeys-covered",
+      "mustBeTrue": "Every step of every journey in the experience document has a screen.",
+      "check": { "kind": "compare", "how": "Each journey step in the experience document is matched to a screen in the screen list; a step with no screen is listed." }
+    },
+    {
+      "id": "screens.states-shown",
+      "mustBeTrue": "Each key screen is shown in every state the screen list names for it (from empty, loading, filled and error).",
+      "check": { "kind": "compare", "how": "The screen list names the states of each key screen and each state has a rendered file." }
+    },
+    {
+      "id": "screens.brand-tokens-only",
+      "mustBeTrue": "The screens use only the colours, typefaces and sizes of the brand's design tokens.",
+      "check": { "kind": "measure", "how": "A search of the screens' styles finds no colour value, font name or size that is not a token." }
+    },
+    {
+      "id": "screens.real-content",
+      "mustBeTrue": "Every key screen shows real product text and content in the users' languages, with no placeholder text.",
+      "check": { "kind": "review", "how": "Each rendered key screen is read; lorem ipsum, 'TODO' or untranslated text fails it." }
+    },
+    {
+      "id": "screens.longest-language-fits",
+      "mustBeTrue": "Each key screen holds its layout in the language with the longest text, with nothing cut off or overlapping.",
+      "check": { "kind": "review", "how": "Each key screen is rendered in the longest language named in the Q&A and looked at for cut or overlapping text." }
+    },
+    {
+      "id": "screens.no-sideways-scroll",
+      "mustBeTrue": "No key screen scrolls sideways at the narrowest width named in the Q&A.",
+      "check": { "kind": "measure", "how": "A browser at that width reports a page no wider than the window for each key screen." }
+    },
+    {
+      "id": "screens.text-contrast",
+      "mustBeTrue": "On every key screen, in each theme, text has a contrast ratio of at least 4.5 to 1 against what is behind it (3 to 1 for large text), and controls and their focus mark at least 3 to 1.",
+      "check": { "kind": "measure", "how": "An accessibility scan of each rendered key screen in each theme reports no contrast failure (WCAG 2.2, 1.4.3 and 1.4.11)." }
+    },
+    {
+      "id": "screens.target-size",
+      "mustBeTrue": "Everything a user taps or clicks is at least 24 by 24 CSS pixels, or has that much space around it (44 by 44 points in a native app).",
+      "check": { "kind": "measure", "how": "An accessibility scan of each rendered key screen reports no target-size failure (WCAG 2.2, 2.5.8)." }
+    },
+    {
+      "id": "screens.matches-existing",
+      "mustBeTrue": "Where the Q&A named existing screens or a component library to match, the new screens reuse its components and differ only where the owner agreed.",
+      "check": { "kind": "compare", "how": "Each new key screen is set beside the named reference; every difference is listed with the reason. Passes without a comparison when the Q&A named nothing to match." }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "screens.look-variations",
+      "title": "Look variations",
+      "what": "The same screen rendered in several looks, for the owner to choose from."
+    },
+    {
+      "id": "screens.screen-list",
+      "title": "Screen list",
+      "what": "Every screen of the product with the journey steps it serves, its states, and whether it is a key screen."
+    },
+    {
+      "id": "screens.key-screens",
+      "title": "Key screens, rendered",
+      "what": "Each key screen in the chosen look, at each width and in each state, as pages a browser can open and the build is compared against."
+    }
+  ],
+  "handoff": {
+    "logic": [
+      "Every state shown (empty, loading, filled, error) is behaviour the product must produce and test.",
+      "Every action on a screen (a button, a form, a link) is an operation the system must provide.",
+      "What a screen shows is data the system must store and return: the screen list is the first draft of the data model."
+    ],
+    "assets": [
+      "Images, icons and illustrations used on the screens, in the sizes each width needs."
+    ],
+    "runtime": [
+      "The heaviest key screen sets the page-weight and load-time budget.",
+      "Lists that can grow (a feed, search results, a table) need paging or lazy loading; the screen shows which.",
+      "Transitions and animation, where the Q&A asked for them, set a frame-rate budget on the slowest named device."
+    ]
+  }
+}

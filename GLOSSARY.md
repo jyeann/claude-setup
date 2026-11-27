@@ -207,6 +207,18 @@ _Avoid_: pending agent, open task
 Design work (looks, brand kits, concept art, animation) carried out across one or more sessions under the `design-sessions` rules. It is its own kind of run, not a phase of the product pipeline, and has no owner gates of its own (spec #109).
 _Avoid_: design phase
 
+**Design pipeline**:
+One kind of design work a project can need (brand, screens, and later storyline, storyboard, character concept, 3D assets), held as one entry in the pipeline catalogue: the questions asked in the product Q&A, the written criteria its output is judged against, its outputs, the pipelines it depends on, and what it hands to system analysis (logic, assets, runtime cost). A pipeline may have **paths**, the ways it can run (brand: follow an existing guide, or create one). Pipelines are picked by what the project needs, not by its product kind (spec #156). Always written with "design": the plain word pipeline still means the run's phases walked by `pipeline.js`.
+_Avoid_: design phase, workstream, track
+
+**Pipeline catalogue**:
+The design pipelines in `.claude/harness/pipelines/`, one file per pipeline, kept like the standards catalogue. Checked by `check-pipelines.js`, which also prints the pipelines in dependency order.
+_Avoid_: design checklist, pipeline list
+
+**Criteria form**:
+A pipeline's questions and written criteria, filled in for one product from the catalogue entry and the Q&A answers, and approved by the owner at kickoff. Each criterion says what must be true and how it is checked: measured by a tool, compared with a named reference, or reviewed against the written line.
+_Avoid_: design requirements, acceptance list
+
 **Owning session**:
 The one session that may publish to a given published page. The first session to publish the page becomes its owner, and the owner is recorded in the page register. Other sessions hand their content back to it.
 _Avoid_: page author, writer session

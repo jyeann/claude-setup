@@ -1,0 +1,166 @@
+{
+  "id": "brand",
+  "title": "Brand",
+  "appliesWhen": "The product shows its own name, logo, colours or typefaces to users. Left out only when the product is built entirely from unbranded standard components.",
+  "dependsOn": [],
+  "paths": [
+    {
+      "id": "follow-guide",
+      "title": "Follow an existing brand guide",
+      "when": "The owner or the client already has a brand guide the product must match."
+    },
+    {
+      "id": "create-guide",
+      "title": "Create a new brand guide",
+      "when": "There is no brand guide, or the existing one is being replaced."
+    }
+  ],
+  "questions": [
+    {
+      "id": "brand.existing-guide",
+      "ask": "Is there a brand guide the product must follow? If yes, where is it and which version or date is current?",
+      "why": "Decides the path: follow the guide, or create one."
+    },
+    {
+      "id": "brand.guide-coverage",
+      "ask": "Does the existing guide cover screens (web or app), or only print and logo use?",
+      "why": "A print-only guide leaves screen decisions open; those become owner decisions, not guesses."
+    },
+    {
+      "id": "brand.fixed-elements",
+      "ask": "Which elements already exist and must not change: name, logo, colours, typefaces, tagline?",
+      "why": "Fixed elements are inputs, not design work."
+    },
+    {
+      "id": "brand.audience-and-feel",
+      "ask": "Who is the product for, and which three words should describe how it feels to them?",
+      "why": "A new guide is judged against these words; without them every variation is equally right."
+    },
+    {
+      "id": "brand.references",
+      "ask": "Which existing brands or products feel right, and which feel wrong?",
+      "why": "References show what words cannot; the wrong ones rule directions out early."
+    },
+    {
+      "id": "brand.languages",
+      "ask": "Which languages and scripts must the typefaces cover?",
+      "why": "A typeface that lacks a script the users read cannot be chosen."
+    },
+    {
+      "id": "brand.licences",
+      "ask": "Are there typefaces, images or icon sets already licensed, and is there a budget for new licences?",
+      "why": "A licence is a spend and legal decision that belongs to the owner."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "brand.guide-recorded",
+      "path": "follow-guide",
+      "mustBeTrue": "The brand guide being followed is recorded with its location and its version or date.",
+      "check": { "kind": "review", "how": "The brand record names the guide file or link and its version or date, and the file or link opens." }
+    },
+    {
+      "id": "brand.matches-guide",
+      "path": "follow-guide",
+      "mustBeTrue": "Every colour value, typeface and logo file in the design tokens and logo files is the one the guide gives.",
+      "check": { "kind": "compare", "how": "Each token value and logo file is compared with the guide, page by page; any difference is listed." }
+    },
+    {
+      "id": "brand.logo-rules-kept",
+      "path": "follow-guide",
+      "mustBeTrue": "Wherever the logo is shown, the guide's clear space, minimum size and allowed backgrounds are kept.",
+      "check": { "kind": "compare", "how": "Each placement of the logo in the rendered outputs is checked against the guide's logo rules." }
+    },
+    {
+      "id": "brand.guide-gaps-listed",
+      "path": "follow-guide",
+      "mustBeTrue": "Everything the product needs that the guide does not cover is listed as a decision for the owner, with a proposal for each.",
+      "check": { "kind": "review", "how": "The brand record has a list of uncovered items (for example dark mode, error colours, screen type sizes), each with a proposal; an empty list says so in words." }
+    },
+    {
+      "id": "brand.guide-complete",
+      "path": "create-guide",
+      "mustBeTrue": "The new guide holds: the logo with its usage rules, the colour palette with a role and a value for each colour, the typefaces with a size scale, the tone of voice with examples of real product text, and the style of images or illustrations.",
+      "check": { "kind": "review", "how": "Each of the five parts is present in the guide and none is a placeholder." }
+    },
+    {
+      "id": "brand.direction-from-variations",
+      "path": "create-guide",
+      "mustBeTrue": "The brand direction was chosen from at least two rendered variations, and the choice is recorded.",
+      "check": { "kind": "review", "how": "The variations are rendered files in the product repository and the brand record names the one chosen and when." }
+    },
+    {
+      "id": "brand.fits-the-words",
+      "path": "create-guide",
+      "mustBeTrue": "The guide fits the audience and the three words given in the Q&A.",
+      "check": { "kind": "review", "how": "The guide is read beside the Q&A answers; each of the three words is matched to something visible in the guide." }
+    },
+    {
+      "id": "brand.licences-recorded",
+      "mustBeTrue": "Every typeface, image and icon set the brand uses has its licence recorded, and the licence allows the product's use.",
+      "check": { "kind": "review", "how": "The brand record lists each asset with its licence and source; an asset with no licence line fails." }
+    },
+    {
+      "id": "brand.text-contrast",
+      "mustBeTrue": "Every text and background pair listed in the design tokens file has a contrast ratio of at least 4.5 to 1 (3 to 1 for large text), in each theme.",
+      "check": { "kind": "measure", "how": "A contrast tool measures each listed pair in each theme (WCAG 2.2, 1.4.3)." }
+    },
+    {
+      "id": "brand.tokens-file",
+      "mustBeTrue": "One design tokens file holds the colours with their roles, the text and background pairs that may be used together, the typefaces and the size scale.",
+      "check": { "kind": "measure", "how": "The tokens file parses and has the colour, pair, typeface and size groups, none of them empty." }
+    },
+    {
+      "id": "brand.scripts-covered",
+      "mustBeTrue": "The chosen typefaces cover every language and script named in the Q&A.",
+      "check": { "kind": "measure", "how": "A sample line in each named language is rendered in each typeface with no missing-glyph boxes." }
+    },
+    {
+      "id": "brand.one-page",
+      "mustBeTrue": "The brand is shown to the owner on one rendered page: logo, palette, typefaces and a sample of real product text.",
+      "check": { "kind": "review", "how": "The page is a rendered file or published page, not a description in words." }
+    }
+  ],
+  "outputs": [
+    {
+      "id": "brand.guide-reference",
+      "path": "follow-guide",
+      "title": "Brand record",
+      "what": "The guide being followed (location, version), and the list of items it does not cover with a proposal for each."
+    },
+    {
+      "id": "brand.guide",
+      "path": "create-guide",
+      "title": "Brand guide",
+      "what": "The new guide: logo and usage rules, colour palette with roles, typefaces and size scale, tone of voice, image style, and the licences."
+    },
+    {
+      "id": "brand.tokens",
+      "title": "Design tokens file",
+      "what": "Colours with roles, the text and background pairs that may be used together, typefaces and the size scale, in one file the screens and the code read."
+    },
+    {
+      "id": "brand.logo-files",
+      "title": "Logo files",
+      "what": "The logo in the formats and sizes the product needs, including the small icon sizes."
+    },
+    {
+      "id": "brand.page",
+      "title": "Brand page",
+      "what": "One rendered page showing the brand, for the owner to judge."
+    }
+  ],
+  "handoff": {
+    "logic": [
+      "A light and dark theme, when the guide has both, is a setting the product must store and apply."
+    ],
+    "assets": [
+      "The design tokens file, read by the code as its only source of colours and type.",
+      "Logo files and typeface files, shipped with the product."
+    ],
+    "runtime": [
+      "Each typeface file adds to the first page load; the number of typefaces and weights sets that cost.",
+      "A typeface loaded from another host is a network dependency and a privacy question."
+    ]
+  }
+}
